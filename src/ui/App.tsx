@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { newMap, newNode, newRoad } from '../domain/factory';
+import { newMap, newNode, newRoad, newFacility, newZone } from '../domain/factory';
 import { contentHash, serializeMap } from '../domain/serialization';
 import { mapCapabilities } from '../domain/capabilities';
-import { closureSelection, type MapCommand, type Selection } from '../domain/commands';
-import type { Issue, Vec3 } from '../domain/model';
+import { closureSelection, normalizeSelection, selectionImpact, type FullSelection, type MapCommand, type Selection } from '../domain/commands';
+import type { Facility, Zone, ServicePoint, Polygon, Issue, Vec3 } from '../domain/model';
 import { createSession, editSession, isDirty, acknowledgeMap, prepareImport, redoSession, resolveImport, undoSession, type EditorSession, type ImportProposal } from '../editor/session';
 import { toSceneSnapshot } from '../compiler/scene';
 import { validateMap } from '../validation/validate';
@@ -12,11 +12,15 @@ import { MapCanvas, type DraftRoad, type Tool } from '../renderers/2d/MapCanvas'
 import type { Camera } from '../geometry/coordinates';
 import { PropertyPanel } from './PropertyPanel';
 import { Modal } from './Modal';
+import './workspace.css';
 import { useProjectWorkspace } from './useProjectWorkspace';
 import { LocalFileController } from '../adapters/localFiles';
 type FileConflict = Extract<Awaited<ReturnType<LocalFileController['check']>>, { status: 'conflict' }>;
 
-const emptySelection = (): Selection => ({ nodes: [], roads: [] });
+type SelectionKind = keyof FullSelection;
+const selectionKinds: SelectionKind[] = ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints'];
+const selectionNames: Record<SelectionKind, string> = { nodes: '节点', roads: '道路', facilities: '设施', zones: '区域', accessPoints: '入口', servicePoints: '服务点' };
+const emptySelection = (): FullSelection => normalizeSelection({ nodes: [], roads: [] });
 const uid = (prefix: string) => prefix + '_' + crypto.randomUUID();
 function localIssue(code: string, message: string): Issue { return { code, severity: 'error', jsonPath: '', message, suggestedAction: '检查输入，当前有效地图未被替换。' }; }
 
@@ -36,12 +40,36 @@ export function App() {
   const [newName, setNewName] = useState('新建布局');
   const [copyDialog, setCopyDialog] = useState(false);
   const [copyDelta, setCopyDelta] = useState(['10', '10', '0']);
+  const [copyRetainFacility, setCopyRetainFacility] = useState(false);
+  const [facilityKind, setFacilityKind] = useState<Facility['kind']>('workshop');
+  const [zoneKind, setZoneKind] = useState<Zone['kind']>('work');
+  const [facilityMovePolicy, setFacilityMovePolicy] = useState<'boundaryOnly' | 'withAssociatedNodes'>('boundaryOnly');
+  const [snapGrid, setSnapGrid] = useState('0');
+  const [snapNodes, setSnapNodes] = useState(false);
+  const [pointDialog, setPointDialog] = useState<'accessPoints' | 'servicePoints' | null>(null);
+  const [pointName, setPointName] = useState('');
+  const [pointFacility, setPointFacility] = useState('');
+  const [pointAccess, setPointAccess] = useState('');
+  const [pointKind, setPointKind] = useState<ServicePoint['kind']>('loading');
+  const [pointNodeMode, setPointNodeMode] = useState<'existing' | 'new'>('new');
+  const [pointNodeId, setPointNodeId] = useState('');
+  const [pointPosition, setPointPosition] = useState(['', '', '0']);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [deleteMembers, setDeleteMembers] = useState(false);
+  const [deleteUnusedNodes, setDeleteUnusedNodes] = useState(false);
+  const [rotateDialog, setRotateDialog] = useState(false);
+  const [rotateRadians, setRotateRadians] = useState('0');
+  const [rotatePivot, setRotatePivot] = useState(['0', '0', '0']);
+  const [splitDialog, setSplitDialog] = useState(false);
+  const [splitDistance, setSplitDistance] = useState('');
+  const [splitExistingNode, setSplitExistingNode] = useState('');
   const [mapName, setMapName] = useState(session.map.metadata.name);
   const [fileLoading, setFileLoading] = useState(false);
   const importSequence = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const initializedCanvas = useRef(false);
   const [propertyDirty, setPropertyDirty] = useState(false);
+  const [polygonDraftDirty, setPolygonDraftDirty] = useState(false);
   const onPropertyDirty = useCallback((value: boolean) => setPropertyDirty(value), []);
   const [saveDialog, setSaveDialog] = useState(false);
   const [recentDialog, setRecentDialog] = useState(false);
@@ -62,14 +90,14 @@ export function App() {
       if (!preserveNative.current && !local.reset()) throw new Error('本地文件仍在处理中，工程界面未切换；请等待并重试。');
       updateSession({ ...createSession(recovery.map, true), changeToken: sessionRef.current.changeToken + 1 });
       setMapName(recovery.map.metadata.name); setSelection(emptySelection()); setDraftRoad(null); setTool('select');
-      setPropertyDirty(false); initializedCanvas.current = true;
+      setPropertyDirty(false); setPolygonDraftDirty(false); setRecentDialog(false); setStorageConflictDialog(false); setNewDialog(false); setProposal(null); setOverwriteReady(null); setPointDialog(null); setCopyDialog(false); setDeleteDialog(false); setRotateDialog(false); setSplitDialog(false); setSaveDialog(false); setOperationIssues([]); initializedCanvas.current = true;
       setCamera(recovery.editorState?.camera ?? { offsetX: 80, offsetY: 460, scale: 4 });
       if (!preserveNative.current) { setLocalState(local.snapshot()); setFileConflict(null); setLocalMessage(''); }
       setExportMessage('尚未导出 JSON');
       setStatus(recovery.source === 'new' ? '新工程已打开；浏览器草稿将自动保存。' : '已恢复浏览器工程，地图经共同校验与派生路径重建。');
     },
   });
-  const unapplied = propertyDirty || mapName !== session.map.metadata.name;
+  const unapplied = propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDialog !== null || copyDialog || rotateDialog || splitDialog;
   const saveGuard = useRef({ browserDirty: true, unapplied: false });
   saveGuard.current = { browserDirty: projects.state.active?.draftHash !== contentHash(session.map), unapplied };
   useEffect(() => setMapName(session.map.metadata.name), [session.map.metadata.name]);
@@ -79,13 +107,13 @@ export function App() {
   const domainReadonly = !capabilities.editable;
   const readonly = domainReadonly || !projects.ready || projects.transitioning || localState.busy;
   const dirty = isDirty(session);
-  const validSelection = useMemo(() => ({
-    nodes: selection.nodes.filter(id => Object.hasOwn(session.map.nodes, id)),
-    roads: selection.roads.filter(id => Object.hasOwn(session.map.roads, id)),
-  }), [selection, session.map]);
-  const selectedCount = validSelection.nodes.length + validSelection.roads.length;
+  const validSelection = useMemo(() => {
+    const current = normalizeSelection(selection);
+    return Object.fromEntries(selectionKinds.map(kind => [kind, current[kind].filter(id => Object.hasOwn(session.map[kind], id))])) as FullSelection;
+  }, [selection, session.map]);
+  const selectedCount = selectionKinds.reduce((total, kind) => total + validSelection[kind].length, 0);
   const closure = useMemo(() => closureSelection(session.map, validSelection), [session.map, validSelection]);
-  const issues = [...operationIssues, ...report.issues];
+  const impact = useMemo(() => selectionImpact(session.map, validSelection, facilityMovePolicy), [session.map, validSelection, facilityMovePolicy]);  const issues = [...operationIssues, ...report.issues];
   const errorCount = issues.filter(i => i.severity === 'error').length;
 
   const onCanvasSize = useCallback((size: { width: number; height: number }) => {
@@ -101,10 +129,11 @@ export function App() {
     if (!result.ok) { setStatus('操作被拒绝，地图及历史记录保持不变。'); return false; }
     updateSession(result.session); setStatus('编辑已提交为一个可撤销事务。'); return true;
   }
-  function choose(kind: 'nodes' | 'roads', id: string, additive: boolean) {
+  function choose(kind: SelectionKind, id: string, additive: boolean) {
     setSelection(current => {
-      if (!additive) return kind === 'nodes' ? { nodes: [id], roads: [] } : { nodes: [], roads: [id] };
-      return { ...current, [kind]: current[kind].includes(id) ? current[kind].filter(value => value !== id) : [...current[kind], id] };
+      const normalized = normalizeSelection(current);
+      if (!additive) return { ...emptySelection(), [kind]: [id] };
+      return { ...normalized, [kind]: normalized[kind].includes(id) ? normalized[kind].filter(value => value !== id) : [...normalized[kind], id] };
     });
   }
   function changeTool(value: Tool) { setTool(value); setDraftRoad(null); }
@@ -196,8 +225,51 @@ export function App() {
   function undo() {
     if (operationsBlocked()) return; updateSession(undoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已撤销一个事务。'); }
   function redo() { if (operationsBlocked()) return; updateSession(redoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已重做一个事务。'); }
+  function addPolygon(kind: 'facilities' | 'zones', boundary: Polygon) {
+    const id = uid(kind === 'facilities' ? 'facility' : 'zone');
+    const command: MapCommand = kind === 'facilities'
+      ? { type: 'addFacility', id, facility: newFacility(boundary, '设施 ' + (scene.facilities.length + 1), facilityKind) }
+      : { type: 'addZone', id, zone: newZone(boundary, '区域 ' + (scene.zones.length + 1), zoneKind) };
+    const accepted = apply(command);
+    if (accepted) { setSelection({ ...emptySelection(), [kind]: [id] }); setTool('select'); }
+    return accepted;
+  }
+  function openPointDialog(kind: 'accessPoints' | 'servicePoints') {
+    if (operationsBlocked() || readonly) return;
+    setPointDialog(kind); setPointName(kind === 'accessPoints' ? '入口' : '服务点');
+    setPointFacility(validSelection.facilities[0] ?? ''); setPointAccess(''); setPointNodeId('');
+    setPointNodeMode('new'); setPointPosition(['', '', '0']); setOperationIssues([]);
+  }
+  function createPoint() {
+    if (!pointDialog || operationsBlocked()) return;
+    if (!pointName.trim() || (pointDialog === 'accessPoints' && !pointFacility)) { setOperationIssues([localIssue('POINT_INPUT_REQUIRED', '请填写名称；入口必须明确选择设施。')]); return; }
+    if (pointNodeMode === 'new' && pointPosition.some(value => !value.trim() || !Number.isFinite(Number(value)))) { setOperationIssues([localIssue('POINT_POSITION_REQUIRED', '请明确输入专用节点的 XYZ 米制位置，不以设施中心代替入口。')]); return; }
+    if (pointNodeMode === 'existing' && !pointNodeId) { setOperationIssues([localIssue('POINT_NODE_REQUIRED', '请选择明确的已有节点。')]); return; }
+    const nodeId = pointNodeMode === 'new' ? uid('node') : pointNodeId;
+    const node = pointNodeMode === 'new' ? { id: nodeId, node: { ...newNode(pointPosition.map(Number) as Vec3, pointName + '节点'), kind: pointDialog === 'accessPoints' ? 'access' as const : 'service' as const } } : undefined;
+    const id = uid(pointDialog === 'accessPoints' ? 'access' : 'service');
+    const command: MapCommand = pointDialog === 'accessPoints'
+      ? { type: 'addAccessPoint', id, accessPoint: { name: pointName, facilityId: pointFacility, nodeId, provenance: { category: 'synthetic' } }, ...(node ? { newNode: node } : {}) }
+      : { type: 'addServicePoint', id, servicePoint: { name: pointName, kind: pointKind, nodeId, ...(pointFacility ? { facilityId: pointFacility } : {}), ...(pointAccess ? { accessPointId: pointAccess } : {}), resourceIds: [], provenance: { category: 'synthetic' } }, ...(node ? { newNode: node } : {}) };
+    if (apply(command)) { setSelection({ ...emptySelection(), [pointDialog]: [id] }); setPointDialog(null); setTool('select'); }
+  }
+  function rotate() {
+    if (!rotateRadians.trim() || !Number.isFinite(Number(rotateRadians)) || rotatePivot.some(value => !value.trim() || !Number.isFinite(Number(value)))) { setOperationIssues([localIssue('INVALID_ROTATION', '旋转角度为有限弧度，旋转中心为有限 XYZ 米制坐标。')]); return; }
+    if (apply({ type: 'rotateSelection', selection: validSelection, pivot: rotatePivot.map(Number) as Vec3, angleRad: Number(rotateRadians), facilityMovePolicy })) setRotateDialog(false);
+  }
+  function splitRoad() {
+    const id = validSelection.roads[0];
+    if (!id || !splitDistance.trim() || !Number.isFinite(Number(splitDistance))) { setOperationIssues([localIssue('INVALID_SPLIT_DISTANCE', '请明确输入自道路起点量起的内部切分距离（m）。')]); return; }
+    const newRoadIds: [string, string] = [uid('road'), uid('road')];
+    const nodeId = splitExistingNode || uid('node');
+    if (apply({ type: 'splitRoad', id, distanceM: Number(splitDistance), nodeId, existingNode: !!splitExistingNode, newRoadIds })) { setSelection({ ...emptySelection(), nodes: [nodeId], roads: newRoadIds }); setSplitDialog(false); }
+  }
+  function confirmDelete() {
+    if (apply({ type: 'deleteSelection', selection: validSelection, facilityPolicy: deleteMembers ? 'withAssociatedPoints' : 'reject', orphanNodes: deleteUnusedNodes ? 'deleteUnused' : 'keep' })) { setSelection(emptySelection()); setDeleteDialog(false); }
+  }
   function remove() {
     if (selectedCount === 0 || readonly) return;
+    if (validSelection.facilities.length || validSelection.accessPoints.length || validSelection.servicePoints.length) { setDeleteMembers(false); setDeleteUnusedNodes(false); setOperationIssues([]); setDeleteDialog(true); return; }
     if (apply({ type: 'deleteSelection', selection: validSelection })) setSelection(emptySelection());
   }
   function fit() {
@@ -241,14 +313,14 @@ export function App() {
   }
   function duplicate() {
     if (copyDelta.some(value => !value.trim() || !Number.isFinite(Number(value)))) { setOperationIssues([localIssue('INVALID_COPY_OFFSET', '复制偏移必须为有限米制数值。')]); return; }
-    const idMap = Object.fromEntries([...closure.nodes.map(id => [id, uid('node')]), ...closure.roads.map(id => [id, uid('road')])]);
-    if (apply({ type: 'duplicateSelection', selection: validSelection, delta: copyDelta.map(Number) as Vec3, idMap })) {
-      setSelection({ nodes: closure.nodes.map(id => idMap[id]!), roads: closure.roads.map(id => idMap[id]!) }); setCopyDialog(false);
+    const idMap = Object.fromEntries(selectionKinds.flatMap(kind => closure[kind].map(id => [id, uid(({ nodes: 'node', roads: 'road', facilities: 'facility', zones: 'zone', accessPoints: 'access', servicePoints: 'service' })[kind])])));
+    if (apply({ type: 'duplicateSelection', selection: validSelection, delta: copyDelta.map(Number) as Vec3, idMap, associationPolicy: copyRetainFacility ? 'retainFacility' : 'rejectExternal' })) {
+      setSelection(Object.fromEntries(selectionKinds.map(kind => [kind, closure[kind].map(id => idMap[id]!)])) as FullSelection); setCopyDialog(false);
     }
   }
   function locate(issue: Issue) {
-    if (issue.entityType === 'nodes' && issue.entityId && Object.hasOwn(session.map.nodes, issue.entityId)) choose('nodes', issue.entityId, false);
-    if (issue.entityType === 'roads' && issue.entityId && Object.hasOwn(session.map.roads, issue.entityId)) choose('roads', issue.entityId, false);
+    const kind = issue.entityType as SelectionKind | undefined;
+    if (kind && selectionKinds.includes(kind) && issue.entityId && Object.hasOwn(session.map[kind], issue.entityId)) { choose(kind, issue.entityId, false); setTool('select'); }
     const point = issue.location?.position;
     if (point) setCamera(current => ({ ...current, offsetX: canvasSize.width / 2 - point[0] * current.scale, offsetY: canvasSize.height / 2 + point[1] * current.scale }));
   }
@@ -263,7 +335,7 @@ export function App() {
       if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); saveProject(); return; }
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict) {
+      if (proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || pointDialog || deleteDialog || rotateDialog || splitDialog) {
         if ((modifier && ['z', 'y'].includes(event.key.toLowerCase())) || ['Delete', 'Backspace'].includes(event.key)) event.preventDefault();
         return;
       }
@@ -275,18 +347,24 @@ export function App() {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   });
-  const selectedNodeId = validSelection.nodes.length === 1 && validSelection.roads.length === 0 ? validSelection.nodes[0] : undefined;
-  const selectedRoadId = validSelection.roads.length === 1 && validSelection.nodes.length === 0 ? validSelection.roads[0] : undefined;
+  const selectedNodeId = selectedCount === 1 && validSelection.nodes.length === 1 ? validSelection.nodes[0] : undefined;
+  const selectedRoadId = selectedCount === 1 && validSelection.roads.length === 1 ? validSelection.roads[0] : undefined;
   const selected = selectedNodeId ? { kind: 'node' as const, id: selectedNodeId, value: session.map.nodes[selectedNodeId]! }
-    : selectedRoadId ? { kind: 'road' as const, id: selectedRoadId, value: session.map.roads[selectedRoadId]!, lengthM: scene.roads.find(road => road.id === selectedRoadId)!.lengthM } : null;
+    : selectedRoadId ? { kind: 'road' as const, id: selectedRoadId, value: session.map.roads[selectedRoadId]!, lengthM: scene.roads.find(road => road.id === selectedRoadId)!.lengthM }
+    : selectedCount === 1 && validSelection.facilities[0] ? { kind: 'facility' as const, id: validSelection.facilities[0], value: session.map.facilities[validSelection.facilities[0]]! }
+    : selectedCount === 1 && validSelection.zones[0] ? { kind: 'zone' as const, id: validSelection.zones[0], value: session.map.zones[validSelection.zones[0]]! }
+    : selectedCount === 1 && validSelection.accessPoints[0] ? { kind: 'accessPoint' as const, id: validSelection.accessPoints[0], value: session.map.accessPoints[validSelection.accessPoints[0]]! }
+    : selectedCount === 1 && validSelection.servicePoints[0] ? { kind: 'servicePoint' as const, id: validSelection.servicePoints[0], value: session.map.servicePoints[validSelection.servicePoints[0]]! } : null;
   const hint = readonly ? '只读检查：可查看、定位并原样导出 JSON。'
     : tool === 'node' ? '点击空白位置创建节点。坐标可在右侧精确修改。'
     : tool === 'road' ? (draftRoad ? '点击空白处添加内部折点，再点击目标节点完成道路。Esc 取消。' : '先点击已有起点节点；道路交叉不会自动连接。')
+    : tool === 'facilityRect' || tool === 'zoneRect' ? '依次点击矩形的两个对角点；几何按世界米制坐标保存。'
+    : tool === 'facilityPolygon' || tool === 'zonePolygon' ? '依次点击顶点，点击起点或 Enter 完成多边形；Esc 取消。'
     : tool === 'pan' ? '按住鼠标拖动平移，滚轮缩放。'
     : '拖动节点移动；Shift 点击多选；滚轮缩放；中键平移。';
 
   return <main className="app-shell">
-    <header className="app-header"><div className="brand-mark">Y</div><div><h1>船厂空间布局编辑器</h1><p>YARD SPACE / M1.1 · 本地工程</p></div><div className="header-actions"><button onClick={showRecent} disabled={!projects.ready || projects.transitioning || localState.busy}>最近项目</button><button onClick={() => void copyProject()} disabled={!projects.ready || projects.transitioning || localState.busy}>浏览器另存为</button><button className="primary-button" onClick={() => saveProject()} disabled={!projects.ready || projects.transitioning}>保存工程</button><button disabled={!projects.ready || projects.transitioning || localState.busy} onClick={() => { setNewName('新建布局'); setNewDialog(true); }}>新建地图</button><button onClick={() => fileInput.current?.click()} disabled={fileLoading || !projects.ready || projects.transitioning || localState.busy}>{fileLoading ? '读取中…' : '导入 JSON'}</button><button className="primary-button" onClick={exportCurrent}>导出 JSON</button></div></header>
+    <header className="app-header"><div className="brand-mark">Y</div><div><h1>船厂空间布局编辑器</h1><p>YARD SPACE / M2A · 本地米制工程</p></div><div className="header-actions"><button onClick={showRecent} disabled={!projects.ready || projects.transitioning || localState.busy}>最近项目</button><button onClick={() => void copyProject()} disabled={!projects.ready || projects.transitioning || localState.busy}>浏览器另存为</button><button className="primary-button" onClick={() => saveProject()} disabled={!projects.ready || projects.transitioning}>保存工程</button><button disabled={!projects.ready || projects.transitioning || localState.busy} onClick={() => { setNewName('新建布局'); setNewDialog(true); }}>新建地图</button><button onClick={() => fileInput.current?.click()} disabled={fileLoading || !projects.ready || projects.transitioning || localState.busy}>{fileLoading ? '读取中…' : '导入 JSON'}</button><button className="primary-button" onClick={exportCurrent}>导出 JSON</button><button disabled title="M2B 将实现底图资源和 ZIP 工程往返；当前请导出 JSON 备份">工程 ZIP（M2B）</button></div></header>
     <input ref={fileInput} data-testid="json-file-input" type="file" accept=".json,application/json" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importFile(file); }} />
     <div className="document-bar"><strong>{session.map.metadata.name}</strong><span className="basis-chip">{session.map.metadata.layoutBasis}</span><span className={dirty ? 'save-status dirty' : 'save-status'} data-testid="save-status"><span data-testid="browser-save-status">{projects.browserStatus}</span></span><span className="document-meta">r{session.map.revision} · 本地坐标 · m / rad / kg / s</span></div>
     <div className="project-save-bar">
@@ -300,26 +378,36 @@ export function App() {
     </div>
     {projects.warning && <div className="project-note">{projects.warning}</div>}
     {localMessage && <div className="project-note" role="status">{localMessage}</div>}
-    {unapplied && <div className="project-note pending" data-testid="unapplied-inputs">有未应用输入：仅保存在属性表单中；请点击“应用属性”或“应用地图名称”。</div>}
+    {unapplied && <div className="project-note pending" data-testid="unapplied-inputs">有未应用输入：属性、操作表单或绘制尚未提交；请应用属性或完成当前操作。</div>}
     {projects.state.error?.code === 'PROJECT_CONFLICT' && <div className="project-note conflict" role="alert">其他标签页已保存此工程，当前编辑尚未覆盖远程浏览器版本。<button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => { if (!operationsBlocked()) setStorageConflictDialog(true); }}>重新载入浏览器版本</button></div>}
     <div className="workspace">
       <aside className="left-panel">
-        <div className="panel-title">绘制工具<span>M1</span></div>
-        <div className="tool-grid">{([{ id: 'select', label: '选择', icon: '↖' }, { id: 'node', label: '节点', icon: '⊙' }, { id: 'road', label: '道路折线', icon: '⌁' }, { id: 'pan', label: '平移', icon: '✥' }] as const).map(item => <button key={item.id} className={tool === item.id ? 'tool-button active' : 'tool-button'} aria-label={item.label} aria-pressed={tool === item.id} disabled={readonly && (item.id === 'node' || item.id === 'road')} onClick={() => changeTool(item.id)}><b>{item.icon}</b>{item.label}</button>)}</div>
+        <div className="panel-title">绘制工具<span>M2A</span></div>
+        <div className="tool-grid">{([{ id: 'select', label: '选择', icon: '↖' }, { id: 'node', label: '节点', icon: '⊙' }, { id: 'road', label: '道路折线', icon: '⌁' }, { id: 'pan', label: '平移', icon: '✥' }, { id: 'facilityRect', label: '矩形设施', icon: '▭' }, { id: 'facilityPolygon', label: '多边形设施', icon: '⬡' }, { id: 'zoneRect', label: '矩形区域', icon: '▧' }, { id: 'zonePolygon', label: '多边形区域', icon: '◇' }] as const).map(item => <button key={item.id} className={tool === item.id ? 'tool-button active' : 'tool-button'} aria-label={item.label} aria-pressed={tool === item.id} disabled={readonly && item.id !== 'select' && item.id !== 'pan'} onClick={() => changeTool(item.id)}><b>{item.icon}</b>{item.label}</button>)}</div>
+        <div className="spatial-controls">
+          <label className="field-label">设施类型<select aria-label="新建设施类型" value={facilityKind} disabled={readonly} onChange={event => setFacilityKind(event.target.value as Facility['kind'])}>{Object.entries({ workshop: '厂房', yard: '堆场', assembly: '总组', dock: '坞区', quay: '码头', other: '其他' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+          <label className="field-label">区域类型<select aria-label="新建区域类型" value={zoneKind} disabled={readonly} onChange={event => setZoneKind(event.target.value as Zone['kind'])}>{Object.entries({ work: '作业', buffer: '缓冲', waiting: '等待', water: '水域', obstacle: '障碍', forbidden: '禁入', drivable: '可行驶' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+          <div className="tool-grid"><button onClick={() => openPointDialog('accessPoints')} disabled={readonly}>添加入口</button><button onClick={() => openPointDialog('servicePoints')} disabled={readonly}>添加服务点</button></div>
+          <label className="field-label">网格吸附<select aria-label="网格吸附" value={snapGrid} onChange={event => setSnapGrid(event.target.value)}><option value="0">关闭</option><option value="1">1 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
+          <label className="check-field"><input type="checkbox" aria-label="节点吸附" checked={snapNodes} onChange={event => setSnapNodes(event.target.checked)} />节点吸附（坐标，不自动接路）</label>
+          <label className="field-label">设施移动策略<select aria-label="设施移动策略" value={facilityMovePolicy} onChange={event => setFacilityMovePolicy(event.target.value as typeof facilityMovePolicy)}><option value="boundaryOnly">仅移动边界，关联点保持</option><option value="withAssociatedNodes">边界和关联节点一起移动</option></select></label>
+          {validSelection.facilities.length > 0 && <p className="field-note" data-testid="move-impact">将移动 {impact.selection.nodes.length} 个节点，影响 {impact.affectedRoadIds.length} 条道路；{facilityMovePolicy === 'boundaryOnly' ? '入口/服务点留在原地。' : '共享节点会使相邻道路端点一起变化。'}<br/>{impact.affectedRoadIds.join('、')}</p>}
+        </div>
         <div className="panel-title">地图信息</div>
         <div className="map-name-editor"><label className="field-label">地图名称<input aria-label="地图名称" value={mapName} disabled={readonly} onChange={event => setMapName(event.target.value)} /></label><button className="subtle-button full-width" disabled={readonly || !mapName.trim()} onClick={() => apply({ type: 'renameMap', name: mapName })}>应用地图名称</button></div>
         <div className="panel-title">对象<span><span data-testid="node-count">{scene.nodes.length}</span> 节点 · <span data-testid="road-count">{scene.roads.length}</span> 道路</span></div>
-        <div className="object-list">{scene.nodes.length === 0 && scene.roads.length === 0 && <p className="empty-note">地图为空。选择“节点”工具，在画布上开始绘制。</p>}
+        <div className="object-list">{selectionKinds.every(kind => Object.keys(session.map[kind]).length === 0) && <p className="empty-note">地图为空。选择“节点”工具，在画布上开始绘制。</p>}
           {scene.nodes.map(node => <button key={node.id} data-testid={'node-item-' + node.id} className={validSelection.nodes.includes(node.id) ? 'object-item selected' : 'object-item'} onClick={event => { choose('nodes', node.id, event.shiftKey); setTool('select'); }}><i className="object-node">●</i><span>{node.name || '(未命名节点)'}<small>{node.id}</small></span></button>)}
           {scene.roads.map(road => <button key={road.id} data-testid={'road-item-' + road.id} className={validSelection.roads.includes(road.id) ? 'object-item selected' : 'object-item'} onClick={event => { choose('roads', road.id, event.shiftKey); setTool('select'); }}><i className="object-road">━</i><span>{road.name || '(未命名道路)'}<small>{road.id}</small></span></button>)}
+          {(['facilities', 'zones', 'accessPoints', 'servicePoints'] as const).map(kind => <div className="spatial-object-group" key={kind}><div className="object-group-label">{selectionNames[kind]} <span data-testid={kind + '-count'}>{Object.keys(session.map[kind]).length}</span></div>{Object.entries(session.map[kind]).map(([id, value]) => <button key={id} data-testid={kind + '-item-' + id} className={validSelection[kind].includes(id) ? 'object-item selected' : 'object-item'} onClick={event => { choose(kind, id, event.shiftKey); setTool('select'); }}><i>{kind === 'facilities' ? '▣' : kind === 'zones' ? '◇' : '⊕'}</i><span>{value.name}<small>{id}</small></span></button>)}</div>)}
         </div>
         <div className="left-footer"><b>数据独立于画布</b><p>JSON 保存全部语义几何。平移和缩放仅改变视图。</p><code>{session.map.mapId}</code></div>
       </aside>
       <section className="center-panel">
-        <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => { setOperationIssues([]); setCopyDialog(true); }} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
-        {domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含 M1 未支持的数据；保留完整 JSON，编辑已锁定。</div>}
+        <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => { setOperationIssues([]); setCopyRetainFacility(false); setCopyDialog(true); }} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button><button onClick={() => { setOperationIssues([]); setRotateDialog(true); }} disabled={readonly || selectedCount === 0}>旋转</button><button onClick={() => { setOperationIssues([]); setSplitDistance(""); setSplitExistingNode(""); setSplitDialog(true); }} disabled={readonly || selectedCount !== 1 || validSelection.roads.length !== 1}>拆分道路</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
+        {domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含尚未支持的行为、资源或底图等数据；保留完整 JSON，编辑已锁定。</div>}
         <div className="tool-hint">{hint}</div>
-        <MapCanvas scene={scene} camera={camera} onCamera={setCamera} onSize={onCanvasSize} tool={tool} readonly={readonly} selection={validSelection} onSelect={choose} onClearSelection={() => setSelection(emptySelection())} onCursor={setCursor} draftRoad={draftRoad}
+        <MapCanvas onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} facilityMovePolicy={facilityMovePolicy} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} onCamera={setCamera} onSize={onCanvasSize} tool={tool} readonly={readonly} selection={validSelection} onSelect={choose} onClearSelection={() => setSelection(emptySelection())} onCursor={setCursor} draftRoad={draftRoad}
           onAddNode={point => { const id = uid('node'); if (apply({ type: 'addNode', id, node: newNode(point, '节点 ' + (scene.nodes.length + 1)) })) setSelection({ nodes: [id], roads: [] }); }}
           onRoadNode={id => {
             if (!draftRoad) { setDraftRoad({ fromNodeId: id, points: [] }); return; }
@@ -329,24 +417,68 @@ export function App() {
             }
           }}
           onRoadPoint={point => { if (draftRoad) setDraftRoad({ ...draftRoad, points: [...draftRoad.points, point] }); else setStatus('先点击已有节点作为道路起点。'); }}
-          onTranslate={delta => { apply({ type: 'translateSelection', selection: validSelection, delta }); }}
+          onTranslate={delta => { apply({ type: 'translateSelection', selection: validSelection, delta, facilityMovePolicy }); }}
         />
         <div className="canvas-status"><span>{cursor ? `X ${cursor[0].toFixed(3)} m  ·  Y ${cursor[1].toFixed(3)} m` : '本地 XY；屏幕 Y 方向仅影响显示'}</span><span>{selectedCount} 个选中 · {session.past.length} 个撤销事务</span></div>
         <section className="issue-panel" data-testid="issue-panel"><div className="issue-heading"><strong>检查器</strong><span className={errorCount ? 'error-count' : 'warning-count'}>{errorCount} 错误 · {issues.length - errorCount} 提示</span><span>draft 校验；不代表现场安全</span></div><div className="issue-list">{issues.map((issue, index) => <button key={issue.code + index} className={'issue-item ' + issue.severity} onClick={() => locate(issue)}><span className="issue-symbol">{issue.severity === 'error' ? '!' : '△'}</span><span><strong>{issue.code}</strong> {issue.message}<small>{issue.jsonPath || '/'} · {issue.suggestedAction}</small></span></button>)}</div></section>
       </section>
-      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind === 'node' ? 'NODE' : 'ROAD' : 'INSPECT'}</span></div><PropertyPanel onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken} selected={selected} readonly={readonly} count={selectedCount} onApply={apply} />
+      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div><PropertyPanel map={session.map} facilityMovePolicy={facilityMovePolicy} onMovePolicyChange={setFacilityMovePolicy} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken} selected={selected} readonly={readonly} count={selectedCount} onApply={apply} />
         {domainReadonly && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
         <div className="capability-box"><h3>本阶段未校验</h3><p>{capabilities.unchecked.join(' · ')}</p></div>
       </aside>
     </div>
     <footer className="app-footer"><span role="status">{status}</span><code data-testid="map-hash" title={scene.mapContentHash}>{scene.mapContentHash}</code></footer>
-    {!projects.ready && <Modal title="恢复浏览器工程" onCancel={() => {}}><p>{projects.error || '正在读取 IndexedDB；恢复完成前不会写入空地图。'}</p>{projects.error && <div className="dialog-actions"><button onClick={projects.retry}>重试恢复</button><button onClick={projects.continueTemporary}>仅内存继续编辑</button></div>}</Modal>}
-    {saveDialog && <Modal title="有未应用输入" onCancel={() => setSaveDialog(false)}><p>表单中的改动尚未成为地图事务。保存只包含已提交地图，未应用输入仍留在表单中。</p><div className="dialog-actions"><button data-cancel onClick={() => setSaveDialog(false)}>返回应用属性</button><button onClick={() => saveProject(true)}>仅保存已提交地图</button></div></Modal>}
+
+
     {recentDialog && <Modal title="最近项目" onCancel={() => setRecentDialog(false)}><p>浏览器数据按站点保存，可能被清理；请保留导出备份。切换前将确认保存当前已提交版本。</p><div className="recent-projects">{projects.recent.map(item => <button key={item.projectId} data-testid={'project-item-' + item.projectId} onClick={() => void openProject(item.projectId)}><strong>{item.name}</strong><small>{item.projectId} · 存储版本 {item.storageVersion} · {new Date(item.updatedAt).toLocaleString()}</small></button>)}</div><div className="dialog-actions"><button data-cancel onClick={() => setRecentDialog(false)}>关闭</button></div></Modal>}
     {storageConflictDialog && <Modal title="重新载入浏览器版本" onCancel={() => setStorageConflictDialog(false)}><p>重新载入会放弃当前未保存输入。建议先“保留当前恢复副本”；其他标签页已保存版本不会被覆盖。</p><div className="dialog-actions"><button data-cancel onClick={() => setStorageConflictDialog(false)}>取消</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button className="danger-button" onClick={() => void reloadStoredProject()}>明确放弃并重新载入</button></div></Modal>}
     {fileConflict && <Modal title="外部文件内容已变化" onCancel={() => setFileConflict(null)}><p>文件 {fileConflict.name} 与已确认基线不同。当前地图保持不变，写回前会再次读取外部内容。</p><p>{localMessage}</p>{fileConflict.issues.map((issue, index) => <p key={index} className="inline-error">{issue.code} · {issue.jsonPath || "/"} · {issue.message}</p>)}<div className="dialog-actions"><button data-cancel onClick={() => setFileConflict(null)}>取消</button><button onClick={() => void openNative(true)}>重新载入文件</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => void writeNative(true)}>文件另存为</button>{overwriteReady?.token === fileConflict.token ? <button className="danger-button" onClick={() => void writeNative(false, fileConflict.token)}>明确覆盖外部版本</button> : <button onClick={() => void prepareOverwrite()} disabled={!fileConflict.loaded?.ok}>先保存双方恢复副本</button>}</div><p className="field-note">写前比对不能锁定其他应用；不保证跨应用原子写入。非法外部文件保留原件，不能直接覆盖。</p></Modal>}
     {newDialog && <Modal title="新建地图" onCancel={() => setNewDialog(false)}><p>创建本地米制 synthetic 布局。地图 ID 独立生成。</p><label className="field-label">新地图名称<input aria-label="新地图名称" value={newName} onChange={event => setNewName(event.target.value)} /></label><div className="dialog-actions"><button data-cancel onClick={() => setNewDialog(false)}>取消</button><button className="primary-button" onClick={createNew} disabled={!newName.trim()}>创建地图</button></div></Modal>}
     {proposal && <Modal title="未保存编辑冲突" onCancel={() => { resolveImport(sessionRef.current, proposal.value, 'cancel'); setProposal(null); }}><p>当前存在尚未确认的编辑或未应用输入。候选 JSON 已校验；继续前会保存原工程的已提交地图，未应用输入将丢弃。</p><div className="conflict-summary"><strong>当前：{session.map.metadata.name}</strong><span>候选：{proposal.value.loaded.map.metadata.name}</span></div><p className="field-note">“先导出当前版本”会下载独立文件并保留此对话。下载不是工程保存。原工程保留在最近项目；文件写回单独授权。</p><div className="dialog-actions"><button data-cancel onClick={() => setProposal(null)}>取消</button><button onClick={exportCurrent}>先导出当前版本</button><button className="danger-button" onClick={() => finishImport(proposal.value, proposal.isNew)}>放弃编辑并重载</button></div></Modal>}
-    {copyDialog && <Modal title="复制选中对象" onCancel={() => setCopyDialog(false)}><p>将复制 <strong>{closure.nodes.length} 个节点</strong>、<strong>{closure.roads.length} 条道路</strong>，道路端点自动包含并重映射为新 ID。</p><div className="coordinate-fields">{(['X', 'Y', 'Z'] as const).map((axis, index) => <label key={axis} className="field-label">{axis} 偏移 (m)<input aria-label={axis + ' 偏移 (m)'} type="number" step="any" value={copyDelta[index] ?? ''} onChange={event => setCopyDelta(values => values.map((v, i) => i === index ? event.target.value : v))} /></label>)}</div><p className="field-note">复制为一个事务；不会连接回原节点。对象扩展含未知引用语义时拒绝复制。</p>{operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map(issue => <p key={issue.code}>{issue.code}：{issue.message}</p>)}</div>}<div className="dialog-actions"><button data-cancel onClick={() => setCopyDialog(false)}>取消</button><button className="primary-button" onClick={duplicate}>确认复制</button></div></Modal>}
+    {copyDialog && <Modal title="复制选中对象" onCancel={() => setCopyDialog(false)}><p>将复制 <strong>{closure.nodes.length} 个节点</strong>、<strong>{closure.roads.length} 条道路</strong>、{closure.facilities.length} 个设施、{closure.zones.length} 个区域、{closure.accessPoints.length} 个入口和 {closure.servicePoints.length} 个服务点。道路端点/设施成员自动纳入并重映射新 ID；外部道路不复制。</p><div className="coordinate-fields">{(['X', 'Y', 'Z'] as const).map((axis, index) => <label key={axis} className="field-label">{axis} 偏移 (m)<input aria-label={axis + ' 偏移 (m)'} type="number" step="any" value={copyDelta[index] ?? ''} onChange={event => setCopyDelta(values => values.map((v, i) => i === index ? event.target.value : v))} /></label>)}</div><p className="field-note">复制为一个事务；不会连接回原节点。对象扩展含未知引用语义时拒绝复制。</p><label className="check-field"><input type="checkbox" checked={copyRetainFacility} onChange={event => setCopyRetainFacility(event.target.checked)} />允许单独复制的入口/服务点关联原设施</label>{operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map(issue => <p key={issue.code}>{issue.code}：{issue.message}</p>)}</div>}<div className="dialog-actions"><button data-cancel onClick={() => setCopyDialog(false)}>取消</button><button className="primary-button" onClick={duplicate}>确认复制</button></div></Modal>}
+    {pointDialog && <Modal title={pointDialog === 'accessPoints' ? '添加入口' : '添加服务点'} onCancel={() => setPointDialog(null)}>
+      <p>通过 nodeId 关联权威米制位置。新节点位置必须明确输入；不会使用设施中心。</p>
+      <label className="field-label">名称<input aria-label="名称" value={pointName} onChange={event => setPointName(event.target.value)} /></label>
+      <label className="field-label">所属设施<select aria-label="所属设施" value={pointFacility} onChange={event => { setPointFacility(event.target.value); setPointAccess(''); }}>
+        <option value="">{pointDialog === 'accessPoints' ? '请选择设施（必选）' : '无所属设施'}</option>
+        {Object.entries(session.map.facilities).map(([id, value]) => <option key={id} value={id}>{value.name} · {id}</option>)}
+      </select></label>
+      {pointDialog === 'servicePoints' && <>
+        <label className="field-label">服务类型<select aria-label="服务类型" value={pointKind} onChange={event => setPointKind(event.target.value as ServicePoint['kind'])}>{Object.entries({ loading: '装载', unloading: '卸载', parking: '停车', berth: '泊位', other: '其他' }).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+        <label className="field-label">关联入口<select aria-label="关联入口" value={pointAccess} onChange={event => setPointAccess(event.target.value)}><option value="">无关联入口</option>{Object.entries(session.map.accessPoints).filter(([, value]) => value.facilityId === pointFacility).map(([id, value]) => <option key={id} value={id}>{value.name} · {id}</option>)}</select></label>
+      </>}
+      <label className="field-label">定位方式<select aria-label="定位方式" value={pointNodeMode} onChange={event => setPointNodeMode(event.target.value as 'new' | 'existing')}><option value="new">新建节点</option><option value="existing">已有节点</option></select></label>
+      {pointNodeMode === 'existing'
+        ? <><label className="field-label">关联节点<select aria-label="关联节点" value={pointNodeId} onChange={event => setPointNodeId(event.target.value)}><option value="">请选择已有节点</option>{Object.entries(session.map.nodes).map(([id, value]) => <option key={id} value={id}>{value.name} · {id} [{value.position.join(', ')}] m</option>)}</select></label><p className="field-note">共享节点移动会同时改变其所有道路端点和关联点。</p></>
+        : <div className="coordinate-fields">{(['X', 'Y', 'Z'] as const).map((axis, index) => <label key={axis} className="field-label">{axis} (m)<input aria-label={axis + ' (m)'} type="number" step="any" value={pointPosition[index] ?? ''} onChange={event => setPointPosition(values => values.map((value, i) => i === index ? event.target.value : value))} /></label>)}</div>}
+      {operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map((issue, i) => <p key={i}>{issue.code} · {issue.jsonPath}：{issue.message}</p>)}</div>}
+      <div className="dialog-actions"><button data-cancel onClick={() => setPointDialog(null)}>取消</button><button className="primary-button" onClick={createPoint}>{pointDialog === 'accessPoints' ? '创建入口' : '创建服务点'}</button></div>
+    </Modal>}
+    {deleteDialog && <Modal title="删除空间对象" onCancel={() => setDeleteDialog(false)}>
+      <p>选中 {selectedCount} 个对象。删除有依赖对象时会拒绝整个事务，当前地图保持不变。</p>
+      <label className="check-field"><input type="checkbox" checked={deleteMembers} onChange={event => setDeleteMembers(event.target.checked)} />一并删除设施成员入口和服务点</label>
+      <label className="check-field"><input type="checkbox" checked={deleteUnusedNodes} onChange={event => setDeleteUnusedNodes(event.target.checked)} />清理成员点不再使用的节点</label>
+      <p className="field-note">共享道路仍使用的节点会保留。若显式选中的节点仍被未选对象引用，操作将被拒绝。</p>
+      {operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map((issue, i) => <p key={i}>{issue.code} · {issue.jsonPath}：{issue.message}</p>)}</div>}
+      <div className="dialog-actions"><button data-cancel onClick={() => setDeleteDialog(false)}>取消</button><button className="danger-button" onClick={confirmDelete}>确认删除</button></div>
+    </Modal>}
+    {rotateDialog && <Modal title="旋转选中对象" onCancel={() => setRotateDialog(false)}>
+      <p>绕穿过指定中心的 Z 轴旋转；正角度在世界 XY 平面为逆时针，单位 rad。</p>
+      <label className="field-label">旋转角度 (rad)<input aria-label="旋转角度 (rad)" type="number" step="any" value={rotateRadians} onChange={event => setRotateRadians(event.target.value)} /></label>
+      <div className="coordinate-fields">{(['X', 'Y', 'Z'] as const).map((axis, index) => <label key={axis} className="field-label">中心 {axis} (m)<input aria-label={'中心 ' + axis + ' (m)'} type="number" step="any" value={rotatePivot[index] ?? ''} onChange={event => setRotatePivot(values => values.map((value, i) => i === index ? event.target.value : value))} /></label>)}</div>
+      <p className="field-note">当前设施策略：{facilityMovePolicy === 'boundaryOnly' ? '仅边界，成员点留在原地' : '边界和关联节点一起旋转'}。将影响 {impact.affectedRoadIds.length} 条道路：{impact.affectedRoadIds.join('、') || '无'}。</p>
+      {operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map((issue, i) => <p key={i}>{issue.code}：{issue.message}</p>)}</div>}
+      <div className="dialog-actions"><button data-cancel onClick={() => setRotateDialog(false)}>取消</button><button className="primary-button" onClick={rotate}>确认旋转</button></div>
+    </Modal>}
+    {splitDialog && <Modal title="拆分道路" onCancel={() => setSplitDialog(false)}>
+      <p>明确在水平弧长位置插入节点，把原道路替换为两条新道路并记录 ID 映射。相交或节点吸附不会自动执行此操作。</p>
+      <label className="field-label">距起点距离 (m)<input aria-label="距起点距离 (m)" type="number" step="any" value={splitDistance} onChange={event => setSplitDistance(event.target.value)} /></label>
+      <label className="field-label">复用节点（可选）<select aria-label="复用节点（可选）" value={splitExistingNode} onChange={event => setSplitExistingNode(event.target.value)}><option value="">新建专用节点</option>{Object.entries(session.map.nodes).map(([id, value]) => <option key={id} value={id}>{value.name} · {id}</option>)}</select></label>
+      <p className="field-note">复用节点须位于切分点 1e-6 m 内；方向、物理属性和来源保留。尚不支持安全重写的资源或扩展引用会阻止拆分。</p>
+      {operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map((issue, i) => <p key={i}>{issue.code}：{issue.message}</p>)}</div>}
+      <div className="dialog-actions"><button data-cancel onClick={() => setSplitDialog(false)}>取消</button><button className="primary-button" onClick={splitRoad}>确认拆分</button></div>
+    </Modal>}
+    {saveDialog && <Modal title="有未应用输入" onCancel={() => setSaveDialog(false)}><p>表单或绘制中的改动尚未成为地图事务。保存只包含已提交地图，未应用输入仍留在当前表单中。</p><div className="dialog-actions"><button data-cancel onClick={() => setSaveDialog(false)}>返回应用属性</button><button onClick={() => saveProject(true)}>仅保存已提交地图</button></div></Modal>}
+    {!projects.ready && <Modal title="恢复浏览器工程" onCancel={() => {}}><p>{projects.error || '正在读取 IndexedDB；恢复完成前不会写入空地图。'}</p>{projects.error && <div className="dialog-actions"><button onClick={projects.retry}>重试恢复</button><button onClick={projects.continueTemporary}>仅内存继续编辑</button></div>}</Modal>}
   </main>;
 }

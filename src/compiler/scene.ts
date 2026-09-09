@@ -3,17 +3,20 @@ import type { SceneSnapshot } from '../adapters/contracts';
 import { contentHash } from '../domain/serialization';
 import { geometryBounds, roadLength, roadPoints } from '../geometry/roads';
 import { mapCapabilities } from '../domain/capabilities';
+function sorted<T>(values: Record<string, T>): [string, T][] { return Object.entries(values).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0); }
 
 export function toSceneSnapshot(map: YardMap): SceneSnapshot {
-  const nodes = Object.entries(map.nodes).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-    .map(([id, node]) => ({ id, name: node.name, position: [...node.position] as typeof node.position }));
-  const roads = Object.entries(map.roads).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-    .map(([id, road]) => ({ id, name: road.name, fromNodeId: road.fromNodeId, toNodeId: road.toNodeId, points: roadPoints(map, id), lengthM: roadLength(map, id) }));
+  const nodes: SceneSnapshot['nodes'] = sorted(map.nodes).map(([id, node]) => ({ id, name: node.name, position: [...node.position] }));
+  const roads: SceneSnapshot['roads'] = sorted(map.roads).map(([id, road]) => ({ id, name: road.name, fromNodeId: road.fromNodeId, toNodeId: road.toNodeId, points: roadPoints(map, id), lengthM: roadLength(map, id) }));
+  const facilities: SceneSnapshot['facilities'] = sorted(map.facilities).map(([id, facility]) => ({ id, name: facility.name, kind: facility.kind, boundary: structuredClone(facility.boundary), accessPointIds: [...facility.accessPointIds], servicePointIds: [...facility.servicePointIds], heightM: structuredClone(facility.heightM) }));
+  const zones: SceneSnapshot['zones'] = sorted(map.zones).map(([id, zone]) => ({ id, name: zone.name, kind: zone.kind, boundary: structuredClone(zone.boundary), passability: zone.passability }));
+  const accessPoints: SceneSnapshot['accessPoints'] = sorted(map.accessPoints).map(([id, point]) => ({ id, name: point.name, facilityId: point.facilityId, nodeId: point.nodeId, position: [...map.nodes[point.nodeId]!.position] }));
+  const servicePoints: SceneSnapshot['servicePoints'] = sorted(map.servicePoints).map(([id, point]) => ({ id, name: point.name, kind: point.kind, nodeId: point.nodeId, ...(point.facilityId ? { facilityId: point.facilityId } : {}), ...(point.accessPointId ? { accessPointId: point.accessPointId } : {}), position: [...map.nodes[point.nodeId]!.position] }));
   const capabilities = mapCapabilities(map);
   return {
     schemaVersion: '0.1.0', mapId: map.mapId, mapContentHash: contentHash(map),
-    coordinateFrame: structuredClone(map.coordinateFrame), nodes, roads,
-    bounds: geometryBounds([...nodes.map(n => n.position), ...roads.flatMap(r => r.points)]),
+    coordinateFrame: structuredClone(map.coordinateFrame), nodes, roads, facilities, zones, accessPoints, servicePoints,
+    bounds: geometryBounds([...nodes.map(n => n.position), ...roads.flatMap(r => r.points), ...[...facilities, ...zones].flatMap(entity => [entity.boundary.outer, ...entity.boundary.holes].flat())]),
     missingCapabilities: [...capabilities.unrendered, ...capabilities.unchecked],
   };
 }

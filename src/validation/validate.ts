@@ -1,7 +1,9 @@
 import Ajv2020, { type ErrorObject } from 'ajv/dist/2020';
 import schema from '../../schemas/map.schema.json';
 import type { Issue, PhysicalValue, Provenance, ValidationReport, YardMap } from '../domain/model';
-import { roadLength } from '../geometry/roads';
+import { roadLength, roadPoints } from '../geometry/roads';
+import { MAX_MAP_POLYGON_VERTICES, validatePolygon } from '../geometry/polygons';
+import type { Polygon } from '../domain/model';
 import { mapCapabilities } from '../domain/capabilities';
 
 const structuralValidator = new Ajv2020({ allErrors: true, strict: true, ownProperties: true }).compile<YardMap>(schema);
@@ -81,6 +83,14 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
       if ('provenance' in entity) provenance(entity.provenance, path + '/provenance');
     }
   }
+  const polygons: { polygon: Polygon; path: string }[] = [];
+  if (map.siteBoundary) polygons.push({ polygon: map.siteBoundary, path: '/siteBoundary' });
+  for (const [id, road] of Object.entries(map.roads)) if (road.corridorPolygon) polygons.push({ polygon: road.corridorPolygon, path: '/roads/' + pointer(id) + '/corridorPolygon' });
+  for (const kind of ['facilities', 'zones'] as const) for (const [id, entity] of Object.entries(map[kind])) polygons.push({ polygon: entity.boundary, path: '/' + kind + '/' + pointer(id) + '/boundary' });
+  for (const [id, junction] of Object.entries(map.junctions)) if (junction.boundary) polygons.push({ polygon: junction.boundary, path: '/junctions/' + pointer(id) + '/boundary' });
+  if (polygons.reduce((sum, entry) => sum + entry.polygon.outer.length + entry.polygon.holes.reduce((n, ring) => n + ring.length, 0), 0) > MAX_MAP_POLYGON_VERTICES) {
+    issues.push(issue('POLYGON_MAP_COMPLEXITY_LIMIT', '', `本轮仅支持整图最多 ${MAX_MAP_POLYGON_VERTICES} 个多边形顶点，未执行超限几何检查。`));
+  } else for (const entry of polygons) for (const error of validatePolygon(entry.polygon)) issues.push(issue(error.code, entry.path + error.path, error.message));
   for (const [id, road] of Object.entries(map.roads)) {
     const path = '/roads/' + pointer(id);
     ref('nodes', road.fromNodeId, path + '/fromNodeId'); ref('nodes', road.toNodeId, path + '/toNodeId');
@@ -136,11 +146,13 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   for (const [id, access] of Object.entries(map.accessPoints)) {
     const path = '/accessPoints/' + pointer(id);
     ref('facilities', access.facilityId, path + '/facilityId'); ref('nodes', access.nodeId, path + '/nodeId');
+    if (Object.hasOwn(map.facilities, access.facilityId) && !map.facilities[access.facilityId]!.accessPointIds.includes(id)) issues.push(issue('FACILITY_MEMBERSHIP_MISSING', path + '/facilityId', '入口声明的设施必须反向列出该入口 ID。'));
   }
   for (const [id, service] of Object.entries(map.servicePoints)) {
     const path = '/servicePoints/' + pointer(id);
     ref('nodes', service.nodeId, path + '/nodeId'); ref('facilities', service.facilityId, path + '/facilityId');
     ref('accessPoints', service.accessPointId, path + '/accessPointId'); refs('resources', service.resourceIds, path + '/resourceIds');
+    if (service.facilityId && Object.hasOwn(map.facilities, service.facilityId) && !map.facilities[service.facilityId]!.servicePointIds.includes(id)) issues.push(issue('FACILITY_MEMBERSHIP_MISSING', path + '/facilityId', '服务点声明的设施必须反向列出该服务点 ID。'));
     if (service.facilityId && service.accessPointId && Object.hasOwn(map.accessPoints, service.accessPointId)
       && map.accessPoints[service.accessPointId]!.facilityId !== service.facilityId)
       issues.push(issue('SERVICE_ACCESS_FACILITY_CONFLICT', path + '/accessPointId', '服务点与所引用出入口的设施归属不一致。'));
@@ -157,7 +169,7 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
     const segments = asset.path.split('/');
     if (!asset.path.startsWith('assets/') || segments.length < 2 || segments.some(s => s === '' || s === '.' || s === '..') || /[\\:]/.test(asset.path) || [...asset.path].some(char => char.charCodeAt(0) < 32))
       issues.push(issue('UNSAFE_ASSET_PATH', path + '/path', '资源必须为 assets/ 下相对路径，禁止空路径段、点段、盘符、反斜杠及控制字符。'));
-    issues.push(issue('ASSET_NOT_RESOLVED', path, 'M1 仅保留资源引用，未读取或校验二进制资源；矢量地图仍然可用。', 'warning'));
+    issues.push(issue('ASSET_NOT_RESOLVED', path, 'M2A 仅保留资源引用，未读取或校验二进制资源；矢量地图仍然可用。', 'warning'));
   }
   for (const [id, background] of Object.entries(map.backgroundLayers)) {
     const path = '/backgroundLayers/' + pointer(id);
@@ -166,14 +178,54 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
     if (a !== undefined && b !== undefined && c !== undefined && d !== undefined && a * d - b * c === 0)
       issues.push(issue('SINGULAR_BACKGROUND_TRANSFORM', path + '/imageToWorld', '底图变换矩阵不可逆。'));
   }
+  // Bounded proximity hints only. They never create nodes, split edges or establish connectivity.
+  const nearNodes = Object.entries(map.nodes);
+  if (nearNodes.length <= 2000) {
+    const connected = new Set(Object.values(map.roads).map(road => [road.fromNodeId, road.toNodeId].sort().join('|')));
+    let reported = 0;
+    for (let i = 0; i < nearNodes.length && reported < 100; i++) for (let j = i + 1; j < nearNodes.length && reported < 100; j++) {
+      const [idA, nodeA] = nearNodes[i]!; const [idB, nodeB] = nearNodes[j]!;
+      if (Math.hypot(nodeA.position[0] - nodeB.position[0], nodeA.position[1] - nodeB.position[1], nodeA.position[2] - nodeB.position[2]) <= 0.5 && !connected.has([idA, idB].sort().join('|'))) {
+        issues.push(issue('NEAR_UNCONNECTED_NODES', '/nodes/' + pointer(idB) + '/position', `节点距 ${idA} 不超过 0.5 m，但没有显式直连道路；接近或重合不建立拓扑。`, 'warning')); reported++;
+      }
+    }
+    const segments = Object.values(map.roads).reduce((sum, road) => sum + road.shapePoints.length + 1, 0);
+    if (nearNodes.length * segments <= 2_000_000) {
+      for (const [roadId, road] of Object.entries(map.roads)) {
+        if (reported >= 100) break;
+        if (!Object.hasOwn(map.nodes, road.fromNodeId) || !Object.hasOwn(map.nodes, road.toNodeId)) continue;
+        const points = roadPoints(map, roadId);
+        for (const [nodeId, node] of nearNodes) {
+          if (reported >= 100) break;
+          if (nodeId === road.fromNodeId || nodeId === road.toNodeId) continue;
+          for (let i = 0; i + 1 < points.length; i++) {
+            const a = points[i]!; const b = points[i + 1]!;
+            const dx = b[0] - a[0]; const dy = b[1] - a[1]; const denominator = dx * dx + dy * dy;
+            if (!Number.isFinite(denominator) || denominator === 0) continue;
+            const t = Math.max(0, Math.min(1, ((node.position[0] - a[0]) * dx + (node.position[1] - a[1]) * dy) / denominator));
+            const d = Math.hypot(node.position[0] - (a[0] + dx * t), node.position[1] - (a[1] + dy * t), node.position[2] - (a[2] + (b[2] - a[2]) * t));
+            if (d <= 0.5) {
+              issues.push(issue('NEAR_ROAD_UNCONNECTED', '/nodes/' + pointer(nodeId) + '/position', `节点距道路 ${roadId} 不超过 0.5 m，但不是该道路端点；需要显式拆分/连接，几何重合不通行。`, 'warning'));
+              reported++; break;
+            }
+          }
+        }
+      }
+    } else issues.push(issue('PROXIMITY_CHECK_LIMIT', '/roads', '节点与道路线段组合超过 2000000，跳过节点近道路提示；未确认不存在该问题。', 'warning'));
+  } else issues.push(issue('PROXIMITY_CHECK_LIMIT', '/nodes', '节点超过 2000，本轮跳过近邻提示；并未确认不存在近邻未连接节点。', 'warning'));
   if (Object.keys(map.roads).length && Object.keys(map.movements).length === 0)
-    issues.push(issue('TURN_RULES_UNSPECIFIED', '/movements', '未定义转向连接；共享节点只定义几何关联，M1 未执行路径可达性检查。', 'warning'));
+    issues.push(issue('TURN_RULES_UNSPECIFIED', '/movements', '未定义转向连接；共享节点只定义几何关联，M2A 未执行路径可达性检查。', 'warning'));
   const capabilities = mapCapabilities(map);
   for (const reason of capabilities.reasons) issues.push(issue('UNSUPPORTED_EDIT_CAPABILITY', '', reason, 'warning'));
   if (capabilities.unchecked.length) issues.push(issue('MISSING_CHECKS', '', `本次未校验：${capabilities.unchecked.join(', ')}。`, 'warning'));
   for (const item of issues) {
     if (item.entityType === 'nodes' && item.entityId && Object.hasOwn(map.nodes, item.entityId))
       item.location = { position: [...map.nodes[item.entityId]!.position] };
+    if ((item.entityType === 'facilities' || item.entityType === 'zones') && item.entityId && Object.hasOwn(map[item.entityType], item.entityId)) item.location = { position: [...map[item.entityType][item.entityId]!.boundary.outer[0]] };
+    if ((item.entityType === 'accessPoints' || item.entityType === 'servicePoints') && item.entityId && Object.hasOwn(map[item.entityType], item.entityId)) {
+      const nodeId = map[item.entityType][item.entityId]!.nodeId;
+      if (Object.hasOwn(map.nodes, nodeId)) item.location = { position: [...map.nodes[nodeId]!.position] };
+    }
     if (item.entityType === 'roads' && item.entityId && Object.hasOwn(map.roads, item.entityId)) {
       const road = map.roads[item.entityId]!;
       if (Object.hasOwn(map.nodes, road.fromNodeId)) item.location = { position: [...map.nodes[road.fromNodeId]!.position] };
@@ -181,6 +233,6 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   }
   const valid = !issues.some(item => item.severity === 'error');
   if (!valid) return { ok: false, profile, status: 'invalid', issues };
-  if (profile !== 'draft') return { ok: false, profile, status: 'unsupported', issues: [...issues, issue('UNSUPPORTED_PROFILE', '', `M1 不支持 ${profile} 发布/校验配置。`)] };
+  if (profile !== 'draft') return { ok: false, profile, status: 'unsupported', issues: [...issues, issue('UNSUPPORTED_PROFILE', '', `M2A 不支持 ${profile} 发布/校验配置。`)] };
   return { ok: true, profile, status: 'valid', issues };
 }

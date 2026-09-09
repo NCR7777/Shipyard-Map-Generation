@@ -307,3 +307,54 @@ test('S04 navigation checkpoint delay blocks undo/delete until the old project h
   await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('40');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
 });
+
+test('S03 a one-shot native freeze fault during UI recovery cannot save the old map into the newly opened project', async ({ page }) => {
+  await ready(page);
+  const firstNode = await addNode(page, 10, 10);
+  await renameMap(page, '恢复故障 工程A');
+  await saved(page);
+  const hashA = await page.getByTestId('map-hash').textContent();
+  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  const newModal = page.getByRole('dialog', { name: '新建地图', exact: true });
+  await newModal.getByLabel('新地图名称', { exact: true }).fill('恢复故障 工程B');
+  await newModal.getByRole('button', { name: '创建地图', exact: true }).click();
+  await expect(page.getByTestId('node-count')).toHaveText('0');
+  const secondNode = await addNode(page, 40, 30);
+  await saved(page);
+  const hashB = await page.getByTestId('map-hash').textContent();
+  await recent(page, '恢复故障 工程A');
+  await expect(page.getByTestId('map-hash')).toHaveText(hashA!);
+  // Deliberate native-method fault injection at App.createSession -> freezeMap;
+  // controller parsing/validation and all durable IndexedDB transactions remain real.
+  await page.evaluate(() => {
+    const freeze = Object.freeze;
+    let thrown = false;
+    Object.freeze = ((value: unknown) => {
+      if (!thrown && value && typeof value === 'object') {
+        const candidate = value as { schemaVersion?: string; metadata?: { name?: string }; nodes?: unknown; roads?: unknown };
+        if (candidate.schemaVersion === '0.1.0' && candidate.metadata?.name === '恢复故障 工程B' && candidate.nodes && candidate.roads) {
+          thrown = true;
+          throw new Error('S03 simulated UI restore callback failure');
+        }
+      }
+      return freeze(value);
+    }) as typeof Object.freeze;
+  });
+  await page.getByRole('button', { name: '最近项目', exact: true }).click();
+  const recentModal = page.getByRole('dialog', { name: '最近项目', exact: true });
+  await recentModal.getByRole('button').filter({ has: page.getByText('恢复故障 工程B', { exact: true }) }).click();
+  const recoveryModal = page.getByRole('dialog', { name: '恢复浏览器工程', exact: true });
+  await expect(recoveryModal).toContainText('S03 simulated UI restore callback failure');
+  await expect(page.getByRole('button', { name: '保存工程', exact: true })).toBeDisabled();
+  await page.keyboard.press('Control+s');
+  await expect(page.getByTestId('map-hash')).toHaveText(hashA!);
+  await page.waitForTimeout(900); // Cross the real 600ms debounce: a forbidden A->B write must not occur.
+  await recoveryModal.getByRole('button', { name: '重试恢复', exact: true }).click();
+  await expect(recoveryModal).not.toBeVisible();
+  await expect(page.getByTestId('map-hash')).toHaveText(hashB!);
+  await selectNode(page, secondNode);
+  await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('40');
+  await recent(page, '恢复故障 工程A');
+  await selectNode(page, firstNode);
+  await expect(page.getByTestId('map-hash')).toHaveText(hashA!);
+});

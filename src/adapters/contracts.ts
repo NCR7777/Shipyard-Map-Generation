@@ -1,4 +1,4 @@
-import type { CoordinateFrame, Vec3 } from '../domain/model';
+import type { AccessPoint, CoordinateFrame, Facility, ServicePoint, Vec3, Zone } from '../domain/model';
 
 export interface SceneSnapshot {
   schemaVersion: '0.1.0';
@@ -7,6 +7,10 @@ export interface SceneSnapshot {
   coordinateFrame: CoordinateFrame;
   nodes: { id: string; name: string; position: Vec3 }[];
   roads: { id: string; name: string; fromNodeId: string; toNodeId: string; points: Vec3[]; lengthM: number }[];
+  facilities: ({ id: string } & Pick<Facility, 'name' | 'kind' | 'boundary' | 'accessPointIds' | 'servicePointIds' | 'heightM'>)[];
+  zones: ({ id: string } & Pick<Zone, 'name' | 'kind' | 'boundary' | 'passability'>)[];
+  accessPoints: ({ id: string; position: Vec3 } & Pick<AccessPoint, 'name' | 'facilityId' | 'nodeId'>)[];
+  servicePoints: ({ id: string; position: Vec3 } & Pick<ServicePoint, 'name' | 'kind' | 'facilityId' | 'accessPointId' | 'nodeId'>)[];
   bounds: { min: Vec3; max: Vec3 } | null;
   missingCapabilities: string[];
 }

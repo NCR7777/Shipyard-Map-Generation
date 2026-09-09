@@ -1,0 +1,18 @@
+.spatial-controls { padding: 10px 14px; border-bottom: 1px solid #dce5e8; display: grid; gap: 9px; }
+.spatial-controls .tool-grid { padding: 0; }
+.check-field { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.6; margin: 8px 0; }
+.check-field input { flex: 0 0 auto; width: auto; margin-top: 4px; }
+.object-group-label { padding: 10px 12px 4px; font-size: 11px; color: #60747b; letter-spacing: .05em; }
+.object-group-label span { float: right; }
+.modal { max-height: 88vh; overflow-y: auto; }
+.modal .field-label { margin-bottom: 10px; }
+.header-actions { flex-wrap: wrap; justify-content: flex-end; }
+.history-actions { flex-wrap: wrap; }
+.canvas-toolbar { flex-wrap: wrap; gap: 6px; }
+.physical-fields { margin-top: 16px; }
+.physical-fields summary { cursor: pointer; color: #17685e; font-weight: 600; }
+.physical-fields fieldset { border: 1px solid #dce5e8; border-radius: 6px; padding: 10px; margin: 10px 0; }
+.physical-fields legend { font-size: 12px; padding: 0 5px; }
+
+.app-header { height: auto; min-height: 76px; padding-top: 12px; padding-bottom: 12px; }
+.canvas-toolbar { height: auto; min-height: 47px; padding-top: 7px; padding-bottom: 7px; }

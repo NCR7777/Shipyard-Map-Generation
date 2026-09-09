@@ -1,4 +1,4 @@
-import type { MapNode, MapRoad, Vec3, YardMap } from './model';
+import type { AccessPoint, Facility, MapNode, MapRoad, Polygon, ServicePoint, Vec3, YardMap, Zone } from './model';
 
 export function newMap(mapId: string, name = '未命名地图'): YardMap {
   return {
@@ -25,4 +25,16 @@ export function newRoad(fromNodeId: string, toNodeId: string, shapePoints: Vec3[
     massLimitKg: { state: 'unknown' }, speedLimitMps: { state: 'unknown' },
     resourceIds: [], provenance: { category: 'synthetic' },
   };
+}
+export function newFacility(boundary: Polygon, name = '厂房', kind: Facility['kind'] = 'workshop'): Facility {
+  return { name, kind, boundary: structuredClone(boundary), accessPointIds: [], servicePointIds: [], heightM: { state: 'unknown' }, provenance: { category: 'synthetic' } };
+}
+export function newZone(boundary: Polygon, name = '作业区', kind: Zone['kind'] = 'work'): Zone {
+  return { name, kind, boundary: structuredClone(boundary), passability: 'unknown', resourceIds: [], provenance: { category: 'synthetic' } };
+}
+export function newAccessPoint(facilityId: string, nodeId: string, name = '入口'): AccessPoint {
+  return { name, facilityId, nodeId, provenance: { category: 'synthetic' } };
+}
+export function newServicePoint(nodeId: string, name = '服务点', kind: ServicePoint['kind'] = 'loading', facilityId?: string, accessPointId?: string): ServicePoint {
+  return { name, kind, nodeId, ...(facilityId ? { facilityId } : {}), ...(accessPointId ? { accessPointId } : {}), resourceIds: [], provenance: { category: 'synthetic' } };
 }

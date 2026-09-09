@@ -247,7 +247,7 @@ test('copies a selected road through the UI with fresh endpoint IDs and stable r
   expect(redone.map).toEqual(copied.map);
 });
 
-test('imports unsupported facilities read-only, preserves their JSON on export and rejects future versions', async ({ page }, testInfo) => {
+test('imports facilities with unsupported behavior read-only, preserves their JSON on export and rejects future versions', async ({ page }, testInfo) => {
   const advanced = readonlyFixture();
   await replaceFixture(page, advanced);
   await expect(page.getByTestId('readonly-notice')).toBeVisible();

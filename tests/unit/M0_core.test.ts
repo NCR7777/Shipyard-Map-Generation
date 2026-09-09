@@ -276,8 +276,11 @@ describe('M0 core: independent domain contract', () => {
     expect(roadPoints(map, 'road_AB').at(-1)).toEqual(roadPoints(map, 'road_BC')[0]);
   });
 
-  it('keeps facilities distinct from access/service nodes and imports advanced entities read-only', () => {
+  it('keeps facilities distinct from access/service nodes and protects accompanying unsupported behavior read-only', () => {
     const map = mapFixture();
+    // M2A facilities are editable; unsupported behavior remains the deliberate guard.
+    map.extensionNamespaces['test.future_behavior'] = { version: '1', category: 'behavior' };
+    map.extensions['test.future_behavior'] = { controller: 'unsupported' };
     map.facilities.facility_one = {
       name: '测试厂房', kind: 'workshop',
       boundary: { outer: [[0, 10, 0], [10, 10, 0], [10, 20, 0], [0, 20, 0], [0, 10, 0]], holes: [] },

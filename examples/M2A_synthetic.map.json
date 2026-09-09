@@ -1,0 +1,233 @@
+{
+  "accessPoints": {
+    "aWorkshop": {
+      "facilityId": "fWorkshop",
+      "name": "厂房西侧入口",
+      "nodeId": "nRoadWest",
+      "provenance": {
+        "category": "synthetic"
+      }
+    }
+  },
+  "assets": {},
+  "backgroundLayers": {},
+  "coordinateFrame": {
+    "angleUnit": "rad",
+    "groundPlane": "XY",
+    "handedness": "right",
+    "kind": "local_cartesian",
+    "lengthUnit": "m",
+    "massUnit": "kg",
+    "timeUnit": "s",
+    "upAxis": "Z"
+  },
+  "extensionNamespaces": {},
+  "extensions": {},
+  "facilities": {
+    "fWorkshop": {
+      "accessPointIds": [
+        "aWorkshop"
+      ],
+      "boundary": {
+        "holes": [],
+        "outer": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            60,
+            0,
+            0
+          ],
+          [
+            60,
+            30,
+            0
+          ],
+          [
+            0,
+            30,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "heightM": {
+        "state": "unknown"
+      },
+      "kind": "workshop",
+      "name": "60m×30m 合成厂房",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "servicePointIds": [
+        "sLoading"
+      ]
+    }
+  },
+  "junctions": {},
+  "mapId": "map_M2A_synthetic",
+  "metadata": {
+    "description": "",
+    "layoutBasis": "synthetic",
+    "name": "M2A synthetic · 60m×30m厂房与运输入口"
+  },
+  "movements": {},
+  "nodes": {
+    "nLoading": {
+      "kind": "service",
+      "name": "装卸权威节点",
+      "position": [
+        15,
+        10,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic"
+      }
+    },
+    "nRoadEast": {
+      "kind": "ordinary",
+      "name": "东侧道路节点",
+      "position": [
+        100,
+        0,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic"
+      }
+    },
+    "nRoadWest": {
+      "kind": "access",
+      "name": "西侧入口节点",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic"
+      }
+    }
+  },
+  "resources": {},
+  "revision": 10,
+  "roads": {
+    "rApproach": {
+      "direction": "both",
+      "fromNodeId": "nRoadWest",
+      "heightLimitM": {
+        "state": "unknown"
+      },
+      "massLimitKg": {
+        "state": "unknown"
+      },
+      "name": "显式入口至装卸点道路",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": [],
+      "shapePoints": [
+        [
+          5,
+          10,
+          0
+        ]
+      ],
+      "speedLimitMps": {
+        "state": "unknown"
+      },
+      "toNodeId": "nLoading",
+      "widthM": {
+        "state": "unknown"
+      }
+    },
+    "rMain": {
+      "direction": "both",
+      "fromNodeId": "nRoadWest",
+      "heightLimitM": {
+        "state": "unknown"
+      },
+      "massLimitKg": {
+        "state": "unknown"
+      },
+      "name": "100m 合成主路",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": [],
+      "shapePoints": [],
+      "speedLimitMps": {
+        "state": "unknown"
+      },
+      "toNodeId": "nRoadEast",
+      "widthM": {
+        "state": "unknown"
+      }
+    }
+  },
+  "schemaVersion": "0.1.0",
+  "servicePoints": {
+    "sLoading": {
+      "accessPointId": "aWorkshop",
+      "facilityId": "fWorkshop",
+      "kind": "loading",
+      "name": "合成装卸点",
+      "nodeId": "nLoading",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": []
+    }
+  },
+  "siteBoundary": null,
+  "sources": {},
+  "zones": {
+    "zWaiting": {
+      "boundary": {
+        "holes": [],
+        "outer": [
+          [
+            70,
+            30,
+            0
+          ],
+          [
+            90,
+            30,
+            0
+          ],
+          [
+            90,
+            50,
+            0
+          ],
+          [
+            70,
+            50,
+            0
+          ],
+          [
+            70,
+            30,
+            0
+          ]
+        ]
+      },
+      "kind": "waiting",
+      "name": "20m×20m 合成候停区",
+      "passability": "unknown",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": []
+    }
+  }
+}
