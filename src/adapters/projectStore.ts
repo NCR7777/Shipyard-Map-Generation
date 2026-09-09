@@ -1,6 +1,6 @@
 import {
   ProjectPersistenceError, persistenceError, validateEditorState,
-  type EditorState, type ProjectStorePort, type ProjectSummary, type StoredProject,
+  type EditorState, type EditorStateInput, type ProjectStorePort, type ProjectSummary, type StoredProject,
 } from '../editor/projectController';
 
 const PROJECTS = 'projects';
@@ -109,7 +109,7 @@ export class IndexedDBProjectStore implements ProjectStorePort {
 
   getLastProject(): Promise<string | null> { return this.read(META, 'lastProjectId'); }
   setLastProject(projectId: string): Promise<void> { return this.write(META, 'lastProjectId', projectId); }
-  readEditorState(projectId: string): Promise<EditorState | null> { return this.read(VIEWS, projectId); }
+  readEditorState(projectId: string): Promise<EditorStateInput | null> { return this.read(VIEWS, projectId); }
   writeEditorState(projectId: string, state: EditorState): Promise<void> { return this.write(VIEWS, projectId, validateEditorState(state)); }
   async close(): Promise<void> { if (this.connection) (await this.connection).close(); this.connection = null; }
 }

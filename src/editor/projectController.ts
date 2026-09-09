@@ -1,10 +1,25 @@
-import type { Issue, YardMap } from '../domain/model';
+import type { Facility, Issue, YardMap, Zone } from '../domain/model';
+import type { FacilityMovePolicy, ZoneMovePolicy } from '../domain/commands';
 import { loadMap } from '../domain/load';
 import { serializeMap } from '../domain/serialization';
 import type { Camera } from '../geometry/coordinates';
 
 export type SaveKind = 'draft' | 'checkpoint';
-export interface EditorState { camera: Camera }
+export interface DrawingConfig {
+  snapGrid: 0 | 1 | 5 | 10;
+  snapNodes: boolean;
+  facilityKind: Facility['kind'];
+  zoneKind: Zone['kind'];
+  facilityMovePolicy: FacilityMovePolicy;
+  zoneMovePolicy: ZoneMovePolicy;
+}
+export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
+  snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
+  facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
+});
+export interface EditorState { camera: Camera; drawing: DrawingConfig }
+/** Legacy camera-only records and partial drawing settings are normalized at the storage boundary. */
+export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> }
 export interface ProjectSnapshot { mapJson: string; contentHash: string; savedAt: number }
 export interface StoredProject {
   formatVersion: 1;
@@ -35,7 +50,7 @@ export interface ProjectStorePort {
   commit(project: StoredProject, expectedVersion: number | null): Promise<void>;
   getLastProject(): Promise<string | null>;
   setLastProject(projectId: string): Promise<void>;
-  readEditorState(projectId: string): Promise<EditorState | null>;
+  readEditorState(projectId: string): Promise<EditorStateInput | null>;
   writeEditorState(projectId: string, state: EditorState): Promise<void>;
 }
 export class ProjectPersistenceError extends Error {
@@ -51,18 +66,30 @@ export function persistenceError(error: unknown): ProjectPersistenceError {
   return new ProjectPersistenceError('PROJECT_STORAGE_ERROR', error instanceof Error ? error.message : '工程存储失败，未确认保存成功。');
 }
 export function validateEditorState(value: unknown): EditorState {
-  if (!value || typeof value !== 'object' || !('camera' in value) || !value.camera || typeof value.camera !== 'object') {
-    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '视窗状态缺少 camera。');
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !('camera' in value) || !value.camera || typeof value.camera !== 'object' || Array.isArray(value.camera)) {
+    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '编辑器状态缺少有效 camera。');
   }
   const camera = value.camera;
   if (!('offsetX' in camera) || !('offsetY' in camera) || !('scale' in camera)
     || typeof camera.offsetX !== 'number' || !Number.isFinite(camera.offsetX)
     || typeof camera.offsetY !== 'number' || !Number.isFinite(camera.offsetY)
     || typeof camera.scale !== 'number' || !Number.isFinite(camera.scale) || camera.scale <= 0
-    || Object.keys(value).some(key => key !== 'camera') || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
-    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '视窗偏移必须有限，比例必须为正的有限值；不能混入领域数据。');
+    || Object.keys(value).some(key => !['camera', 'drawing'].includes(key)) || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
+    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '视窗偏移必须有限，比例必须为正的有限值；不能混入领域数据或临时交互。');
   }
-  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale } };
+  if ('drawing' in value && (!value.drawing || typeof value.drawing !== 'object' || Array.isArray(value.drawing)
+    || Object.keys(value.drawing).some(key => !Object.hasOwn(DEFAULT_DRAWING_CONFIG, key)))) {
+    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置必须是声明的稳定设置，不能包含空值、未知字段或临时交互。');
+  }
+  const drawing = { ...DEFAULT_DRAWING_CONFIG, ...('drawing' in value ? value.drawing as object : {}) } as DrawingConfig;
+  if (![0, 1, 5, 10].includes(drawing.snapGrid) || typeof drawing.snapNodes !== 'boolean'
+    || !['workshop', 'yard', 'assembly', 'dock', 'quay', 'other'].includes(drawing.facilityKind)
+    || !['work', 'buffer', 'waiting', 'water', 'obstacle', 'drivable', 'forbidden'].includes(drawing.zoneKind)
+    || !['boundaryOnly', 'withAssociatedNodes'].includes(drawing.facilityMovePolicy)
+    || !['boundaryOnly', 'withAssociatedNodes'].includes(drawing.zoneMovePolicy)) {
+    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置的吸附数值、布尔值、对象类型或移动策略无效。');
+  }
+  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing };
 }
 
 export interface ActiveProject {
@@ -190,7 +217,7 @@ export class ProjectController {
     try {
       const state = await this.store.readEditorState(projectId);
       if (state) editorState = validateEditorState(state);
-    } catch (error) { warnings.push(warning('EDITOR_STATE_RECOVERY_FAILED', `地图已恢复，但视窗状态未恢复：${persistenceError(error).message}`)); }
+    } catch (error) { warnings.push(warning('EDITOR_STATE_RECOVERY_FAILED', `地图已恢复，但视窗或绘图配置未恢复：${persistenceError(error).message}`)); }
     return {
       context: { projectId, name: record.name, mapName: loaded.map.metadata.name, record: structuredClone(record), draftHash: loaded.contentHash, checkpointHash: snapshots.checkpoint?.contentHash ?? null, pending: 0, editorState },
       recovery: { projectId, map: loaded.map, editorState: editorState ? structuredClone(editorState) : null, source, warnings },
@@ -210,12 +237,12 @@ export class ProjectController {
     } catch (error) { throw navigation === this.navigation ? this.fail(error) : persistenceError(error); }
   }
 
-  async create(projectId: string, map: YardMap, editorState?: EditorState): Promise<ProjectRecovery> {
+  async create(projectId: string, map: YardMap, editorState?: EditorStateInput): Promise<ProjectRecovery> {
     await this.initialize();
     try {
       if (!/^[A-Za-z0-9_.:-]{1,160}$/.test(projectId)) throw new ProjectPersistenceError('PROJECT_ID_INVALID', '浏览器工程 ID 格式无效。');
       const loaded = checkedMap(serializeMap(map));
-      const view = editorState ? validateEditorState(editorState) : null;
+      const view = editorState === undefined ? null : validateEditorState(editorState);
       // No writes here: creation, recovery and persistence are separate operations.
       ++this.navigation;
       this.active = { projectId, name: loaded.map.metadata.name, mapName: loaded.map.metadata.name, record: null, draftHash: null, checkpointHash: null, pending: 0, editorState: view };
@@ -232,18 +259,21 @@ export class ProjectController {
   }
 
   /** Save an isolated recovery copy without selecting it or changing the last-open project. */
-  async backup(projectId: string, map: YardMap): Promise<ProjectSummary> {
+  async backup(projectId: string, map: YardMap, editorState?: EditorStateInput): Promise<ProjectSummary> {
     await this.initialize();
+    const context = this.active ?? undefined;
     if (!/^[A-Za-z0-9_.:-]{1,160}$/.test(projectId)) throw this.fail(new ProjectPersistenceError('PROJECT_ID_INVALID', '恢复副本 ID 格式无效。'));
     try {
+      const view = editorState === undefined ? null : validateEditorState(editorState);
       const mapJson = serializeMap(map);
       const loaded = checkedMap(mapJson);
       const savedAt = this.now();
       const snapshot: ProjectSnapshot = { mapJson, contentHash: loaded.contentHash, savedAt };
       const record: StoredProject = { formatVersion: 1, projectId, name: `${loaded.map.metadata.name}（恢复副本）`, storageVersion: 1, createdAt: savedAt, updatedAt: savedAt, draft: snapshot, checkpoint: snapshot, previousCheckpoint: null };
       await this.store.commit(record, null);
+      if (view) await this.store.writeEditorState(projectId, view);
       return { projectId, name: record.name, storageVersion: 1, updatedAt: savedAt, hasDraft: true, hasCheckpoint: true };
-    } catch (error) { throw this.fail(error); }
+    } catch (error) { throw this.fail(error, context); }
   }
   /** Capture A before queuing. Receipts/baselines refer to A even if the UI now contains B. */
   save(map: YardMap, kind: SaveKind = 'draft'): Promise<SaveReceipt> {
@@ -272,10 +302,10 @@ export class ProjectController {
         this.error = null;
         try {
           await this.store.setLastProject(context.projectId);
-          if (context.editorState) await this.store.writeEditorState(context.projectId, context.editorState);
+          if (this.active === context && context.editorState) await this.store.writeEditorState(context.projectId, context.editorState);
         } catch (error) {
           // The map is already committed; do not roll its confirmed baseline back over auxiliary failure.
-          this.error = new ProjectPersistenceError('PROJECT_AUX_SAVE_FAILED', `地图已保存，但最近工程或视窗状态未保存：${persistenceError(error).message}`);
+          if (this.active === context) this.error = new ProjectPersistenceError('PROJECT_AUX_SAVE_FAILED', `地图已保存，但最近工程、视窗或绘图配置未保存：${persistenceError(error).message}`);
         }
       }
       return { projectId: context.projectId, storageVersion: record.storageVersion, contentHash: snapshot.contentHash, kind, savedAt };
@@ -284,13 +314,27 @@ export class ProjectController {
     return task;
   }
 
-  async saveEditorState(value: EditorState): Promise<void> {
-    const context = this.required();
-    try {
-      context.editorState = validateEditorState(value);
-      if (!context.record) return; // First map commit writes its pending view; no orphan recovery records.
-      await this.store.writeEditorState(context.projectId, context.editorState);
-    } catch (error) { throw this.fail(error, context); }
+  saveEditorState(value: EditorStateInput): Promise<void> {
+    let context: Context | undefined; let snapshot: EditorState;
+    try { context = this.required(); snapshot = validateEditorState(value); }
+    catch (error) { return Promise.reject(this.fail(error, context)); }
+    const target = context;
+    target.editorState = snapshot;
+    if (!target.record) return Promise.resolve(); // Staged only; the first map commit persists its pending editor state.
+    const task = this.queue.then(async () => {
+      if (this.active !== target) throw new ProjectPersistenceError('PROJECT_CHANGED', '排队保存编辑器状态时工程已切换，未写入过期配置。');
+      if (this.error?.code === 'PROJECT_CONFLICT') throw this.error;
+      if (target.editorState !== snapshot) return; // A later complete snapshot superseded this queued request.
+      await this.store.writeEditorState(target.projectId, snapshot);
+      if (this.active === target && ['EDITOR_STATE_INVALID', 'EDITOR_STATE_SAVE_FAILED'].includes(this.error?.code ?? '')) {
+        this.error = null; this.emit();
+      }
+    }).catch(error => {
+      const failure = persistenceError(error);
+      throw this.fail(['PROJECT_CHANGED', 'PROJECT_CONFLICT'].includes(failure.code) ? failure : new ProjectPersistenceError('EDITOR_STATE_SAVE_FAILED', '视窗或绘图配置未保存：' + failure.message), target);
+    });
+    this.queue = task.then(() => undefined, () => undefined);
+    return task;
   }
 
   /** Detect changes on focus without ever replacing the user's in-memory map. */

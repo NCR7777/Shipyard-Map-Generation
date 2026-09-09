@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ProjectController, ProjectPersistenceError, validateEditorState,
-  type EditorState, type ProjectStorePort, type ProjectSummary, type StoredProject,
+  DEFAULT_DRAWING_CONFIG, ProjectController, ProjectPersistenceError, validateEditorState,
+  type DrawingConfig, type EditorState, type EditorStateInput, type ProjectStorePort, type ProjectSummary, type StoredProject,
 } from '../../src/editor/projectController';
 import { contentHash, serializeMap } from '../../src/domain/serialization';
 import { editorFixture } from '../helpers/M1_fixtures';
@@ -9,7 +9,7 @@ import { editorFixture } from '../helpers/M1_fixtures';
 /** Fault-injection port tests; the actual IndexedDB adapter is exercised separately in Chrome. */
 class ControlledStore implements ProjectStorePort {
   rows = new Map<string, StoredProject>();
-  views = new Map<string, EditorState>();
+  views = new Map<string, EditorStateInput>();
   last: string | null = null;
   commits = 0;
   reads = 0;
@@ -18,6 +18,8 @@ class ControlledStore implements ProjectStorePort {
   afterCommit: (() => Promise<void>) | null = null;
   beforeLastRead: (() => Promise<void>) | null = null;
   failure: Error | null = null;
+  beforeViewWrite: ((id: string, view: EditorState) => Promise<void>) | null = null;
+  viewFailure: Error | null = null;
   async list(): Promise<ProjectSummary[]> {
     return [...this.rows.values()].map(row => ({ projectId: row.projectId, name: row.name, storageVersion: row.storageVersion, updatedAt: row.updatedAt, hasDraft: !!row.draft, hasCheckpoint: !!row.checkpoint }));
   }
@@ -32,8 +34,13 @@ class ControlledStore implements ProjectStorePort {
   }
   async getLastProject(): Promise<string | null> { if (this.beforeLastRead) await this.beforeLastRead(); return this.last; }
   async setLastProject(id: string): Promise<void> { this.last = id; }
-  async readEditorState(id: string): Promise<EditorState | null> { return structuredClone(this.views.get(id) ?? null); }
-  async writeEditorState(id: string, view: EditorState): Promise<void> { this.viewWrites += 1; this.views.set(id, structuredClone(view)); }
+  async readEditorState(id: string): Promise<EditorStateInput | null> { return structuredClone(this.views.get(id) ?? null); }
+  async writeEditorState(id: string, view: EditorState): Promise<void> {
+    this.viewWrites += 1;
+    if (this.beforeViewWrite) await this.beforeViewWrite(id, view);
+    if (this.viewFailure) throw this.viewFailure;
+    this.views.set(id, structuredClone(view));
+  }
 }
 function deferred() {
   let resolve!: () => void;
@@ -249,7 +256,7 @@ describe('M1.1 browser-project persistence coordination (fault-injection unit po
     const previous = structuredClone(store.rows.get('project_A'));
     await controller.saveEditorState({ camera: { offsetX: 10, offsetY: 20, scale: 3 } });
     expect(store.rows.get('project_A')).toEqual(previous);
-    expect(store.views.get('project_A')).toEqual({ camera: { offsetX: 10, offsetY: 20, scale: 3 } });
+    expect(store.views.get('project_A')).toEqual({ camera: { offsetX: 10, offsetY: 20, scale: 3 }, drawing: DEFAULT_DRAWING_CONFIG });
     expect(validateEditorState({ camera: { offsetX: 1, offsetY: 1, scale: 0.01 } }).camera.scale).toBe(0.01);
     expect(() => validateEditorState({ camera: { offsetX: 0, offsetY: 0, scale: 0 } })).toThrow();
   });
@@ -341,4 +348,194 @@ describe('M1.1 browser-project persistence coordination (fault-injection unit po
     await expect(controller.saveEditorState({ camera: { offsetX: NaN, offsetY: 0, scale: 1 } })).rejects.toMatchObject({ code: 'EDITOR_STATE_INVALID' });
     expect(store.rows.get('project_A')).toEqual(original);
   });
+});
+
+const camera = { offsetX: 8, offsetY: 9, scale: 2 };
+const editorState = (drawing: Partial<DrawingConfig> = {}): EditorState => ({ camera: { ...camera }, drawing: { ...DEFAULT_DRAWING_CONFIG, ...drawing } });
+
+describe('stable drawing configuration in independent editor state', () => {
+  it('normalizes old camera-only and partial settings, retaining explicit false and zero', () => {
+    expect(validateEditorState({ camera })).toEqual(editorState());
+    expect(validateEditorState({ camera, drawing: { snapGrid: 0, snapNodes: false, facilityKind: 'quay' } })).toEqual(editorState({ facilityKind: 'quay' }));
+    const normalized = validateEditorState({ camera });
+    normalized.drawing.snapNodes = true; normalized.camera.scale = 100;
+    expect(DEFAULT_DRAWING_CONFIG.snapNodes).toBe(false);
+    expect(camera.scale).toBe(2);
+  });
+
+  it.each([
+    null, [], { snapGrid: null }, { snapGrid: -1 }, { snapGrid: 2 }, { snapGrid: NaN }, { snapGrid: Infinity },
+    { snapGrid: '5' }, { snapNodes: 0 }, { snapNodes: null }, { facilityKind: 'ship' }, { zoneKind: 'road' },
+    { facilityMovePolicy: 'all' }, { zoneMovePolicy: null }, { tool: 'select' }, { snapGrid: undefined },
+  ])('rejects invalid or transient configuration %j without inventing defaults', drawing => {
+    expect(() => validateEditorState({ camera, drawing })).toThrowError(expect.objectContaining({ code: 'EDITOR_STATE_INVALID' }));
+  });
+
+  it('persists a complete configuration and restores it independently from map bytes and revisions', async () => {
+    const { controller, store, map } = await started();
+    const state = editorState({ snapGrid: 10, snapNodes: true, facilityKind: 'quay', zoneKind: 'water', facilityMovePolicy: 'withAssociatedNodes', zoneMovePolicy: 'withAssociatedNodes' });
+    await controller.save(map, 'checkpoint');
+    const record = structuredClone(store.rows.get('project_A'));
+    await controller.saveEditorState(state);
+    expect(store.rows.get('project_A')).toEqual(record);
+    expect((await new ProjectController(store).initialize())?.editorState).toEqual(state);
+    state.drawing.snapGrid = 1;
+    expect(store.views.get('project_A')?.drawing?.snapGrid).toBe(10);
+  });
+
+  it('restores legacy defaults and retains a map when only the drawing record is corrupt', async () => {
+    const { controller, store, map } = await started(); await controller.save(map);
+    store.views.set('project_A', { camera });
+    expect((await new ProjectController(store).initialize())?.editorState).toEqual(editorState());
+    const bad = { camera, drawing: { snapGrid: 2 } } as unknown as EditorStateInput;
+    store.views.set('project_A', bad);
+    const recovered = await new ProjectController(store).initialize();
+    expect(recovered?.map).toEqual(map);
+    expect(recovered?.editorState).toBeNull();
+    expect(recovered?.warnings.some(issue => issue.code === 'EDITOR_STATE_RECOVERY_FAILED')).toBe(true);
+    expect(store.views.get('project_A')).toEqual(bad);
+    expect(store.commits).toBe(1);
+  });
+
+  it('stages pre-commit settings without orphan writes and writes the latest snapshot on first map save', async () => {
+    const { controller, store, map } = await started();
+    const gate = deferred(); store.beforeCommit = () => gate.promise;
+    const saving = controller.save(map);
+    await Promise.resolve();
+    await controller.saveEditorState(editorState({ snapGrid: 1 }));
+    await controller.saveEditorState(editorState({ snapGrid: 5, snapNodes: true }));
+    expect(store.viewWrites).toBe(0);
+    gate.resolve(); await saving;
+    expect(store.views.get('project_A')).toEqual(editorState({ snapGrid: 5, snapNodes: true }));
+  });
+
+  it('serializes a slow old editor write before a newer snapshot rather than letting the old value finish last', async () => {
+    const { controller, store, map } = await started(); await controller.save(map);
+    const gate = deferred(); const entered = deferred();
+    store.beforeViewWrite = async () => { entered.resolve(); await gate.promise; };
+    const first = controller.saveEditorState(editorState({ snapGrid: 1 }));
+    await entered.promise;
+    const second = controller.saveEditorState(editorState({ snapGrid: 10, snapNodes: true }));
+    await Promise.resolve(); expect(store.viewWrites).toBe(1);
+    gate.resolve(); await Promise.all([first, second]);
+    expect(store.views.get('project_A')).toEqual(editorState({ snapGrid: 10, snapNodes: true }));
+  });
+
+  it('orders map auxiliary editor writes with editor requests and never writes a superseded queued configuration', async () => {
+    const { controller, store, map } = await started();
+    await controller.saveEditorState(editorState({ snapGrid: 1 })); await controller.save(map);
+    const gate = deferred(); const entered = deferred(); const written: number[] = [];
+    store.beforeCommit = async () => { entered.resolve(); await gate.promise; };
+    store.beforeViewWrite = async (_id, view) => { written.push(view.drawing.snapGrid); };
+    const saving = controller.save(map); await entered.promise;
+    const old = controller.saveEditorState(editorState({ snapGrid: 5 }));
+    const latest = controller.saveEditorState(editorState({ snapGrid: 10 }));
+    gate.resolve(); await Promise.all([saving, old, latest]);
+    expect(written).not.toContain(5);
+    expect(store.views.get('project_A')).toEqual(editorState({ snapGrid: 10 }));
+    const auxiliaryGate = deferred(); const auxiliaryEntered = deferred();
+    store.beforeCommit = null;
+    store.beforeViewWrite = async (_id, view) => { if (view.drawing.snapGrid === 10) { auxiliaryEntered.resolve(); await auxiliaryGate.promise; } };
+    const mapSave = controller.save(map); await auxiliaryEntered.promise;
+    const final = controller.saveEditorState(editorState({ snapGrid: 0 }));
+    auxiliaryGate.resolve(); await Promise.all([mapSave, final]);
+    expect(store.views.get('project_A')).toEqual(editorState({ snapGrid: 0 }));
+  });
+
+  it('keeps delayed editor requests and errors attached to their captured project context', async () => {
+    const { controller, store, map } = await started(); await controller.save(map);
+    const gate = deferred(); const entered = deferred();
+    store.beforeViewWrite = async id => { if (id === 'project_A') { entered.resolve(); await gate.promise; throw new Error('A write failed'); } };
+    const first = controller.saveEditorState(editorState({ snapGrid: 1 })).catch(error => error as ProjectPersistenceError);
+    await entered.promise;
+    const queued = controller.saveEditorState(editorState({ snapGrid: 5 })).catch(error => error as ProjectPersistenceError);
+    await controller.create('project_B', map, editorState({ snapGrid: 10 }));
+    const savingB = controller.save(map);
+    gate.resolve();
+    expect(await first).toMatchObject({ code: 'EDITOR_STATE_SAVE_FAILED' });
+    expect(await queued).toMatchObject({ code: 'PROJECT_CHANGED' });
+    await savingB;
+    expect(controller.state.active?.projectId).toBe('project_B');
+    expect(controller.state.error).toBeNull();
+    expect(store.views.get('project_B')).toEqual(editorState({ snapGrid: 10 }));
+    expect(store.views.has('project_A')).toBe(false);
+  });
+
+  it('retains failed editor writes and map baselines, retries successfully, and never clears a map conflict', async () => {
+    const { controller, store, map } = await started(); await controller.save(map);
+    await controller.saveEditorState(editorState({ snapGrid: 1 }));
+    const record = structuredClone(store.rows.get('project_A'));
+    store.viewFailure = new Error('quota while writing editor settings');
+    await expect(controller.saveEditorState(editorState({ snapGrid: 10 }))).rejects.toMatchObject({ code: 'EDITOR_STATE_SAVE_FAILED' });
+    expect(store.views.get('project_A')).toEqual(editorState({ snapGrid: 1 }));
+    expect(store.rows.get('project_A')).toEqual(record);
+    expect(controller.state.error?.code).toBe('EDITOR_STATE_SAVE_FAILED');
+    store.viewFailure = null;
+    await controller.saveEditorState(editorState({ snapGrid: 10 }));
+    expect(controller.state.error).toBeNull();
+    store.rows.get('project_A')!.storageVersion += 1;
+    expect(await controller.checkExternalVersion()).toBe(true);
+    await expect(controller.saveEditorState(editorState({ snapGrid: 5 }))).rejects.toMatchObject({ code: 'PROJECT_CONFLICT' });
+    expect(store.views.get('project_A')).toEqual(editorState({ snapGrid: 10 }));
+    expect(controller.state.error?.code).toBe('PROJECT_CONFLICT');
+  });
+
+  it('copies editor settings only for an explicitly requested recovery copy without changing the active project', async () => {
+    const { controller, store, map } = await started(); await controller.save(map);
+    const active = controller.state.active;
+    const state = editorState({ snapGrid: 5, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer' });
+    await controller.backup('recovery_settings', map, state);
+    expect(controller.state.active).toEqual(active);
+    expect(store.last).toBe('project_A');
+    expect(store.views.get('recovery_settings')).toEqual(state);
+    expect((await controller.open('recovery_settings')).editorState).toEqual(state);
+    await controller.backup('external_map_only', map);
+    expect(store.views.has('external_map_only')).toBe(false);
+  });
+  it('reports auxiliary editor failure after the map commit without pretending the configuration is saved', async () => {
+    const { controller, store, map } = await started();
+    await controller.saveEditorState(editorState({ snapGrid: 5 }));
+    store.viewFailure = new Error('editor store failed');
+    const receipt = await controller.save(map, 'checkpoint');
+    expect(receipt.contentHash).toBe(contentHash(map));
+    expect(controller.state.active?.draftHash).toBe(contentHash(map));
+    expect(controller.state.error?.code).toBe('PROJECT_AUX_SAVE_FAILED');
+    expect(store.views.has('project_A')).toBe(false);
+    expect(store.rows.get('project_A')!.checkpoint!.mapJson).toBe(serializeMap(map));
+  });
+
+  it('rejects an incomplete configured backup and does not attach its delayed failure to another project', async () => {
+    const { controller, store, map } = await started(); await controller.save(map);
+    const gate = deferred(); const entered = deferred();
+    store.beforeViewWrite = async id => { if (id === 'backup_failed') { entered.resolve(); await gate.promise; throw new Error('backup settings failed'); } };
+    const backup = controller.backup('backup_failed', map, editorState({ snapGrid: 10 })).catch(error => error as ProjectPersistenceError);
+    await entered.promise;
+    await controller.create('project_B', map, editorState({ snapGrid: 1 }));
+    const active = controller.state.active;
+    gate.resolve();
+    expect(await backup).toMatchObject({ code: 'PROJECT_STORAGE_ERROR' });
+    expect(controller.state.active).toEqual(active);
+    expect(controller.state.error).toBeNull();
+    expect(store.rows.get('backup_failed')!.draft!.mapJson).toBe(serializeMap(map));
+    expect(store.views.has('backup_failed')).toBe(false);
+  });
+
+  it('rejects an already queued editor request when a focus check discovers a conflict during the prior write', async () => {
+    const { controller, store, map } = await started(); await controller.save(map);
+    await controller.saveEditorState(editorState({ snapGrid: 10 }));
+    const gate = deferred(); const entered = deferred();
+    store.beforeViewWrite = async () => { entered.resolve(); await gate.promise; };
+    const first = controller.saveEditorState(editorState({ snapGrid: 1 }));
+    await entered.promise;
+    const second = controller.saveEditorState(editorState({ snapGrid: 5 }));
+    const rejected = expect(second).rejects.toMatchObject({ code: 'PROJECT_CONFLICT' });
+    store.rows.get('project_A')!.storageVersion += 1;
+    expect(await controller.checkExternalVersion()).toBe(true);
+    const writes = store.viewWrites;
+    gate.resolve(); await first; await rejected;
+    expect(store.viewWrites).toBe(writes);
+    expect(store.views.get('project_A')).toEqual(editorState({ snapGrid: 1 }));
+    expect(controller.state.error?.code).toBe('PROJECT_CONFLICT');
+  });
+
 });

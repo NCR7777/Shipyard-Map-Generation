@@ -16,6 +16,7 @@ import { PointCreationPanel, makePointCreationDraft, applyPointPick, buildPointC
 import './workspace.css';
 import { useProjectWorkspace } from './useProjectWorkspace';
 import { LocalFileController } from '../adapters/localFiles';
+import { DEFAULT_DRAWING_CONFIG, type DrawingConfig } from '../editor/projectController';
 type FileConflict = Extract<Awaited<ReturnType<LocalFileController['check']>>, { status: 'conflict' }>;
 
 type SelectionKind = keyof FullSelection;
@@ -41,13 +42,10 @@ export function App() {
   const [copyDialog, setCopyDialog] = useState(false);
   const [copyDelta, setCopyDelta] = useState(['10', '10', '0']);
   const [copyRetainFacility, setCopyRetainFacility] = useState(false);
-  const [facilityKind, setFacilityKind] = useState<Facility['kind']>('workshop');
-  const [zoneKind, setZoneKind] = useState<Zone['kind']>('work');
-  const [facilityMovePolicy, setFacilityMovePolicy] = useState<'boundaryOnly' | 'withAssociatedNodes'>('boundaryOnly');
-  const [snapGrid, setSnapGrid] = useState('0');
-  const [snapNodes, setSnapNodes] = useState(false);
+  const [drawingConfig, setDrawingConfig] = useState<DrawingConfig>(() => ({ ...DEFAULT_DRAWING_CONFIG }));
+  const { facilityKind, zoneKind, facilityMovePolicy, zoneMovePolicy, snapGrid, snapNodes } = drawingConfig;
+  const editorState = useMemo(() => ({ camera, drawing: drawingConfig }), [camera, drawingConfig]);
   const [pointDraft, setPointDraft] = useState<PointCreationDraft | null>(null);
-  const [zoneMovePolicy, setZoneMovePolicy] = useState<'boundaryOnly' | 'withAssociatedNodes'>('boundaryOnly');
   const [leaveIntent, setLeaveIntent] = useState<{ label: string; action: () => void } | null>(null);
   const [formEpoch, setFormEpoch] = useState(0);
   const [draftResetToken, setDraftResetToken] = useState(0);
@@ -89,7 +87,7 @@ export function App() {
   const nativeTransition = useRef(false);
   const [exportMessage, setExportMessage] = useState('尚未导出 JSON');
   const projects = useProjectWorkspace({
-    map: session.map, camera,
+    map: session.map, editorState,
     onAcknowledged: hash => updateSession(acknowledgeMap(sessionRef.current, hash)),
     onRestore: recovery => {
       importSequence.current++; setFileLoading(false);
@@ -99,6 +97,7 @@ export function App() {
       setBoundaryEditMode('auto'); onBoundaryInteractionChange(false);
       setPropertyDirty(false); setPolygonDraftDirty(false); setRecentDialog(false); setStorageConflictDialog(false); setNewDialog(false); setProposal(null); setOverwriteReady(null); setPointDraft(null); setLeaveIntent(null); setUpgradeDialog(false); setDraftResetToken(value => value + 1); setCopyDialog(false); setDeleteDialog(false); setRotateDialog(false); setSplitDialog(false); setSaveDialog(false); setOperationIssues([]); initializedCanvas.current = true;
       setCamera(recovery.editorState?.camera ?? { offsetX: 80, offsetY: 460, scale: 4 });
+      setDrawingConfig({ ...(recovery.editorState?.drawing ?? DEFAULT_DRAWING_CONFIG) });
       if (!preserveNative.current) { setLocalState(local.snapshot()); setFileConflict(null); setLocalMessage(''); }
       setExportMessage('尚未导出 JSON');
       setStatus(recovery.source === 'new' ? '新工程已打开；浏览器草稿将自动保存。' : '已恢复浏览器工程，地图经共同校验与派生路径重建。');
@@ -106,7 +105,7 @@ export function App() {
   });
   const unapplied = propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDraft !== null || copyDialog || rotateDialog || splitDialog;
   const saveGuard = useRef({ browserDirty: true, unapplied: false });
-  saveGuard.current = { browserDirty: projects.state.active?.draftHash !== contentHash(session.map), unapplied: unapplied || boundaryEditing };
+  saveGuard.current = { browserDirty: projects.editorDirty || projects.state.active?.draftHash !== contentHash(session.map), unapplied: unapplied || boundaryEditing };
   useEffect(() => setMapName(session.map.metadata.name), [session.map.metadata.name]);
   const scene = useMemo(() => toSceneSnapshot(session.map), [session.map]);
   const capabilities = useMemo(() => mapCapabilities(session.map), [session.map]);
@@ -127,6 +126,10 @@ export function App() {
     setCanvasSize(size);
     if (!initializedCanvas.current) { initializedCanvas.current = true; setCamera({ offsetX: 80, offsetY: size.height - 80, scale: 4 }); }
   }, []);
+  function updateDrawingConfig(patch: Partial<DrawingConfig>) {
+    if (!projects.ready || projects.isNavigating()) return;
+    setDrawingConfig(current => ({ ...current, ...patch }));
+  }
   function updateSession(next: EditorSession) { sessionRef.current = next; setSession(next); }
   function operationsBlocked() { return !projects.ready || projects.isNavigating() || local.snapshot().busy || nativeTransition.current || upgrading.current; }
   function apply(command: MapCommand): boolean {
@@ -208,7 +211,7 @@ export function App() {
     cancelBoundaryInteraction();
     if (unapplied && !confirmed) { setSaveDialog(true); return; }
     setSaveDialog(false);
-    void projects.save().then(() => setStatus('已提交地图已保存到浏览器工程；未应用输入仍留在表单中。')).catch(error => setOperationIssues([localIssue('PROJECT_SAVE_FAILED', String(error))]));
+    void projects.save().then(saved => { if (saved) setStatus('已提交地图和绘图配置已保存到浏览器工程；未应用输入仍留在表单中。'); }).catch(error => setOperationIssues([localIssue('PROJECT_SAVE_FAILED', String(error))]));
   }
   function showRecent() {
     cancelBoundaryInteraction();
@@ -446,13 +449,14 @@ export function App() {
         <div className="panel-title">绘制工具<span>M2A.1</span></div>
         <div className="tool-grid">{([{ id: 'select', label: '选择', icon: '↖' }, { id: 'node', label: '节点', icon: '⊙' }, { id: 'road', label: '道路折线', icon: '⌁' }, { id: 'pan', label: '平移', icon: '✥' }, { id: 'facilityRect', label: '矩形设施', icon: '▭' }, { id: 'facilityPolygon', label: '多边形设施', icon: '⬡' }, { id: 'zoneRect', label: '矩形区域', icon: '▧' }, { id: 'zonePolygon', label: '多边形区域', icon: '◇' }] as const).map(item => <button key={item.id} className={tool === item.id ? 'tool-button active' : 'tool-button'} aria-label={item.label} aria-pressed={tool === item.id} disabled={readonly && item.id !== 'select' && item.id !== 'pan'} onClick={() => changeTool(item.id)}><b>{item.icon}</b>{item.label}</button>)}</div>
         <div className="spatial-controls">
-          <label className="field-label">设施类型<select aria-label="新建设施类型" value={facilityKind} disabled={readonly} onChange={event => setFacilityKind(event.target.value as Facility['kind'])}>{Object.entries({ workshop: '厂房', yard: '堆场', assembly: '总组', dock: '坞区', quay: '码头', other: '其他' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
-          <label className="field-label">区域类型<select aria-label="新建区域类型" value={zoneKind} disabled={readonly} onChange={event => setZoneKind(event.target.value as Zone['kind'])}>{Object.entries({ work: '作业', buffer: '缓冲', waiting: '等待', water: '水域', obstacle: '障碍', forbidden: '禁入', drivable: '可行驶' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+          <label className="field-label">设施类型<select aria-label="新建设施类型" value={facilityKind} disabled={readonly} onChange={event => updateDrawingConfig({ facilityKind: event.target.value as Facility['kind'] })}>{Object.entries({ workshop: '厂房', yard: '堆场', assembly: '总组', dock: '坞区', quay: '码头', other: '其他' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+          <label className="field-label">区域类型<select aria-label="新建区域类型" value={zoneKind} disabled={readonly} onChange={event => updateDrawingConfig({ zoneKind: event.target.value as Zone['kind'] })}>{Object.entries({ work: '作业', buffer: '缓冲', waiting: '等待', water: '水域', obstacle: '障碍', forbidden: '禁入', drivable: '可行驶' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
           <div className="tool-grid"><button onClick={() => openPointDialog('accessPoints')} disabled={readonly}>添加入口</button><button onClick={() => openPointDialog('servicePoints')} disabled={readonly}>添加服务点</button></div>
-          <label className="field-label">网格吸附<select aria-label="网格吸附" value={snapGrid} onChange={event => setSnapGrid(event.target.value)}><option value="0">关闭</option><option value="1">1 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
-          <label className="check-field"><input type="checkbox" aria-label="节点吸附" checked={snapNodes} onChange={event => setSnapNodes(event.target.checked)} />节点吸附（坐标，不自动接路）</label>
-          <label className="field-label">设施移动策略<select aria-label="设施移动策略" value={facilityMovePolicy} onChange={event => setFacilityMovePolicy(event.target.value as typeof facilityMovePolicy)}><option value="boundaryOnly">仅移动边界，关联点保持</option><option value="withAssociatedNodes">边界和关联节点一起移动</option></select></label>
-          <label className="field-label">区域移动策略<select aria-label="区域移动策略" value={zoneMovePolicy} onChange={event => setZoneMovePolicy(event.target.value as typeof zoneMovePolicy)}><option value="boundaryOnly">仅移动边界，服务点保持</option><option value="withAssociatedNodes">边界和服务节点一起移动</option></select></label>
+          <label className="field-label">网格吸附<select aria-label="网格吸附" disabled={!projects.ready || projects.transitioning} value={snapGrid} onChange={event => updateDrawingConfig({ snapGrid: Number(event.target.value) as DrawingConfig['snapGrid'] })}><option value="0">关闭</option><option value="1">1 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
+          <label className="check-field"><input type="checkbox" aria-label="节点吸附" disabled={!projects.ready || projects.transitioning} checked={snapNodes} onChange={event => updateDrawingConfig({ snapNodes: event.target.checked })} />节点吸附（坐标，不自动接路）</label>
+          <label className="field-label">设施移动策略<select aria-label="设施移动策略" disabled={!projects.ready || projects.transitioning} value={facilityMovePolicy} onChange={event => updateDrawingConfig({ facilityMovePolicy: event.target.value as typeof facilityMovePolicy })}><option value="boundaryOnly">仅移动边界，关联点保持</option><option value="withAssociatedNodes">边界和关联节点一起移动</option></select></label>
+          <label className="field-label">区域移动策略<select aria-label="区域移动策略" disabled={!projects.ready || projects.transitioning} value={zoneMovePolicy} onChange={event => updateDrawingConfig({ zoneMovePolicy: event.target.value as typeof zoneMovePolicy })}><option value="boundaryOnly">仅移动边界，服务点保持</option><option value="withAssociatedNodes">边界和服务节点一起移动</option></select></label>
+          <button className="subtle-button full-width" disabled={!projects.ready || projects.transitioning} onClick={() => updateDrawingConfig(DEFAULT_DRAWING_CONFIG)}>恢复绘图默认配置</button>
           {(validSelection.facilities.length > 0 || validSelection.zones.length > 0) && <p className="field-note" data-testid="move-impact">将移动 {impact.selection.nodes.length} 个节点，影响 {impact.affectedRoadIds.length} 条道路；{facilityMovePolicy === 'boundaryOnly' ? '设施入口/服务点留在原地。' : '共享节点会使相邻道路端点一起变化。'}<br/>{impact.affectedRoadIds.join('、')}<br/>区域策略：{zoneMovePolicy === 'boundaryOnly' ? '仅移动边界，服务点保持原位。' : '边界和关联服务节点一起移动。'}共享节点：{impact.sharedNodeIds.join('、') || '无'}</p>}
         </div>
         <div className="panel-title">地图信息</div>
@@ -484,7 +488,7 @@ export function App() {
         <div className="canvas-status"><span>{cursor ? `X ${cursor[0].toFixed(3)} m  ·  Y ${cursor[1].toFixed(3)} m` : '本地 XY；屏幕 Y 方向仅影响显示'}</span><span>{selectedCount} 个选中 · {session.past.length} 个撤销事务</span></div>
         <section className="issue-panel" data-testid="issue-panel"><div className="issue-heading"><strong>检查器</strong><span className={errorCount ? 'error-count' : 'warning-count'}>{errorCount} 错误 · {issues.length - errorCount} 提示</span><span>draft 校验；不代表现场安全</span></div><div className="issue-list">{issues.map((issue, index) => <button key={issue.code + index} className={'issue-item ' + issue.severity} onClick={() => locate(issue)}><span className="issue-symbol">{issue.severity === 'error' ? '!' : '△'}</span><span><strong>{issue.code}</strong> {issue.message}<small>{issue.jsonPath || '/'} · {issue.suggestedAction}</small></span></button>)}</div></section>
       </section>
-      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div><PropertyPanel boundaryEditMode={boundaryEditMode} onBoundaryModeChange={changeBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={setZoneMovePolicy} onMovePolicyChange={setFacilityMovePolicy} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={apply} />
+      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div><PropertyPanel boundaryEditMode={boundaryEditMode} onBoundaryModeChange={changeBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={value => updateDrawingConfig({ zoneMovePolicy: value })} onMovePolicyChange={value => updateDrawingConfig({ facilityMovePolicy: value })} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={apply} />
         {domainReadonly && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
         <div className="capability-box"><h3>本阶段未校验</h3><p>{capabilities.unchecked.join(' · ')}</p></div>
       </aside>
