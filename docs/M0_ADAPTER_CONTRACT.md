@@ -10,7 +10,7 @@
 | `validateMap` | YardMap + validation profile → `ValidationReport`；Schema 与跨实体/基础几何检查共用 | implemented，仅 draft |
 | `serializeMap` | YardMap → 确定性 JSON；不舍入坐标，不写文件 | implemented |
 | 内容摘要 | 排除 revision 后的规范化声明数据 → SHA-256；用于导入基线与派生结果绑定 | implemented |
-| `applyMapCommand` | 文档 + 命令 → 原子成功结果或带 Issue 的拒绝；不直接操作 React/Canvas | M1 实现项，待 M1 阶段报告验收 |
+| `applyMapCommand` | 文档 + 命令 → 原子成功结果或带 Issue 的拒绝；不直接操作 React/Canvas | implemented，M1 命令集；检查结果见 M1 阶段报告 |
 | `toSceneSnapshot` | 有效文档 → 脱离渲染器的场景数据，附来源地图摘要、派生道路长度和能力限制 | implemented，节点/道路 |
 | 网络编译、路径查询、场景运行 | 编译后的不可变地图、场景 → 网络/运行输出 | unsupported，M3/M4 |
 | 三维/VR 渲染 | SceneSnapshot + 运行状态 → 引擎对象 | documented_interface，M5 |
@@ -18,6 +18,8 @@
 `ValidationReport` 含 `ok`、`profile`、`status: valid/invalid/unsupported` 和 `issues`。Issue 含稳定 `code`、`severity: error/warning`、`jsonPath`、`message`、`suggestedAction`，可附 `entityType`、`entityId`、`location`（行、列或世界位置）。不能把 `unsupported` 转成 `ok:true` 后让下游继续执行。
 
 调用约束：外部修改后的文本必须先 parse/validate，再替换领域文档并生成场景。严禁从 Canvas 反序列化恢复主数据，或直接把未验证的 JSON 强制转换为 YardMap。命令接口的事务结果由编辑器历史持有；拖动中间状态留在临时视图，提交失败时仍使用事务前文档。
+
+M1 实际命令集：addNode、addRoad、updateNode（名称/位置）、updateRoad（名称/内部折点/方向）、renameMap、translateSelection、duplicateSelection、deleteSelection。选择集为 `{nodes:string[], roads:string[]}`，位移为米制 Vec3；复制调用方提供覆盖闭包的 idMap，新 ID 必须全局唯一。会话层保存最多 100 个领域事务，undo/redo 直接使用冻结的事务快照，重做不重新分配 ID。
 
 ## SceneSnapshot
 
@@ -29,7 +31,7 @@
 | `mapId`, `mapContentHash` | 绑定唯一地图版本；异步或缓存结果必须核对 hash 后才能用于当前场景 |
 | `coordinateFrame` | 保留 YardMap 坐标与单位约定 |
 | `nodes` | 按稳定 ID 映射的节点快照数组，每项 `id`, `name`, `position:Vec3` |
-| `roads` | 道路快照数组，每项 `id`, `name`, `points:Vec3[]`, `lengthM`；几何是实时派生结果 |
+| `roads` | 道路快照数组，每项 `id`, `name`, `fromNodeId`, `toNodeId`, `points:Vec3[]`, `lengthM`；端点 ID 保留用于按引用预览；几何是实时派生结果 |
 | `bounds` | `{min:Vec3,max:Vec3}`，空场景为 null |
 | `missingCapabilities` | 尚未渲染或尚未检查的能力；不能由前端隐藏后宣称全部支持 |
 

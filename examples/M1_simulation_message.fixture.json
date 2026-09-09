@@ -1,0 +1,27 @@
+{
+  "fixtureKind": "simulation_adapter_message",
+  "dataClassification": "synthetic",
+  "executed": false,
+  "mapFile": "M1_synthetic.map.json",
+  "description": "仅作 SimulationAdapter 消息契约示例；scenario 与 vehicle 标识为夹具占位，没有运行仿真、记录真实运输或验证道路通行。",
+  "message": {
+    "protocolVersion": "0.1.0",
+    "mapId": "map_M1_synthetic",
+    "mapContentHash": "18facc15d9bc37177935af5867b11b0138f4caed35ba45ad65227102a80c3560",
+    "scenarioId": "scenario_fixture_01",
+    "scenarioVersion": "0.1.0",
+    "entityId": "vehicle_fixture_01",
+    "sequence": 1,
+    "simulationTime": 0.25,
+    "occurredAt": 0,
+    "observedAt": 0.25,
+    "pose": {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "yawRad": 0
+    }
+  }
+}

@@ -61,7 +61,13 @@ async function main(): Promise<void> {
       emit(failure('INPUT_TOO_LARGE', `地图 JSON 超过 ${MAX_JSON_BYTES} 字节限制。`, args.profile), 1);
       return;
     }
-    text = await readFile(args.file, 'utf8');
+    const bytes = await readFile(args.file);
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      emit(failure('JSON_ENCODING', '地图文件不是合法 UTF-8 编码。请转换为 UTF-8 后重试。', args.profile), 1);
+      return;
+    }
   } catch (error) {
     emit(failure('CLI_IO', error instanceof Error ? error.message : '无法读取文件。', args.profile), 2);
     return;

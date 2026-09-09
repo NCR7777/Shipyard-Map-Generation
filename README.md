@@ -1,3 +1,5 @@
+> 当前工程状态：M0 + M1 已完成，范围为二维基础编辑与 JSON/CLI 往返闭环；M2—M5 尚未实现。启动：在本目录运行 `npm ci`、`npm run dev -- --host 127.0.0.1`。使用方法见 [M1 使用指南](docs/M1_USER_GUIDE.md)，实现边界见 [M1 能力清单](docs/M1_CAPABILITIES.md)。下方“开发任务包”为初始说明原文，作为历史保留；当前实现与验证结果见 [M0 阶段报告](docs/M0_STAGE_REPORT.md) 和 [M1 阶段报告](docs/M1_STAGE_REPORT.md)。
+
 # 船厂空间布局编辑器：Codex 开发任务包
 
 版本：需求建议版 1.0，2026-09-09。
@@ -23,3 +25,9 @@
 JSON 保存船厂领域模型，不保存画布场景树。空间几何、网络连通、资源规则、运行场景、运行状态、编辑器状态分别定义。
 
 导入参考图不自动等于真实地图；手绘布局不自动等于实测布局；结构校验通过不自动等于真实运输可执行。每一种结果应有准确标签。
+
+## 当前工程入口
+
+上文为初始任务包说明，原文保留。实际工程已在本目录按 M0/M1 开发；当前使用方法、实现状态与限制分别见 [M1 使用指南](docs/M1_USER_GUIDE.md) 和 [M1 能力清单](docs/M1_CAPABILITIES.md)。数据契约见 [M0 字段与坐标文档](docs/M0_DATA_CONTRACT.md)，架构决策见 [M0 ADR](docs/M0_ADR.md)。检查命令和结果以各阶段报告为准。
+
+在本目录运行 `npm ci`、`npm run dev -- --host 127.0.0.1` 启动本地应用；无浏览器验证使用 `npm run map:validate -- examples/M1_synthetic.map.json`。本次地图与消息示例均为 synthetic，不是实测船厂或真实运输记录。

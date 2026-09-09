@@ -6,7 +6,7 @@ export interface SceneSnapshot {
   mapContentHash: string;
   coordinateFrame: CoordinateFrame;
   nodes: { id: string; name: string; position: Vec3 }[];
-  roads: { id: string; name: string; points: Vec3[]; lengthM: number }[];
+  roads: { id: string; name: string; fromNodeId: string; toNodeId: string; points: Vec3[]; lengthM: number }[];
   bounds: { min: Vec3; max: Vec3 } | null;
   missingCapabilities: string[];
 }

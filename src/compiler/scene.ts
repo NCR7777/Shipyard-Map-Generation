@@ -8,7 +8,7 @@ export function toSceneSnapshot(map: YardMap): SceneSnapshot {
   const nodes = Object.entries(map.nodes).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
     .map(([id, node]) => ({ id, name: node.name, position: [...node.position] as typeof node.position }));
   const roads = Object.entries(map.roads).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-    .map(([id, road]) => ({ id, name: road.name, points: roadPoints(map, id), lengthM: roadLength(map, id) }));
+    .map(([id, road]) => ({ id, name: road.name, fromNodeId: road.fromNodeId, toNodeId: road.toNodeId, points: roadPoints(map, id), lengthM: roadLength(map, id) }));
   const capabilities = mapCapabilities(map);
   return {
     schemaVersion: '0.1.0', mapId: map.mapId, mapContentHash: contentHash(map),

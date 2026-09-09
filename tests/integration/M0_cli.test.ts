@@ -82,6 +82,23 @@ describe('M0 CLI: browser-free shared import and validation', () => {
     expect(report).toMatchObject({ ok: false, status: 'unsupported', profile });
   });
 
+  it('rejects invalid UTF-8 inside an otherwise valid JSON string with a data error', () => {
+    const map = JSON.parse(readFileSync(fixtureFile, 'utf8')) as { metadata: { name: string } };
+    map.metadata.name = 'ENCODING_SENTINEL';
+    const bytes = Buffer.from(JSON.stringify(map), 'utf8');
+    const offset = bytes.indexOf('ENCODING_SENTINEL');
+    expect(offset).toBeGreaterThan(0);
+    bytes[offset] = 0xff;
+    const badEncodingFile = path.join(temporaryDirectory, 'invalid-utf8.json');
+    writeFileSync(badEncodingFile, bytes);
+    const { status, report } = runCli([badEncodingFile]);
+    expect(status).toBe(1);
+    expect(report).toMatchObject({ ok: false, status: 'invalid' });
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'JSON_ENCODING', severity: 'error' }),
+    ]));
+  });
+
   it('detects content changed outside the editor without trusting revision', () => {
     const original = JSON.parse(readFileSync(fixtureFile, 'utf8')) as {
       revision: number;

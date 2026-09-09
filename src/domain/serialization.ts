@@ -62,6 +62,8 @@ export function parseMap(text: string): ParseResult {
   try { value = JSON.parse(text); } catch { return { ok: false, issues: [textIssue(text, 'JSON_SYNTAX', '', 'JSON 解析失败。')] }; }
   const report = validateMap(value);
   if (!report.ok) return { ok: false, issues: report.issues };
+  const canonical = JSON.stringify(sortKeys(value), null, 2) + '\n';
+  if (utf8Size(canonical) > MAX_JSON_BYTES) return { ok: false, issues: [textIssue(text, 'JSON_SIZE_LIMIT', '', '规范化 JSON 超过 10 MiB，请拆分地图或减少扩展内容。')] };
   return { ok: true, map: value as YardMap };
 }
 
@@ -74,7 +76,9 @@ function sortKeys(value: unknown): unknown {
 export function serializeMap(map: YardMap): string {
   const report = validateMap(map);
   if (!report.ok) throw new Error(`Cannot serialize invalid map: ${report.issues.find(i => i.severity === 'error')?.code}`);
-  return JSON.stringify(sortKeys(map), null, 2) + '\n';
+  const text = JSON.stringify(sortKeys(map), null, 2) + '\n';
+  if (utf8Size(text) > MAX_JSON_BYTES) throw new RangeError('JSON_SIZE_LIMIT: 规范化 JSON 超过 10 MiB。');
+  return text;
 }
 
 export function contentHash(map: YardMap): string {
