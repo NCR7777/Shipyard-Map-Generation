@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["ES2023"], "types": ["node"], "jsx": "preserve" },
+  "include": ["src/domain", "src/geometry", "src/topology", "src/validation", "src/compiler", "src/adapters/contracts.ts"],
+  "exclude": []
+}

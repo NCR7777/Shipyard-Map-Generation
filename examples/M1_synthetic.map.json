@@ -1,0 +1,99 @@
+{
+  "accessPoints": {},
+  "assets": {},
+  "backgroundLayers": {},
+  "coordinateFrame": {
+    "angleUnit": "rad",
+    "groundPlane": "XY",
+    "handedness": "right",
+    "kind": "local_cartesian",
+    "lengthUnit": "m",
+    "massUnit": "kg",
+    "timeUnit": "s",
+    "upAxis": "Z"
+  },
+  "extensionNamespaces": {},
+  "extensions": {},
+  "facilities": {},
+  "junctions": {},
+  "mapId": "map_M1_synthetic",
+  "metadata": {
+    "description": "synthetic：仅用于编辑器往返、米制长度及错误处理测试，不代表实测船厂。",
+    "layoutBasis": "synthetic",
+    "name": "M1 合成验证地图 / synthetic"
+  },
+  "movements": {},
+  "nodes": {
+    "nA": {
+      "kind": "ordinary",
+      "name": "起点 A",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic",
+        "sourceRefs": [
+          "source_synthetic"
+        ]
+      }
+    },
+    "nB": {
+      "kind": "ordinary",
+      "name": "终点 B",
+      "position": [
+        100,
+        0,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic",
+        "sourceRefs": [
+          "source_synthetic"
+        ]
+      }
+    }
+  },
+  "resources": {},
+  "revision": 0,
+  "roads": {
+    "rAB": {
+      "direction": "unknown",
+      "fromNodeId": "nA",
+      "heightLimitM": {
+        "state": "unknown"
+      },
+      "massLimitKg": {
+        "state": "unknown"
+      },
+      "name": "100 m 合成道路",
+      "provenance": {
+        "category": "synthetic",
+        "sourceRefs": [
+          "source_synthetic"
+        ]
+      },
+      "resourceIds": [],
+      "shapePoints": [],
+      "speedLimitMps": {
+        "state": "unknown"
+      },
+      "toNodeId": "nB",
+      "widthM": {
+        "state": "unknown"
+      }
+    }
+  },
+  "schemaVersion": "0.1.0",
+  "servicePoints": {},
+  "siteBoundary": null,
+  "sources": {
+    "source_synthetic": {
+      "category": "synthetic",
+      "description": "按本地米制坐标构造，非实际厂区测量或影像描绘。",
+      "name": "手工合成测试数据"
+    }
+  },
+  "zones": {}
+}
