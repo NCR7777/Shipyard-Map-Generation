@@ -8,6 +8,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Stage as KonvaStage } from 'konva/lib/Stage';
 import type { SceneSnapshot } from '../../adapters/contracts';
 import type { Polygon, Vec3 } from '../../domain/model';
+import type { DrawingConfig } from '../../editor/projectController';
 import { SpatialLayer, AssociatedPointLayer, type SpatialLayerProps } from './SpatialLayer';
 import { useSpatialDrawing, isSpatialTool, isRectangleTool, snapPosition, type SnapOptions } from './useSpatialDrawing';
 import { SELECTION_KINDS, type Selection } from '../../domain/commands';
@@ -21,6 +22,8 @@ export interface PointPick { mode: 'existing' | 'new'; nodeId?: string; position
 export interface DraftRoad { fromNodeId: string; points: Vec3[] }
 interface Props {
   scene: SceneSnapshot;
+  roadDisplay: Pick<DrawingConfig, 'showRoadBands' | 'showRoadCenterlines' | 'showOrdinaryNodes'>;
+  roadShapePreview?: { roadId: string; shapePoints: Vec3[]; mapContentHash: string } | null;
   camera: Camera;
   onCamera: (camera: Camera) => void;
   onSize: (size: { width: number; height: number }) => void;
@@ -113,11 +116,15 @@ export function MapCanvas(props: Props) {
     return [original[0] + previewDelta[0], original[1] + previewDelta[1], original[2] + previewDelta[2]];
   }
   const nodeById = useMemo(() => new Map(props.scene.nodes.map(n => [n.id, n])), [props.scene.nodes]);
+  const shapePreview = props.roadShapePreview?.mapContentHash === props.scene.mapContentHash
+    && props.selection.roads.includes(props.roadShapePreview.roadId) ? props.roadShapePreview : null;
   function points(road: SceneSnapshot['roads'][number]): number[] {
-    return road.points.flatMap((point, index) => {
+    const route = shapePreview?.roadId === road.id
+      ? [road.points[0]!, ...shapePreview.shapePoints, road.points.at(-1)!] : road.points;
+    return route.flatMap((point, index) => {
       let world = point;
       if (index === 0) world = position(road.fromNodeId, point);
-      else if (index === road.points.length - 1) world = position(road.toNodeId, point);
+      else if (index === route.length - 1) world = position(road.toNodeId, point);
       else if (previewDelta && props.selection.roads.includes(road.id)) world = [point[0] + previewDelta[0], point[1] + previewDelta[1], point[2] + previewDelta[2]];
       return worldToScreen(world, props.camera);
     });
@@ -168,8 +175,26 @@ export function MapCanvas(props: Props) {
   const start = props.draftRoad ? nodeById.get(props.draftRoad.fromNodeId)?.position : undefined;
   const draftPoints = start ? [start, ...props.draftRoad!.points, ...(rubberEnd ? [rubberEnd] : [])] : [];
   const visibleNodes = props.scene.nodes.filter(node => worldToScreen(position(node.id, node.position), props.camera).every(Number.isFinite));
-  const visibleRoads = props.scene.roads.filter(road => points(road).every(Number.isFinite));
+  const projectedRoads = props.scene.roads.map(road => {
+    const pixels = road.widthM.state === 'known' ? road.widthM.value * props.camera.scale : null;
+    return { ...road, screenPoints: points(road),
+      bandWidthPx: pixels !== null && Number.isFinite(pixels) && pixels > 0 ? pixels : null };
+  });
+  const visibleRoads = projectedRoads.filter(road => road.screenPoints.every(Number.isFinite));
+  const unprojectableWidths = visibleRoads.filter(road => road.widthM.state === 'known' && road.bandWidthPx === null).length;
+  const unknownWidths = props.scene.roads.filter(road => road.widthM.state !== 'known').length;
+  const widthRangeIssues = props.scene.missingCapabilities.filter(issue => issue.startsWith('ROAD_WIDTH_VISUAL_RANGE:'));
+  const displayedNodes = visibleNodes.filter(node => props.roadDisplay.showOrdinaryNodes || node.kind !== 'ordinary'
+    || selectedNodeIds.has(node.id) || !!props.pointPick || props.tool === 'road');
   const unprojectable = props.scene.nodes.length + props.scene.roads.length - visibleNodes.length - visibleRoads.length;
+  function roadClick(event: KonvaEventObject<MouseEvent>, id: string) {
+    if (event.evt.button !== 0) return;
+    if (props.pointPick) { event.cancelBubble = true; const screen = pointer(); if (screen) drawAt(screen); }
+    else if (props.tool === 'select') { event.cancelBubble = true; props.onSelect('roads', id, event.evt.shiftKey); }
+    else if (!props.readonly && (props.tool === 'node' || props.tool === 'road' || isSpatialTool(props.tool))) {
+      const screen = pointer(); if (!screen) return; event.cancelBubble = true; drawAt(screen);
+    }
+  }
   const spatialProps: SpatialLayerProps = {
     scene: props.scene, camera: props.camera, selection: props.selection, previewDelta, boundaryPreview,
     snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && props.tool === 'road', movingNodeIds: selectedNodeIds,
@@ -194,7 +219,7 @@ export function MapCanvas(props: Props) {
       }}
       onWheel={event => {
         event.evt.preventDefault(); if (dragStart.current || boundaryActiveRef.current) return; const point = pointer(); if (!point) return;
-        props.onCamera(zoomAt(props.camera, point, Math.min(100, Math.max(0.02, props.camera.scale * (event.evt.deltaY < 0 ? 1.15 : 1 / 1.15)))));
+        props.onCamera(zoomAt(props.camera, point, Math.min(100, Math.max(Number.MIN_VALUE, props.camera.scale * (event.evt.deltaY < 0 ? 1.15 : 1 / 1.15)))));
       }}>
       <Layer listening={false}>
         {grid.filter(tick => Number.isFinite(tick.pixel)).map((tick, index) => <Line key={'grid-' + index} points={tick.axis === 'x' ? [tick.pixel, 0, tick.pixel, size.height] : [0, tick.pixel, size.width, tick.pixel]} stroke={Math.abs(tick.value) < 1e-9 ? '#8ba6b4' : '#e5edf1'} strokeWidth={Math.abs(tick.value) < 1e-9 ? 1.5 : 1} />)}
@@ -202,16 +227,23 @@ export function MapCanvas(props: Props) {
       </Layer>
       <Layer listening={!boundaryActive}>
         <SpatialLayer {...spatialProps} />
-        {visibleRoads.map(road => <Line key={road.id} name="road" points={points(road)} stroke={props.selection.roads.includes(road.id) ? '#e08128' : '#216b88'} strokeWidth={props.selection.roads.includes(road.id) ? 5 : 3} hitStrokeWidth={14} lineCap="round" lineJoin="round"
-          onClick={event => {
-            if (props.pointPick) { event.cancelBubble = true; const screen = pointer(); if (screen) drawAt(screen); }
-            else if (props.tool === 'select') { event.cancelBubble = true; props.onSelect('roads', road.id, event.evt.shiftKey); }
-            else if (!props.readonly && (props.tool === 'node' || props.tool === 'road' || isSpatialTool(props.tool))) {
-              const screen = pointer(); if (!screen) return; event.cancelBubble = true;
-              drawAt(screen);
-            }
-          }} />)}
-        {visibleNodes.map(node => {
+        {/* All bands precede all auxiliary lines, then nodes/associated points and edit handles.
+            Round caps/joins form a width-derived approximation, never a surveyed junction disk. */}
+        {props.roadDisplay.showRoadBands && visibleRoads.map(road => road.bandWidthPx !== null &&
+          <Line key={road.id} name="road-band" points={road.screenPoints}
+            stroke={props.selection.roads.includes(road.id) ? '#efbb82' : '#b7d0db'}
+            strokeWidth={road.bandWidthPx} hitStrokeWidth={Math.max(14, road.bandWidthPx)} lineCap="round" lineJoin="round"
+            onClick={event => roadClick(event, road.id)} />)}
+        {visibleRoads.map(road => {
+          // Unknown/unrestricted/not-applicable (or unprojectable) never become a fabricated band.
+          const auxiliary = road.bandWidthPx === null;
+          if (!props.roadDisplay.showRoadCenterlines && !(props.roadDisplay.showRoadBands && auxiliary)) return null;
+          return <Line key={road.id} name="road-centerline" points={road.screenPoints}
+            stroke={props.selection.roads.includes(road.id) ? '#ad5f17' : auxiliary ? '#a76c24' : '#216b88'}
+            strokeWidth={2} hitStrokeWidth={14} dash={auxiliary ? [7, 5] : undefined} lineCap="round" lineJoin="round"
+            onClick={event => roadClick(event, road.id)} />;
+        })}
+        {displayedNodes.map(node => {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
           const selected = selectedNodeIds.has(node.id) || props.pointPick?.nodeId === node.id;
           return <Circle _useStrictMode key={node.id} x={x} y={y} radius={selected ? 6.5 : 5} fill={selected ? '#e08128' : '#ffffff'} stroke={selected ? '#9a4c0d' : '#216b88'} strokeWidth={2} hitStrokeWidth={12}
@@ -242,7 +274,7 @@ export function MapCanvas(props: Props) {
         <AssociatedPointLayer {...spatialProps} />
       </Layer>
       <Layer listening={false}>
-        {visibleNodes.map(node => {
+        {displayedNodes.map(node => {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
           return <Text key={node.id} x={x + 11} y={y - 16} text={node.name || node.id} fontSize={11} fill="#355266" />;
         })}
@@ -268,8 +300,17 @@ export function MapCanvas(props: Props) {
     </div>}
     {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
     <div className="canvas-label">LOCAL XY · 米制 · Z ↑</div>
-    {unprojectable > 0 && <div className="projection-warning" aria-live="polite">{unprojectable} 个对象超出屏幕数值范围，JSON 完整保留；请数值调整坐标。</div>}
-    <div className="scale-label">{roundTick(step)} m 网格 · 道路线宽仅表示外观</div>
+    {(unprojectable > 0 || unprojectableWidths > 0 || widthRangeIssues.length > 0) && <div className="projection-warning" data-testid="projection-warning" role="status">
+      {unprojectable > 0 && <div>{unprojectable} 个对象超出屏幕数值范围，JSON 完整保留；请数值调整坐标。</div>}
+      {unprojectableWidths > 0 && <div>{unprojectableWidths} 条声明宽度超出屏幕数值范围，仅显示辅助线；JSON 数值完整保留。</div>}
+      {widthRangeIssues.map(issue => <div key={issue}>{issue}</div>)}
+    </div>}
+    <div className="scale-label" data-testid="road-display-legend">{roundTick(step)} m 网格 · 道路带 = 声明宽度 × 比例<br/>
+      圆端 / 圆连接近似带；不代表实测路口或车辆扫掠<br/>
+      {unknownWidths > 0 && <span data-testid="unknown-road-widths">{unknownWidths} 条道路宽度未知 / 不适用 / 无限制：显示时用辅助虚线<br/></span>}
+      道路带重叠不自动连通；点边缘仅取坐标，不接入中部
+      {shapePreview && <span data-testid="road-shape-preview"><br/>折点预览 · 应用属性后写入地图</span>}
+    </div>
     <output className="sr-only" data-testid="camera-state" data-offset-x={props.camera.offsetX} data-offset-y={props.camera.offsetY} data-scale={props.camera.scale}>{JSON.stringify(props.camera)}</output>
   </div>;
 }

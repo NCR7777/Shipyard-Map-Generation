@@ -357,6 +357,13 @@ describe('stable drawing configuration in independent editor state', () => {
   it('normalizes old camera-only and partial settings, retaining explicit false and zero', () => {
     expect(validateEditorState({ camera })).toEqual(editorState());
     expect(validateEditorState({ camera, drawing: { snapGrid: 0, snapNodes: false, facilityKind: 'quay' } })).toEqual(editorState({ facilityKind: 'quay' }));
+    const legacySixFields = {
+      snapGrid: 10, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer',
+      facilityMovePolicy: 'withAssociatedNodes', zoneMovePolicy: 'boundaryOnly',
+    };
+    expect(validateEditorState({ camera, drawing: legacySixFields }).drawing).toEqual({ ...DEFAULT_DRAWING_CONFIG, ...legacySixFields });
+    expect(validateEditorState({ camera, drawing: { showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false } }))
+      .toEqual(editorState({ showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false }));
     const normalized = validateEditorState({ camera });
     normalized.drawing.snapNodes = true; normalized.camera.scale = 100;
     expect(DEFAULT_DRAWING_CONFIG.snapNodes).toBe(false);
@@ -367,6 +374,9 @@ describe('stable drawing configuration in independent editor state', () => {
     null, [], { snapGrid: null }, { snapGrid: -1 }, { snapGrid: 2 }, { snapGrid: NaN }, { snapGrid: Infinity },
     { snapGrid: '5' }, { snapNodes: 0 }, { snapNodes: null }, { facilityKind: 'ship' }, { zoneKind: 'road' },
     { facilityMovePolicy: 'all' }, { zoneMovePolicy: null }, { tool: 'select' }, { snapGrid: undefined },
+    { showRoadBands: null }, { showRoadBands: 0 }, { showRoadBands: 'false' },
+    { showRoadCenterlines: undefined }, { showRoadCenterlines: 1 }, { showRoadCenterlines: 'true' },
+    { showOrdinaryNodes: null }, { showOrdinaryNodes: [] }, { showOrdinaryNodes: 'false' },
   ])('rejects invalid or transient configuration %j without inventing defaults', drawing => {
     expect(() => validateEditorState({ camera, drawing })).toThrowError(expect.objectContaining({ code: 'EDITOR_STATE_INVALID' }));
   });
@@ -383,11 +393,11 @@ describe('stable drawing configuration in independent editor state', () => {
     expect(store.views.get('project_A')?.drawing?.snapGrid).toBe(10);
   });
 
-  it('restores legacy defaults and retains a map when only the drawing record is corrupt', async () => {
+  it.each([{ snapGrid: 2 }, { showRoadBands: 'false' }])('restores legacy defaults and retains a map when only the drawing record is corrupt: %j', async drawing => {
     const { controller, store, map } = await started(); await controller.save(map);
     store.views.set('project_A', { camera });
     expect((await new ProjectController(store).initialize())?.editorState).toEqual(editorState());
-    const bad = { camera, drawing: { snapGrid: 2 } } as unknown as EditorStateInput;
+    const bad = { camera, drawing } as unknown as EditorStateInput;
     store.views.set('project_A', bad);
     const recovered = await new ProjectController(store).initialize();
     expect(recovered?.map).toEqual(map);
@@ -395,6 +405,27 @@ describe('stable drawing configuration in independent editor state', () => {
     expect(recovered?.warnings.some(issue => issue.code === 'EDITOR_STATE_RECOVERY_FAILED')).toBe(true);
     expect(store.views.get('project_A')).toEqual(bad);
     expect(store.commits).toBe(1);
+  });
+
+  it('keeps road display settings per project and recovery copy without modifying static map snapshots', async () => {
+    const { controller, store, map } = await started();
+    await controller.save(map, 'checkpoint');
+    const mapRecordA = structuredClone(store.rows.get('project_A'));
+    const stateA = editorState({ showRoadBands: false, showRoadCenterlines: true, showOrdinaryNodes: false });
+    await controller.saveEditorState(stateA);
+    await controller.create('project_B', map, editorState({ showRoadCenterlines: false }));
+    await controller.save(map, 'checkpoint');
+    const mapRecordB = structuredClone(store.rows.get('project_B'));
+    expect((await controller.open('project_A')).editorState).toEqual(stateA);
+    await controller.backup('road_display_recovery', map, stateA);
+    expect((await controller.open('project_B')).editorState).toEqual(editorState({ showRoadCenterlines: false }));
+    const restoredCopy = await controller.open('road_display_recovery');
+    expect(restoredCopy.editorState).toEqual(stateA);
+    expect(serializeMap(restoredCopy.map)).toBe(serializeMap(map));
+    expect(contentHash(restoredCopy.map)).toBe(contentHash(map));
+    expect(restoredCopy.map.revision).toBe(map.revision);
+    expect(store.rows.get('project_A')).toEqual(mapRecordA);
+    expect(store.rows.get('project_B')).toEqual(mapRecordB);
   });
 
   it('stages pre-commit settings without orphan writes and writes the latest snapshot on first map save', async () => {

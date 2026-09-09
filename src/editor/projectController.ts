@@ -8,6 +8,9 @@ export type SaveKind = 'draft' | 'checkpoint';
 export interface DrawingConfig {
   snapGrid: 0 | 1 | 5 | 10;
   snapNodes: boolean;
+  showRoadBands: boolean;
+  showRoadCenterlines: boolean;
+  showOrdinaryNodes: boolean;
   facilityKind: Facility['kind'];
   zoneKind: Zone['kind'];
   facilityMovePolicy: FacilityMovePolicy;
@@ -15,6 +18,7 @@ export interface DrawingConfig {
 }
 export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
   snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
+  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
 });
 export interface EditorState { camera: Camera; drawing: DrawingConfig }
@@ -83,6 +87,7 @@ export function validateEditorState(value: unknown): EditorState {
   }
   const drawing = { ...DEFAULT_DRAWING_CONFIG, ...('drawing' in value ? value.drawing as object : {}) } as DrawingConfig;
   if (![0, 1, 5, 10].includes(drawing.snapGrid) || typeof drawing.snapNodes !== 'boolean'
+    || typeof drawing.showRoadBands !== 'boolean' || typeof drawing.showRoadCenterlines !== 'boolean' || typeof drawing.showOrdinaryNodes !== 'boolean'
     || !['workshop', 'yard', 'assembly', 'dock', 'quay', 'other'].includes(drawing.facilityKind)
     || !['work', 'buffer', 'waiting', 'water', 'obstacle', 'drivable', 'forbidden'].includes(drawing.zoneKind)
     || !['boundaryOnly', 'withAssociatedNodes'].includes(drawing.facilityMovePolicy)

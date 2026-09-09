@@ -13,7 +13,7 @@ IndexedDB 数据库默认名为 `shipyard-map-projects`，数据库版本为 `1`
 | 对象库 | 主键 | 内容 |
 | --- | --- | --- |
 | `projects` | `projectId` | `formatVersion: 1`、项目名称、独立 `storageVersion`、时间和地图快照 |
-| `editorStates` | `projectId` | `camera` 和六项稳定 `drawing` 配置；不写进 `map.json` |
+| `editorStates` | `projectId` | `camera` 和九项稳定 `drawing` 配置；不写进 `map.json` |
 | `metadata` | `lastProjectId` | 新标签页可用的最近打开工程后备值 |
 
 底图二进制尚未加入本阶段存储。未来必须采用独立对象库和显式资源提交/恢复协议，不将图片 Base64、文件句柄或 Blob URL 塞进地图 JSON。本阶段不声称已解决图像与地图的事务一致性。ZIP 工程包仍属于后续 M2B。
@@ -26,6 +26,7 @@ IndexedDB 数据库默认名为 `shipyard-map-projects`，数据库版本为 `1`
 | --- | --- |
 | `snapGrid` | 数值 `0 / 1 / 5 / 10` m；`0` 关闭（默认） |
 | `snapNodes` | 布尔值，默认 `false` |
+| `showRoadBands`、`showRoadCenterlines`、`showOrdinaryNodes` | 布尔值，默认均为 `true`；道路带、中心线和普通节点显示 |
 | `facilityKind` | 现有设施类型枚举，默认 `workshop` |
 | `zoneKind` | 现有区域类型枚举，默认 `work` |
 | `facilityMovePolicy`、`zoneMovePolicy` | `boundaryOnly`（默认）或 `withAssociatedNodes` |
@@ -34,7 +35,7 @@ IndexedDB 数据库默认名为 `shipyard-map-projects`，数据库版本为 `1`
 
 配置和视窗变化共用 600ms 防抖，所有入口提交完整编辑状态快照；仅改配置触发的自动保存不改变地图 JSON、revision、contentHash、storageVersion 或撤销历史。“保存工程”/Ctrl+S 不等待防抖，先保存调用时的配置，再保存地图确认点；期间出现的新编辑仍显示待保存。恢复必须等 React 中的地图与编辑状态匹配目标后才开放写入。写入、回执和错误绑定具体工程及切换序号，工程切换前刷新当前完整状态。
 
-“恢复绘图默认配置”只重置六项配置，保留视窗和地图。刷新回到选择工具，矩形重新自动识别；不保存自由多边形模式、拖动预览、弹窗、删除确认、未完成绘图或未应用表单。浏览器另存恢复副本携带当前配置；外部 JSON 的独立备份不混入当前工程配置。所有编辑状态仍只存本地 `editorStates`，没有新增配置数据库或设置框架。
+“恢复绘图默认配置”只重置九项配置，保留视窗和地图。刷新回到选择工具，矩形重新自动识别；不保存自由多边形模式、拖动预览、弹窗、删除确认、未完成绘图或未应用表单。浏览器另存恢复副本携带当前配置；外部 JSON 的独立备份不混入当前工程配置。所有编辑状态仍只存本地 `editorStates`，没有新增配置数据库或设置框架。
 
 ## 快照与确认点
 

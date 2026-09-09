@@ -251,7 +251,7 @@ describe('M0 core: independent domain contract', () => {
     expect(loaded.scene.mapContentHash).toBe(loaded.contentHash);
     expect(loaded.scene.coordinateFrame).toEqual(map.coordinateFrame);
     expect(loaded.scene.roads).toEqual([
-      { id: 'road_AB', name: map.roads.road_AB!.name, fromNodeId: 'node_A', toNodeId: 'node_B', points: [[0, 0, 0], [100, 0, 0]], lengthM: 100 },
+      { id: 'road_AB', name: map.roads.road_AB!.name, fromNodeId: 'node_A', toNodeId: 'node_B', points: [[0, 0, 0], [100, 0, 0]], lengthM: 100, widthM: { state: 'unknown' } },
     ]);
     loaded.scene.nodes[0]!.position[0] = -500;
     loaded.scene.roads[0]!.points[0]![0] = -700;

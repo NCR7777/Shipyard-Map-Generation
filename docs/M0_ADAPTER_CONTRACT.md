@@ -27,12 +27,12 @@ M1 实际命令集：addNode、addRoad、updateNode（名称/位置）、updateR
 
 | 字段 | 契约 |
 |---|---|
-| `schemaVersion` | 本版为 `0.1.0` |
+| `schemaVersion` | 沿用输入地图的 `0.1.0` 或 `0.2.0` |
 | `mapId`, `mapContentHash` | 绑定唯一地图版本；异步或缓存结果必须核对 hash 后才能用于当前场景 |
 | `coordinateFrame` | 保留 YardMap 坐标与单位约定 |
-| `nodes` | 按稳定 ID 映射的节点快照数组，每项 `id`, `name`, `position:Vec3` |
-| `roads` | 道路快照数组，每项 `id`, `name`, `fromNodeId`, `toNodeId`, `points:Vec3[]`, `lengthM`；端点 ID 保留用于按引用预览；几何是实时派生结果 |
-| `bounds` | `{min:Vec3,max:Vec3}`，空场景为 null |
+| `nodes` | 按稳定 ID 映射的节点快照数组，每项 `id`, `name`, `kind`, `position:Vec3` |
+| `roads` | 道路快照数组，每项 `id`, `name`, `fromNodeId`, `toNodeId`, `points:Vec3[]`, `lengthM`, `widthM:PhysicalValue`；宽度及其来源/原因完整复制，四种状态不转换；端点 ID 保留用于按引用预览；几何是实时派生结果 |
+| `bounds` | `{min:Vec3,max:Vec3}`，空场景为 null；已知宽度在道路中心线 XY 包围盒各侧扩展半宽，用于容纳圆端/圆连接的近似道路带，不改变 Z；不能数值表达时声明 `ROAD_WIDTH_VISUAL_RANGE` 限制 |
 | `missingCapabilities` | 尚未渲染或尚未检查的能力；不能由前端隐藏后宣称全部支持 |
 
 消费方不能反向修改快照并称完成地图编辑；所有修改仍通过领域命令。SceneSnapshot 不是完整地图的另一种存储格式，不用于取代 map.json 或进行有损重导出。二维渲染器按 ID 建立图形，屏幕 Y 翻转仅在投影边界执行。1m 的屏幕比例、原点、三基向量与往返由坐标单元测试检验；Z 值保留，但 M1 的二维图像不显示高度。

@@ -22,8 +22,10 @@ export function screenToWorld(point: Vec2, camera: Camera, z = 0): Vec3 {
 
 /** Keep the world point under the cursor fixed when zooming. */
 export function zoomAt(camera: Camera, screen: Vec2, scale: number): Camera {
-  const world = screenToWorld(screen, camera);
-  const next = { scale, offsetX: screen[0] - world[0] * scale, offsetY: screen[1] + world[1] * scale };
+  checkCamera(camera);
+  const ratio = scale / camera.scale;
+  // A valid tiny scale can put the cursor beyond finite world coordinates; stay in screen space.
+  const next = { scale, offsetX: screen[0] - (screen[0] - camera.offsetX) * ratio, offsetY: screen[1] - (screen[1] - camera.offsetY) * ratio };
   checkCamera(next);
   return next;
 }

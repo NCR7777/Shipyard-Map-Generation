@@ -1,12 +1,12 @@
-import type { AccessPoint, CoordinateFrame, Facility, ServicePoint, Vec3, YardMap, Zone } from '../domain/model';
+import type { AccessPoint, CoordinateFrame, Facility, MapNode, PhysicalValue, ServicePoint, Vec3, YardMap, Zone } from '../domain/model';
 
 export interface SceneSnapshot {
   schemaVersion: YardMap['schemaVersion'];
   mapId: string;
   mapContentHash: string;
   coordinateFrame: CoordinateFrame;
-  nodes: { id: string; name: string; position: Vec3 }[];
-  roads: { id: string; name: string; fromNodeId: string; toNodeId: string; points: Vec3[]; lengthM: number }[];
+  nodes: { id: string; name: string; kind: MapNode['kind']; position: Vec3 }[];
+  roads: { id: string; name: string; fromNodeId: string; toNodeId: string; points: Vec3[]; lengthM: number; widthM: PhysicalValue }[];
   facilities: ({ id: string } & Pick<Facility, 'name' | 'kind' | 'boundary' | 'accessPointIds' | 'servicePointIds' | 'heightM'>)[];
   zones: ({ id: string; servicePointIds: string[] } & Pick<Zone, 'name' | 'kind' | 'boundary' | 'passability'>)[];
   accessPoints: ({ id: string; position: Vec3 } & Pick<AccessPoint, 'name' | 'facilityId' | 'nodeId'>)[];

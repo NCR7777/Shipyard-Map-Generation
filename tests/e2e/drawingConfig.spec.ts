@@ -7,6 +7,7 @@ type Drawing = {
   snapGrid: 0 | 1 | 5 | 10; snapNodes: boolean; facilityKind: string; zoneKind: string;
   facilityMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
   zoneMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
+  showRoadBands: boolean; showRoadCenterlines: boolean; showOrdinaryNodes: boolean;
 };
 type Camera = { offsetX: number; offsetY: number; scale: number };
 type Editor = { camera: Camera; drawing: Drawing };
@@ -14,14 +15,17 @@ type Stored = { draft: { mapJson: string }; checkpoint: { mapJson: string } | nu
 const defaults: Drawing = {
   snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
+  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
 };
 const custom: Drawing = {
   snapGrid: 5, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer',
   facilityMovePolicy: 'withAssociatedNodes', zoneMovePolicy: 'withAssociatedNodes',
+  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
 };
 const labels = {
   snapGrid: '网格吸附', snapNodes: '节点吸附', facilityKind: '新建设施类型', zoneKind: '新建区域类型',
   facilityMovePolicy: '设施移动策略', zoneMovePolicy: '区域移动策略',
+  showRoadBands: '显示道路带', showRoadCenterlines: '显示中心线', showOrdinaryNodes: '显示普通节点',
 } as const;
 
 async function ready(page: Page) {
@@ -74,13 +78,15 @@ async function configure(page: Page, drawing: Drawing) {
   for (const key of ['snapGrid', 'facilityKind', 'zoneKind', 'facilityMovePolicy', 'zoneMovePolicy'] as const) {
     await page.getByLabel(labels[key], { exact: true }).selectOption(String(drawing[key]));
   }
-  await page.getByLabel(labels.snapNodes, { exact: true }).setChecked(drawing.snapNodes);
+  for (const key of ['snapNodes', 'showRoadBands', 'showRoadCenterlines', 'showOrdinaryNodes'] as const)
+    await page.getByLabel(labels[key], { exact: true }).setChecked(drawing[key]);
 }
 async function expectDrawing(page: Page, drawing: Drawing) {
   for (const key of ['snapGrid', 'facilityKind', 'zoneKind', 'facilityMovePolicy', 'zoneMovePolicy'] as const) {
     await expect(page.getByLabel(labels[key], { exact: true })).toHaveValue(String(drawing[key]));
   }
-  await expect(page.getByLabel(labels.snapNodes, { exact: true })).toBeChecked({ checked: drawing.snapNodes });
+  for (const key of ['snapNodes', 'showRoadBands', 'showRoadCenterlines', 'showOrdinaryNodes'] as const)
+    await expect(page.getByLabel(labels[key], { exact: true })).toBeChecked({ checked: drawing[key] });
 }
 async function savedDrawing(page: Page, drawing: Drawing) {
   await expect.poll(async () => (await editor(page))?.drawing).toEqual(drawing);
@@ -278,6 +284,7 @@ test('D05 real legacy camera-only and partial records normalize missing fields w
     { record: { camera: legacyCamera }, expected: defaults },
     { record: { camera: legacyCamera, drawing: { snapGrid: 0, snapNodes: false, facilityKind: 'quay' } }, expected: { ...defaults, facilityKind: 'quay' } },
     { record: { camera: legacyCamera, drawing: { zoneMovePolicy: 'withAssociatedNodes' } }, expected: { ...defaults, zoneMovePolicy: 'withAssociatedNodes' as const } },
+    { record: { camera: legacyCamera, drawing: { showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false } }, expected: { ...defaults, showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false } },
   ];
   for (const [index, fixture] of cases.entries()) {
     await replaceEditorRecord(page, fixture.record);

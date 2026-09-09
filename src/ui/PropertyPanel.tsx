@@ -4,9 +4,13 @@ import type { FacilityMovePolicy, ZoneMovePolicy, MapCommand } from '../domain/c
 import { SpatialPropertyPanel, type SpatialSelection } from './SpatialPropertyPanel';
 import { RoadPhysicalFields, makePhysicalDraft, parsePhysicalDraft, physicalFields, type PhysicalDraft } from './RoadPhysicalFields';
 
+export type RoadShapePreview = { roadId: string; shapePoints: Vec3[]; mapContentHash: string };
+
 type NetworkSelection = { kind: 'node'; id: string; value: MapNode } | { kind: 'road'; id: string; value: MapRoad; lengthM: number };
 type Props = {
   map: YardMap;
+  mapContentHash: string;
+  onRoadPreviewChange?: (preview: RoadShapePreview | null) => void;
   boundaryEditMode?: 'auto' | 'polygon';
   onBoundaryModeChange?: (mode: 'auto' | 'polygon') => void;
   zoneMovePolicy?: ZoneMovePolicy;
@@ -20,13 +24,18 @@ type Props = {
   onDirtyChange?: (dirty: boolean) => void;
 };
 
+function vec(values: string[]): Vec3 | null {
+  if (values.length !== 3 || values.some(value => value.trim() === '' || !Number.isFinite(Number(value)))) return null;
+  return values.map(Number) as Vec3;
+}
+
 export function PropertyPanel(props: Props) {
   const { selected } = props;
   if (selected && selected.kind !== 'node' && selected.kind !== 'road') return <SpatialPropertyPanel {...props} selected={selected} />;
   return <NetworkPropertyPanel {...props} selected={selected} />;
 }
 
-function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChange, map }: Omit<Props, 'selected'> & { selected: NetworkSelection | null }) {
+function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChange, map, mapContentHash, onRoadPreviewChange }: Omit<Props, 'selected'> & { selected: NetworkSelection | null }) {
   const [physical, setPhysical] = useState<PhysicalDraft | null>(() => selected?.kind === 'road' ? makePhysicalDraft(selected.value) : null);
   const physicalPending = selected?.kind === 'road' && physical !== null && JSON.stringify(physical) !== JSON.stringify(makePhysicalDraft(selected.value));
   const [name, setName] = useState(selected?.value.name ?? '');
@@ -38,11 +47,17 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
     ? JSON.stringify(coords) !== JSON.stringify(selected.value.position.map(String))
     : JSON.stringify(shapePoints) !== JSON.stringify(selected.value.shapePoints.map(point => point.map(String))) || direction !== selected.value.direction));
   useEffect(() => { onDirtyChange?.(pending); return () => onDirtyChange?.(false); }, [pending, onDirtyChange]);
+  const roadId = selected?.kind === 'road' ? selected.id : null;
+  const originalShapePoints = selected?.kind === 'road' ? selected.value.shapePoints : null;
+  useEffect(() => {
+    const points = shapePoints.map(vec);
+    const changed = originalShapePoints !== null && JSON.stringify(points) !== JSON.stringify(originalShapePoints);
+    onRoadPreviewChange?.(roadId && changed && points.every((point): point is Vec3 => point !== null)
+      ? { roadId, shapePoints: points, mapContentHash } : null);
+    return () => onRoadPreviewChange?.(null);
+  }, [shapePoints, roadId, originalShapePoints, mapContentHash, onRoadPreviewChange]);
   if (!selected) return <div className="empty-properties"><div className="empty-glyph">↖</div><strong>{count > 1 ? `已选择 ${count} 个对象` : '选择对象查看属性'}</strong><p>{count > 1 ? '可一起移动、复制；道路包含显式端点，设施按移动策略处理关联节点。' : '点击节点、道路、设施、区域或关联点，也可使用左侧对象列表。Shift 点击可多选。'}</p></div>;
-  function vec(values: string[]): Vec3 | null {
-    if (values.some(value => value.trim() === '' || !Number.isFinite(Number(value)))) return null;
-    return values.map(Number) as Vec3;
-  }
+
   function apply() {
     if (!selected || readonly) return;
     if (selected.kind === 'node') {
@@ -85,12 +100,12 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
     </> : <>
       <div className="measurement-card"><span>派生二维长度</span><strong><output data-testid="road-length">{Number(selected.lengthM.toPrecision(12))}</output><small> m</small></strong><p>端点 + 内部折点计算，只读</p></div>
       <dl className="reference-list"><dt>起点</dt><dd>{selected.value.fromNodeId}</dd><dt>终点</dt><dd>{selected.value.toNodeId}</dd></dl>
+      {physical && <RoadPhysicalFields draft={physical} onChange={setPhysical} readonly={readonly} sources={map.sources} />}
       <label className="field-label">道路方向<select aria-label="道路方向" value={direction} disabled={readonly} onChange={event => setDirection(event.target.value as MapRoad['direction'])}><option value="unknown">未知（草稿）</option><option value="forward">起点 → 终点</option><option value="backward">终点 → 起点</option><option value="both">双向</option></select></label>
       <div className="property-subheading">内部折点 · m</div>
       <p className="field-note">按起点到终点排序；端点只引用节点。</p>
       {shapePoints.map((point, index) => <div key={index} className="shape-point"><span>{index + 1}</span>{(['X', 'Y', 'Z'] as const).map((axis, axisIndex) => <input key={axis} type="number" step="any" aria-label={`折点 ${index + 1} ${axis} (m)`} title={axis + ' (m)'} value={point[axisIndex] ?? ''} disabled={readonly} onChange={event => setShapePoints(points => points.map((p, i) => i === index ? p.map((v, j) => j === axisIndex ? event.target.value : v) : p))} />)}<button type="button" className="icon-button" aria-label={`删除折点 ${index + 1}`} disabled={readonly} onClick={() => setShapePoints(points => points.filter((_, i) => i !== index))}>×</button></div>)}
       <button type="button" className="subtle-button full-width" disabled={readonly} onClick={() => setShapePoints(points => [...points, points.at(-1) ? [...points.at(-1)!] : ['0', '0', '0']])}>添加内部折点</button>
-      {physical && <RoadPhysicalFields draft={physical} onChange={setPhysical} readonly={readonly} sources={map.sources} />}
       <p className="field-note">物理参数与折线编辑一起提交；道路外观不决定通行约束，尚未提供正式网络发布。</p>
     </>}
     {error && <p role="alert" className="inline-error">{error}</p>}
