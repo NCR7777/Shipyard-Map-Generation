@@ -1,8 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { compile } from 'json-schema-to-typescript';
 
-const schemaUrl = new URL('../schemas/map.schema.json', import.meta.url);
-const target = new URL('../src/domain/model.generated.ts', import.meta.url);
+const contracts = [['map.schema.json', 'model.generated.ts'], ['map-0.2.schema.json', 'model.v02.generated.ts']];
 // The generator consumes tuple `items`; the authoritative validator uses Draft 2020-12 prefixItems.
 function generatorSchema(value) {
   if (Array.isArray(value)) return value.map(generatorSchema);
@@ -17,9 +16,12 @@ function generatorSchema(value) {
   }
   return value;
 }
+for (const [schemaName, targetName] of contracts) {
+const schemaUrl = new URL('../schemas/' + schemaName, import.meta.url);
+const target = new URL('../src/domain/' + targetName, import.meta.url);
 const schema = JSON.parse(await readFile(schemaUrl, 'utf8'));
 const output = (await compile(generatorSchema(schema), 'YardMap', {
-  bannerComment: '/* Generated from schemas/map.schema.json. Run npm run schema:generate; do not edit. */',
+  bannerComment: '/* Generated from schemas/' + schemaName + '. Run npm run schema:generate; do not edit. */',
   unreachableDefinitions: true,
   style: { singleQuote: true, semi: true, tabWidth: 2, printWidth: 100 },
 })).replace(/\r\n/g, '\n');
@@ -31,4 +33,5 @@ if (process.argv.includes('--check')) {
   }
 } else {
   await writeFile(target, output, 'utf8');
+}
 }

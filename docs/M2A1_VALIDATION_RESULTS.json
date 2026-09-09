@@ -1,0 +1,296 @@
+{
+  "reportVersion": "1.0.0",
+  "stage": "M2A.1",
+  "date": "2026-09-09",
+  "status": "PASS_FOR_DECLARED_M2A1_SCOPE",
+  "workingDirectory": "paper01/map",
+  "taskDocument": "Shipyard_M2A_Review_Service_Nodes_Next_9244a61.md",
+  "identity": {
+    "reviewBaseCommit": "9244a615d1689098592fba9b3abe393b9082047c",
+    "workspaceBaseCommit": "5bdff55d0d7ce03ef09b32e99690924c21bc8313",
+    "testedState": "M2A.1 working tree before release commit; product source frozen before final checks",
+    "packageLockSha256": "c6236fa921b97b99772542a7e03a186d95b730132fdf3cd35d9b63c3f6faa374"
+  },
+  "environment": {
+    "operatingSystem": "Microsoft Windows NT 10.0.26200.0",
+    "powershell": "7.6.5",
+    "node": "v22.18.0",
+    "npm": "10.9.3",
+    "playwright": "1.63.0",
+    "chrome": "152.0.7977.76",
+    "browserProject": "chrome",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "browserWorkers": 1,
+    "browserServerPort": 4178,
+    "dependencyInstall": "Not repeated in this batch: package-lock unchanged, existing dependencies used, existing port 5173 service left alone",
+    "shellInvocation": "npm.cmd under PowerShell 7",
+    "toolEnvironmentLimitation": "Default sandbox helper returned helper_unknown_error; authorized workspace commands used elevated execution. This is a tool invocation limitation, not an application test failure."
+  },
+  "scope": {
+    "coveredTaskItems": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      24,
+      25,
+      26
+    ],
+    "partialTaskItems": [
+      {
+        "items": [
+          10,
+          11,
+          12
+        ],
+        "verified": "Arrival data contract, conservative local connection diagnostics, explicit ordered arc references and direction/continuity checks",
+        "notClaimed": "Complete turn legality, network reachability, route compilation or transport execution"
+      }
+    ],
+    "plannedOnlyTaskItems": [
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23
+    ],
+    "plannedOnlyExplanation": "M3A simulation, arrival/service execution, resource competition, cargo state and event replay are not implemented or accepted by this report.",
+    "separateFuturePhase": "M2B imagery calibration and packaging are outside this batch."
+  },
+  "baseline": {
+    "actualRunThisBatch": true,
+    "results": [
+      {
+        "command": "npm.cmd run schema:check",
+        "exitCode": 0
+      },
+      {
+        "command": "npm.cmd run typecheck",
+        "exitCode": 0
+      },
+      {
+        "command": "npm.cmd run lint",
+        "exitCode": 0,
+        "coreBoundaries": "PASS"
+      },
+      {
+        "command": "npm.cmd run test",
+        "exitCode": 0,
+        "files": 10,
+        "passed": 170,
+        "failed": 0,
+        "durationSeconds": 3.05
+      },
+      {
+        "command": "npm.cmd run test:integration",
+        "exitCode": 0,
+        "files": 2,
+        "passed": 17,
+        "failed": 0,
+        "durationSeconds": 5.97
+      },
+      {
+        "command": "npm.cmd run build",
+        "exitCode": 0,
+        "modules": 209,
+        "javascriptKb": 802.41,
+        "javascriptGzipKb": 246.47
+      },
+      {
+        "command": "npm.cmd run test:e2e",
+        "exitCode": 0,
+        "passed": 28,
+        "failed": 0,
+        "reportedDuration": "1.2m"
+      }
+    ],
+    "evidence": ".cache/M2A1_baseline_results.json",
+    "distinction": "Baseline counts are not used as evidence that new features passed."
+  },
+  "finalChecks": [
+    {
+      "command": "npm.cmd run schema:check",
+      "exitCode": 0,
+      "result": "Both versioned schemas and generated types consistent",
+      "log": ".cache/M2A1_final_schema_check.txt"
+    },
+    {
+      "command": "npm.cmd run typecheck",
+      "exitCode": 0,
+      "result": "Application and no-DOM core configurations passed",
+      "log": ".cache/M2A1_post_test_fix_typecheck.txt"
+    },
+    {
+      "command": "npm.cmd run lint",
+      "exitCode": 0,
+      "result": "ESLint and Core boundaries PASS",
+      "log": ".cache/M2A1_post_test_fix_lint.txt"
+    },
+    {
+      "command": "npm.cmd run test",
+      "exitCode": 0,
+      "files": 13,
+      "passed": 230,
+      "failed": 0,
+      "durationSeconds": 1.63,
+      "log": ".cache/M2A1_final_test.txt"
+    },
+    {
+      "command": "npm.cmd run test:integration",
+      "exitCode": 0,
+      "files": 3,
+      "passed": 26,
+      "failed": 0,
+      "durationSeconds": 5.7,
+      "log": ".cache/M2A1_final_test_integration.txt"
+    },
+    {
+      "command": "npm.cmd run build",
+      "exitCode": 0,
+      "modules": 214,
+      "javascriptKb": 845.59,
+      "javascriptGzipKb": 256.75,
+      "cssKb": 15,
+      "cssGzipKb": 4.11,
+      "warning": "Minified JavaScript chunk exceeds 500 kB; warning retained",
+      "log": ".cache/M2A1_final_build.txt"
+    },
+    {
+      "command": "npm.cmd run test:e2e",
+      "exitCode": 0,
+      "passed": 36,
+      "failed": 0,
+      "reportedDuration": "1.5m",
+      "retainedPreviousTests": 28,
+      "addedTests": 8,
+      "log": ".cache/M2A1_browser_final_run.txt",
+      "exitEvidence": ".cache/M2A1_browser_final_exit.txt"
+    },
+    {
+      "command": "npm.cmd run map:validate -- examples/M2A1_synthetic_service_targets.map.json",
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "result": "Valid editable draft with explicit unresolved connection warnings",
+      "log": ".cache/M2A1_cli_M2A1_synthetic_service_targets.map.json.txt"
+    },
+    {
+      "command": "npm.cmd run map:validate -- examples/M2A1_invalid_service_node.map.json",
+      "exitCode": 1,
+      "expectedExitCode": 1,
+      "result": "Invalid fixture correctly rejected",
+      "diagnostic": {
+        "code": "DANGLING_REFERENCE",
+        "path": "/servicePoints/sZoneUnload/nodeId"
+      },
+      "log": ".cache/M2A1_cli_M2A1_invalid_service_node.map.json.txt"
+    }
+  ],
+  "testAdditions": {
+    "independentDomain": {
+      "file": "tests/unit/M2A1_serviceTargets.test.ts",
+      "tests": 52
+    },
+    "creationHelper": {
+      "file": "tests/unit/M2A1_pointCreation.test.ts",
+      "tests": 6
+    },
+    "connectionCost": {
+      "file": "tests/unit/M2A1_connectionCost.test.ts",
+      "tests": 2
+    },
+    "independentCli": {
+      "file": "tests/integration/M2A1_cli.test.ts",
+      "tests": 9
+    },
+    "browserServiceTargets": {
+      "file": "tests/e2e/M2A1_serviceTargets.spec.ts",
+      "tests": 7
+    },
+    "independentlyAuthoredBrowserUpgrade": {
+      "file": "tests/e2e/M2A1_upgrade.spec.ts",
+      "tests": 1
+    }
+  },
+  "failureAndCorrectionHistory": [
+    {
+      "run": "First complete post-change browser suite",
+      "exitCode": 1,
+      "passed": 35,
+      "failed": 1,
+      "reportedDuration": "1.7m",
+      "failingTest": "M1_editor: keeps text-field undo and deletion separate from map commands",
+      "observed": "The final map Undo was correctly blocked by the newly required unapplied-input confirmation; the legacy test expected the committed name immediately.",
+      "correction": "Added guard visibility, unchanged hash and still-pending name assertions, then explicit discard before retaining the original name-A assertion. No production change was needed for this test adaptation.",
+      "log": ".cache/M2A1_final_test_e2e.txt",
+      "evidenceDirectory": ".cache/M2A1_first_run_evidence/M1_editor-keeps-text-field-683e5--separate-from-map-commands-chrome"
+    },
+    {
+      "run": "Initial test-only patch and incomplete recheck",
+      "typecheckExitCode": 2,
+      "observed": "Text replacement initially matched an earlier unrelated Undo block, causing TS2304 and TS2339. The subsequent browser process was manually interrupted after three completed passing tests.",
+      "correction": "Restored the unrelated block and limited the six-line addition to the intended test. Re-ran typecheck and lint successfully before the final full browser run.",
+      "completedBrowserSuite": false,
+      "countedAsAcceptance": false,
+      "productCodeChanged": false,
+      "evidence": ".cache/M2A1_test_patch_error_results.json",
+      "interruptionNote": ".cache/M2A1_interrupted_recheck_note.txt"
+    },
+    {
+      "run": "Final complete browser rerun",
+      "exitCode": 0,
+      "passed": 36,
+      "failed": 0,
+      "log": ".cache/M2A1_browser_final_run.txt",
+      "independentReview": "A separate core agent reviewed all legacy test diffs: original assertions retained, compatibility edits intentional, no remaining misplaced patch."
+    }
+  ],
+  "examples": {
+    "generator": "scripts/generate-M2A1-examples.ts",
+    "generationCommand": "node --import tsx scripts/generate-M2A1-examples.ts",
+    "generationExitCode": 0,
+    "generationMethod": "Load the original M2A synthetic map through the shared pipeline, apply five domain commands including explicit schema upgrade, then serialize the valid map. The invalid file is a deliberate external JSON edit to one service node reference.",
+    "source": "examples/M2A_synthetic.map.json",
+    "sourceSha256": "efb78f43a24ae2c7d12819c1f21f5c1c49b5ec1a88a97de0f51aea1fecb2806c",
+    "valid": "examples/M2A1_synthetic_service_targets.map.json",
+    "validFileSha256": "1b3cae18c7a2573bc97d287d9d97e0b9abc05b922020c620ab8bdd0b5ffa97cd",
+    "validContentHash": "2f70d50ab0642a8d5ea9376f3f7c4c6831268a325e38b524c567113c5460cde3",
+    "invalid": "examples/M2A1_invalid_service_node.map.json",
+    "invalidFileSha256": "3b6d5fb023d7af0d6a6a3c22c6d45a4a4cb64ff9d4c9a3a8ed6e978e9c5fc55b",
+    "provenanceLimit": "Synthetic only; no measured speed, service duration, capacity, traffic execution or simulation events invented."
+  },
+  "visualChecks": [
+    {
+      "image": "test-results/M2A1_serviceTargets-N02-an-788d4-claration-after-save-reload-chrome/M2A1_service_target.png",
+      "observed": "Service target, facility, authoritative node and arrival declaration readable; unresolved attachment warning retained."
+    },
+    {
+      "image": "test-results/M2A1_serviceTargets-N25-un-d8b65-ct-tool-and-history-changes-chrome/M2A1_unapplied_guard.png",
+      "observed": "Unapplied-input modal title and both explicit decision buttons visible; no clipping."
+    }
+  ],
+  "additionalUiRegression": "Before the final source freeze, long service-creation modal autofocus was changed to preventScroll. N02 asserts initial scrollTop is zero and the heading is in the viewport; it passed in both complete runs.",
+  "limitations": [
+    "Browser automation ran only installed Chrome on Windows. Firefox and Safari were not run.",
+    "The retained local-file tests combine a simulated picker with real OPFS handles, reads, writes and close operations; they do not certify native OS permission prompts.",
+    "Quota, completion-delay and Object.freeze restore failures are explicitly simulated fault injections, not naturally occurring disk or quota failures.",
+    "Connection summaries remain blocked or unchecked. No fully validated reachable status, routing, task simulation or scheduler is delivered.",
+    "The JavaScript bundle size warning remains.",
+    "Labels for co-located spatial objects can overlap; this batch does not claim to solve label placement.",
+    "Raw traces, screenshots and .cache logs are local evidence, intentionally not included in the published source tree."
+  ],
+  "evidencePolicy": "All paths are relative to paper01/map. Final unit/integration/build results refer to the frozen product source; after the legacy test-only correction, typecheck/lint and the entire browser suite were rerun. Interrupted runs are excluded from acceptance counts."
+}

@@ -332,7 +332,7 @@ test('S03 a one-shot native freeze fault during UI recovery cannot save the old 
     Object.freeze = ((value: unknown) => {
       if (!thrown && value && typeof value === 'object') {
         const candidate = value as { schemaVersion?: string; metadata?: { name?: string }; nodes?: unknown; roads?: unknown };
-        if (candidate.schemaVersion === '0.1.0' && candidate.metadata?.name === '恢复故障 工程B' && candidate.nodes && candidate.roads) {
+        if (['0.1.0', '0.2.0'].includes(candidate.schemaVersion ?? '') && candidate.metadata?.name === '恢复故障 工程B' && candidate.nodes && candidate.roads) {
           thrown = true;
           throw new Error('S03 simulated UI restore callback failure');
         }

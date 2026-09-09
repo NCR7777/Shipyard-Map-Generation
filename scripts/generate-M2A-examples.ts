@@ -7,7 +7,7 @@ import type { Polygon, YardMap } from '../src/domain/model';
 
 // Reproducible synthetic examples, generated only through the implemented domain commands.
 const rectangle = (x: number, y: number, width: number, height: number): Polygon => ({ outer: [[x, y, 0], [x + width, y, 0], [x + width, y + height, 0], [x, y + height, 0], [x, y, 0]], holes: [] });
-let map = newMap('map_M2A_synthetic', 'M2A synthetic · 60m×30m厂房与运输入口');
+let map = newMap('map_M2A_synthetic', 'M2A synthetic · 60m×30m厂房与运输入口', '0.1.0');
 const commands: MapCommand[] = [
   { type: 'addNode', id: 'nRoadWest', node: { ...newNode([0, 0, 0], '西侧入口节点'), kind: 'access' } },
   { type: 'addNode', id: 'nRoadEast', node: newNode([100, 0, 0], '东侧道路节点') },

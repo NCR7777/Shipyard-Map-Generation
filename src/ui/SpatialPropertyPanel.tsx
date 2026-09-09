@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { AccessPoint, Facility, Polygon, ServicePoint, Vec3, YardMap, Zone } from '../domain/model';
-import { normalizeSelection, selectionImpact, type FacilityMovePolicy, type MapCommand, type Selection } from '../domain/commands';
+import { normalizeSelection, selectionImpact, type FacilityMovePolicy, type ZoneMovePolicy, type MapCommand, type Selection } from '../domain/commands';
 import { polygonArea2D } from '../geometry/polygons';
 import './spatial.css';
+import { PointPropertyPanel } from './PointPropertyPanel';
+import { zoneServicePointIds } from '../topology/serviceConnections';
 export type SpatialSelection =
   | { kind: 'facility'; id: string; value: Facility }
   | { kind: 'zone'; id: string; value: Zone }
@@ -11,6 +13,7 @@ export type SpatialSelection =
 export interface SpatialPanelProps {
   selected: SpatialSelection; map: YardMap; readonly: boolean;
   onApply: (command: MapCommand) => boolean; onDirtyChange?: (dirty: boolean) => void;
+  zoneMovePolicy?: ZoneMovePolicy; onZoneMovePolicyChange?: (policy: ZoneMovePolicy) => void;
   facilityMovePolicy: FacilityMovePolicy; onMovePolicyChange: (policy: FacilityMovePolicy) => void;
 }
 const makeRings = (polygon: Polygon) => [polygon.outer, ...polygon.holes].map(ring => ring.slice(0, -1).map(point => point.map(String)));
@@ -20,9 +23,9 @@ const zoneKinds: [Zone['kind'], string][] = [['work', '作业区'], ['buffer', '
 
 export function SpatialPropertyPanel(props: SpatialPanelProps) {
   return props.selected.kind === 'facility' || props.selected.kind === 'zone'
-    ? <PolygonPanel {...props} selected={props.selected} /> : <PointPanel {...props} selected={props.selected} />;
+    ? <PolygonPanel {...props} selected={props.selected} /> : <PointPropertyPanel {...props} selected={props.selected} />;
 }
-function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilityMovePolicy, onMovePolicyChange }: SpatialPanelProps & { selected: Extract<SpatialSelection, { kind: 'facility' | 'zone' }> }) {
+function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilityMovePolicy, onMovePolicyChange, zoneMovePolicy = 'boundaryOnly', onZoneMovePolicyChange }: SpatialPanelProps & { selected: Extract<SpatialSelection, { kind: 'facility' | 'zone' }> }) {
   const [name, setName] = useState(selected.value.name); const [kind, setKind] = useState(selected.value.kind);
   const [passability, setPassability] = useState<Zone['passability']>(selected.kind === 'zone' ? selected.value.passability : 'unknown');
   const [rings, setRings] = useState(() => makeRings(selected.value.boundary));
@@ -37,7 +40,7 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
   const pivotPending = JSON.stringify(pivot) !== JSON.stringify(initialPivot);
   useEffect(() => { onDirtyChange?.(basePending || moving || rotating || pivotPending); return () => onDirtyChange?.(false); }, [basePending, moving, rotating, pivotPending, onDirtyChange]);
   const selection: Selection = { ...normalizeSelection({ nodes: [], roads: [] }), [selected.kind === 'facility' ? 'facilities' : 'zones']: [selected.id] };
-  const impact = selectionImpact(map, selection, facilityMovePolicy);
+  const impact = selectionImpact(map, selection, facilityMovePolicy, zoneMovePolicy);
   function apply() {
     if (readonly) return;
     if (moving || rotating || pivotPending) { setError('另有未执行的平移/旋转参数，请先重置变换参数，再提交边界属性。'); return; }
@@ -56,8 +59,8 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
     const vector = numberVector(type === 'translateSelection' ? delta : pivot);
     if (!vector || !angle.trim() || !Number.isFinite(Number(angle))) { setError('平移/旋转参数必须是有限数值；角度为弧度。'); return; }
     const command: MapCommand = type === 'translateSelection'
-      ? { type, selection, delta: vector, facilityMovePolicy }
-      : { type, selection, pivot: vector, angleRad: Number(angle), facilityMovePolicy };
+      ? { type, selection, delta: vector, facilityMovePolicy, zoneMovePolicy }
+      : { type, selection, pivot: vector, angleRad: Number(angle), facilityMovePolicy, zoneMovePolicy };
     if (onApply(command)) { setDelta(['0', '0', '0']); setAngle('0'); setPivot(initialPivot); setError(''); }
   }
   function addVertex(ringIndex: number) {
@@ -83,6 +86,7 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
       <label className="field-label">设施移动关联点<select aria-label="设施移动关联点" value={facilityMovePolicy} disabled={readonly} onChange={event => onMovePolicyChange(event.target.value as FacilityMovePolicy)}><option value="boundaryOnly">仅边界，关联点保持</option><option value="withAssociatedNodes">边界与关联节点一起</option></select></label>
       <p className="field-note">{selected.value.accessPointIds.length} 个入口 · {selected.value.servicePointIds.length} 个服务点。高度：{selected.value.heightM.state === 'known' ? selected.value.heightM.value + ' m' : selected.value.heightM.state}。</p>
     </>}
+    {selected.kind === 'zone' && <><label className="field-label">区域移动关联点<select aria-label="区域移动关联点" disabled={readonly} value={zoneMovePolicy} onChange={event => onZoneMovePolicyChange?.(event.target.value as ZoneMovePolicy)}><option value="boundaryOnly">仅边界，成员点保持</option><option value="withAssociatedNodes">边界与关联节点一起</option></select></label><p className="field-note">显式归属服务点 {zoneServicePointIds(map, selected.id).length} 个；该列表由 servicePoint.zoneId 派生，不因空间覆盖自动纳入。</p></>}
     <p className="field-note" data-testid="spatial-move-impact">整体移动/旋转策略将移动 {impact.selection.nodes.length} 个节点；关联道路 {impact.affectedRoadIds.join('、') || '无'}。共享节点 {impact.sharedNodeIds.join('、') || '无'}；引用相同节点的入口/服务点会同步。</p>
     <details open><summary>边界顶点 · m</summary><p className="field-note">外环逆时针、孔洞顺时针。闭合点自动等于首点；编辑不反转顶点数组。</p>
       {rings.map((ring, ringIndex) => <section key={ringIndex} className="ring-editor"><strong>{ringIndex === 0 ? '外环' : `孔洞 ${ringIndex}`}</strong>
@@ -103,34 +107,5 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
     </details>
     {error && <p role="alert" className="inline-error">{error}</p>}
     <div className="provenance-note">来源声明：{selected.value.provenance.category}。边界不等于车辆入口，面积不自动变成资源容量。</div>
-  </div>;
-}
-function PointPanel({ selected, map, readonly, onApply, onDirtyChange }: SpatialPanelProps & { selected: Extract<SpatialSelection, { kind: 'accessPoint' | 'servicePoint' }> }) {
-  const [name, setName] = useState(selected.value.name); const [nodeId, setNodeId] = useState(selected.value.nodeId);
-  const [facilityId, setFacilityId] = useState(selected.value.facilityId ?? '');
-  const [accessId, setAccessId] = useState(selected.kind === 'servicePoint' ? selected.value.accessPointId ?? '' : '');
-  const [kind, setKind] = useState<ServicePoint['kind']>(selected.kind === 'servicePoint' ? selected.value.kind : 'other');
-  const pending = name !== selected.value.name || nodeId !== selected.value.nodeId || facilityId !== (selected.value.facilityId ?? '') || (selected.kind === 'servicePoint' && (kind !== selected.value.kind || accessId !== (selected.value.accessPointId ?? '')));
-  useEffect(() => { onDirtyChange?.(pending); return () => onDirtyChange?.(false); }, [pending, onDirtyChange]);
-  const node = map.nodes[nodeId];
-  function apply() {
-    if (readonly) return;
-    if (selected.kind === 'accessPoint') onApply({ type: 'updateAccessPoint', id: selected.id, patch: { name, nodeId, facilityId } });
-    else onApply({ type: 'updateServicePoint', id: selected.id, patch: { name, kind, nodeId, facilityId: facilityId || null, accessPointId: accessId || null } });
-  }
-  return <div className="property-content spatial-property">
-    <div className="entity-kind">{selected.kind === 'accessPoint' ? '设施入口' : '服务点'}</div>
-    <label className="field-label">稳定 ID<input aria-label="稳定 ID" value={selected.id} readOnly className="id-input" /></label>
-    <label className="field-label">名称<input aria-label="名称" disabled={readonly} value={name} onChange={event => setName(event.target.value)} /></label>
-    <label className="field-label">关联设施<select aria-label="关联设施" disabled={readonly} value={facilityId} onChange={event => { setFacilityId(event.target.value); if (map.accessPoints[accessId]?.facilityId !== event.target.value) setAccessId(''); }}><option value="">{selected.kind === 'accessPoint' ? '必须选择设施' : '独立服务点'}</option>{Object.entries(map.facilities).map(([id, value]) => <option key={id} value={id}>{value.name} · {id}</option>)}</select></label>
-    <label className="field-label">权威位置节点<select aria-label="权威位置节点" disabled={readonly} value={nodeId} onChange={event => setNodeId(event.target.value)}>{Object.entries(map.nodes).map(([id, value]) => <option key={id} value={id}>{value.name} · {id}</option>)}</select></label>
-    <p className="field-note" data-testid="point-position">节点坐标：{node ? node.position.join(', ') + ' m' : '节点不存在'}。这里仅保存 nodeId 引用；如需数值移动，在对象列表选择该节点编辑 XYZ。</p>
-    {selected.kind === 'servicePoint' && <>
-      <label className="field-label">服务类型<select aria-label="服务类型" disabled={readonly} value={kind} onChange={event => setKind(event.target.value as ServicePoint['kind'])}><option value="loading">装载</option><option value="unloading">卸载</option><option value="parking">停车</option><option value="berth">泊位</option><option value="other">其他</option></select></label>
-      <label className="field-label">接入入口<select aria-label="接入入口" disabled={readonly} value={accessId} onChange={event => { setAccessId(event.target.value); if (event.target.value) setFacilityId(map.accessPoints[event.target.value]!.facilityId); }}><option value="">未声明入口</option>{Object.entries(map.accessPoints).filter(([, point]) => !facilityId || point.facilityId === facilityId).map(([id, point]) => <option key={id} value={id}>{point.name} · {id}</option>)}</select></label>
-      <p className="field-note">选择接入入口同时显示其所属设施。资源引用保留；入口绑定不代表路线已经可达。</p>
-    </>}
-    <button className="primary-button full-width" disabled={readonly || !nodeId || (selected.kind === 'accessPoint' && !facilityId)} onClick={apply}>应用属性</button>
-    <div className="provenance-note">来源声明：{selected.value.provenance.category}。设施成员与点归属通过同一领域事务维护。</div>
   </div>;
 }

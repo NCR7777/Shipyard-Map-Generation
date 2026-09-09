@@ -9,6 +9,7 @@ import { snapPosition, type SnapOptions } from './useSpatialDrawing';
 export interface SpatialLayerProps {
   scene: SceneSnapshot; camera: Camera; selection: Selection; previewDelta: Vec3 | null;
   snap?: SnapOptions; readonly: boolean; selecting: boolean; drawingRoad: boolean; movingNodeIds: Set<string>;
+  disableDrag?: boolean; pickingPoint?: boolean; onPickNode?: (id: string) => void;
   onSelect: (kind: keyof Selection, id: string, additive: boolean) => void;
   onDrawClick: () => void; onRoadNode: (id: string) => void;
   onDragStart: (origin: Vec3) => void; onPreview: (delta: Vec3 | null) => void; onDragEnd: (delta: Vec3) => void;
@@ -30,7 +31,7 @@ export function SpatialLayer(props: SpatialLayerProps) {
     }));
     if (!anchor.every(Number.isFinite) || rings.some(ring => ring.some(point => !point.every(Number.isFinite)))) return null;
     const fill = item.entityType === 'facilities' ? '#c7e3df' : item.kind === 'water' ? '#bad8ef' : item.kind === 'obstacle' || item.kind === 'forbidden' ? '#ead0cc' : '#e8e3c6';
-    return <Group _useStrictMode key={item.entityType + item.id} x={anchor[0]} y={anchor[1]} draggable={props.selecting && !props.readonly}
+    return <Group _useStrictMode key={item.entityType + item.id} x={anchor[0]} y={anchor[1]} draggable={!props.disableDrag && props.selecting && !props.readonly}
       onMouseDown={event => { if (event.evt.button === 0 && props.selecting && (!selected || event.evt.shiftKey)) props.onSelect(item.entityType, item.id, event.evt.shiftKey); }}
       onClick={event => { if (event.evt.button !== 0) return; event.cancelBubble = true; if (props.selecting) { if (!event.evt.shiftKey) props.onSelect(item.entityType, item.id, false); } else if (!props.readonly) props.onDrawClick(); }}
       onDragStart={() => props.onDragStart([...origin])} onDragMove={event => props.onPreview(dragDelta(event, origin, props))}
@@ -46,9 +47,9 @@ export function AssociatedPointLayer(props: SpatialLayerProps) {
     const origin = point.position; const offset = props.movingNodeIds.has(point.nodeId) ? props.previewDelta : null;
     const pos = worldToScreen(move(origin, offset), props.camera); if (!pos.every(Number.isFinite)) return null;
     const selected = !!props.selection[point.entityType]?.includes(point.id);
-    return <Group _useStrictMode key={point.entityType + point.id} x={pos[0]} y={pos[1]} draggable={props.selecting && !props.readonly}
+    return <Group _useStrictMode key={point.entityType + point.id} x={pos[0]} y={pos[1]} draggable={!props.disableDrag && props.selecting && !props.readonly}
       onMouseDown={event => { if (event.evt.button === 0 && props.selecting && (!selected || event.evt.shiftKey)) props.onSelect(point.entityType, point.id, event.evt.shiftKey); }}
-      onClick={event => { if (event.evt.button !== 0) return; event.cancelBubble = true; if (props.drawingRoad && !props.readonly) props.onRoadNode(point.nodeId); else if (props.selecting) { if (!event.evt.shiftKey) props.onSelect(point.entityType, point.id, false); } else if (!props.readonly) props.onDrawClick(); }}
+      onClick={event => { if (event.evt.button !== 0) return; event.cancelBubble = true; if (props.pickingPoint && !props.readonly) props.onPickNode?.(point.nodeId); else if (props.drawingRoad && !props.readonly) props.onRoadNode(point.nodeId); else if (props.selecting) { if (!event.evt.shiftKey) props.onSelect(point.entityType, point.id, false); } else if (!props.readonly) props.onDrawClick(); }}
       onDragStart={() => props.onDragStart([...origin])} onDragMove={event => props.onPreview(dragDelta(event, origin, props))}
       onDragEnd={event => { props.onPreview(null); props.onDragEnd(dragDelta(event, origin, props)); }}>
       <Rect x={-9} y={-9} width={18} height={18} cornerRadius={point.entityType === 'accessPoints' ? 2 : 8} fill={selected ? '#e08128' : point.entityType === 'accessPoints' ? '#5e9086' : '#816db1'} stroke="#fff" strokeWidth={2} />

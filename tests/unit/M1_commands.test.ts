@@ -9,7 +9,7 @@ import { editorFixture, readonlyFixture, testNode } from '../helpers/M1_fixtures
 
 describe('M1 transactional domain commands', () => {
   it('adds nodes and a road without mutating prior snapshots or inventing attributes', () => {
-    const empty = newMap('map_new');
+    const empty = newMap('map_new', undefined, '0.1.0');
     const before = serializeMap(empty);
     const nodeResult = applyMapCommand(empty, { type: 'addNode', id: 'nA', node: testNode('A', 0) });
     expect(nodeResult.ok).toBe(true);

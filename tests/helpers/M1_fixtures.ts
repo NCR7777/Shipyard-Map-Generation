@@ -6,7 +6,7 @@ export function testNode(name: string, x: number, y = 0): MapNode {
 }
 
 export function editorFixture(): YardMap {
-  const map = newMap('map_M1_test', 'M1 synthetic 回归地图');
+  const map = newMap('map_M1_test', 'M1 synthetic 回归地图', '0.1.0');
   map.metadata.layoutBasis = 'synthetic';
   map.nodes.nA = testNode('A', 0);
   map.nodes.nB = testNode('B', 100);

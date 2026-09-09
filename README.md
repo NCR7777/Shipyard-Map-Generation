@@ -1,4 +1,4 @@
-> 当前工程状态：M0 + M1 + M1.1 + M2A 已完成。支持浏览器保存/自动草稿/恢复/最近项目，设施与区域绘制、入口/服务点关联、明确复制删除与道路拆分，以及完整 JSON 往返。实际验证：170 项单元、17 项集成、28 项真实 Chrome 测试通过，类型检查/lint/构建通过。见 [M2A 阶段报告](docs/M2A_STAGE_REPORT.md)、[使用指南](docs/M2A_USER_GUIDE.md) 和 [领域契约](docs/M2A_DOMAIN_CONTRACT.md)。启动：本目录运行 npm ci、npm run dev -- --host 127.0.0.1。本轮仍仅 draft 校验；底图/资源 ZIP 属 M2B，路网发布/路径预览属 M3，尚未实现三维/VR/物理验证。系统文件授权待按[手工步骤](docs/M11_NATIVE_FILE_ACCEPTANCE.md)核验。下方开发任务包原文作为历史保留。
+> 当前工程状态：M0 + M1 + M1.1 + M2A + M2A.1 已完成。支持保存恢复、空间编辑、服务点画布定位、设施/区域显式归属、边界代理/内部路径声明、未应用输入保护及双版本 JSON/CLI。此次实际验证：230 项单元、26 项集成、36 项 Chrome 测试全部通过，Schema/类型/lint/构建通过。见 [M2A.1 阶段报告](docs/M2A1_STAGE_REPORT.md)、[使用指南](docs/M2A1_USER_GUIDE.md)、[Schema 兼容合同](docs/M2A1_SCHEMA_COMPATIBILITY.md) 和 [结构化验证记录](docs/M2A1_VALIDATION_RESULTS.json)。本目录运行 npm ci、npm run dev -- --host 127.0.0.1。当前仅 draft 和局部接路检查；[M3A 是后续实施计划](docs/M3A_IMPLEMENTATION_PLAN.md)，没有装卸仿真/资源执行。底图和 ZIP 属 M2B，3D/VR 未实现。系统文件授权待按[手工步骤](docs/M11_NATIVE_FILE_ACCEPTANCE.md)核验。下方原开发任务包保留为历史。
 
 # 船厂空间布局编辑器：Codex 开发任务包
 
@@ -28,6 +28,6 @@ JSON 保存船厂领域模型，不保存画布场景树。空间几何、网络
 
 ## 当前工程入口
 
-上文为初始任务包说明，原文保留。实际工程已在本目录完成 M0/M1、M1.1 和 M2A；当前使用方法见 [M2A 使用指南](docs/M2A_USER_GUIDE.md)，实现状态和限制见 [M2A 阶段报告](docs/M2A_STAGE_REPORT.md)。旧 [M1 能力清单](docs/M1_CAPABILITIES.md) 保留为历史。数据契约见 [M0 字段与坐标文档](docs/M0_DATA_CONTRACT.md)，架构决策见 [M0 ADR](docs/M0_ADR.md)。检查命令和结果以各阶段报告为准。
+上文为初始任务包说明，原文保留。实际工程已在本目录完成 M0/M1、M1.1、M2A 和 M2A.1；当前使用方法见 [M2A.1 使用指南](docs/M2A1_USER_GUIDE.md)，实现状态和限制见 [M2A.1 阶段报告](docs/M2A1_STAGE_REPORT.md)。旧 [M1 能力清单](docs/M1_CAPABILITIES.md) 保留为历史。数据契约见 [M0 字段与坐标文档](docs/M0_DATA_CONTRACT.md)，架构决策见 [M0 ADR](docs/M0_ADR.md)。检查命令和结果以各阶段报告为准。
 
 在本目录运行 `npm ci`、`npm run dev -- --host 127.0.0.1` 启动本地应用；无浏览器验证使用 `npm run map:validate -- examples/M1_synthetic.map.json`。本次地图与消息示例均为 synthetic，不是实测船厂或真实运输记录。

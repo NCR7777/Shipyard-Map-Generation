@@ -1,0 +1,1147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yard-map.local/schemas/0.2.0/map.schema.json",
+  "title": "YardMap",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "mapId",
+    "revision",
+    "metadata",
+    "coordinateFrame",
+    "siteBoundary",
+    "nodes",
+    "roads",
+    "junctions",
+    "movements",
+    "facilities",
+    "accessPoints",
+    "servicePoints",
+    "zones",
+    "resources",
+    "sources",
+    "assets",
+    "backgroundLayers",
+    "extensionNamespaces",
+    "extensions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "0.2.0"
+    },
+    "mapId": {
+      "$ref": "#/$defs/Id"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "metadata": {
+      "$ref": "#/$defs/Metadata"
+    },
+    "coordinateFrame": {
+      "$ref": "#/$defs/CoordinateFrame"
+    },
+    "siteBoundary": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Polygon"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nodes": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/MapNode"
+      }
+    },
+    "roads": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/MapRoad"
+      }
+    },
+    "junctions": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Junction"
+      }
+    },
+    "movements": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Movement"
+      }
+    },
+    "facilities": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Facility"
+      }
+    },
+    "accessPoints": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/AccessPoint"
+      }
+    },
+    "servicePoints": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/ServicePoint"
+      }
+    },
+    "zones": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Zone"
+      }
+    },
+    "resources": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Resource"
+      }
+    },
+    "sources": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Source"
+      }
+    },
+    "assets": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Asset"
+      }
+    },
+    "backgroundLayers": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/BackgroundLayer"
+      }
+    },
+    "extensionNamespaces": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Namespace"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/ExtensionDeclaration"
+      }
+    },
+    "extensions": {
+      "$ref": "#/$defs/Extensions"
+    }
+  },
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+    },
+    "Namespace": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$"
+    },
+    "Vec3": {
+      "title": "Vec3",
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "Vec2": {
+      "title": "Vec2",
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "IdList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Id"
+      },
+      "uniqueItems": true
+    },
+    "Extensions": {
+      "title": "Extensions",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/Namespace"
+      },
+      "additionalProperties": true
+    },
+    "ExtensionDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "category"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "metadata",
+            "visual",
+            "behavior"
+          ]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "PhysicalValue": {
+      "title": "PhysicalValue",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "value"
+          ],
+          "properties": {
+            "state": {
+              "const": "known"
+            },
+            "value": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "sourceRef": {
+              "$ref": "#/$defs/Id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "unknown",
+                "unrestricted",
+                "not_applicable"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Provenance": {
+      "title": "Provenance",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category"
+      ],
+      "properties": {
+        "category": {
+          "enum": [
+            "surveyed",
+            "drawing",
+            "imagery_derived",
+            "design_assumption",
+            "synthetic",
+            "unknown"
+          ]
+        },
+        "sourceRefs": {
+          "$ref": "#/$defs/IdList"
+        },
+        "fieldSources": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Id"
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "Metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "layoutBasis"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "layoutBasis": {
+          "enum": [
+            "conceptual",
+            "synthetic",
+            "reference_based",
+            "surveyed"
+          ]
+        },
+        "applicability": {
+          "type": "string"
+        },
+        "derivedFrom": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mapId",
+            "contentHash"
+          ],
+          "properties": {
+            "mapId": {
+              "$ref": "#/$defs/Id"
+            },
+            "contentHash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "reviewNotes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "CoordinateFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "handedness",
+        "groundPlane",
+        "upAxis",
+        "lengthUnit",
+        "angleUnit",
+        "massUnit",
+        "timeUnit"
+      ],
+      "properties": {
+        "kind": {
+          "const": "local_cartesian"
+        },
+        "handedness": {
+          "const": "right"
+        },
+        "groundPlane": {
+          "const": "XY"
+        },
+        "upAxis": {
+          "const": "Z"
+        },
+        "lengthUnit": {
+          "const": "m"
+        },
+        "angleUnit": {
+          "const": "rad"
+        },
+        "massUnit": {
+          "const": "kg"
+        },
+        "timeUnit": {
+          "const": "s"
+        },
+        "geographicAnchor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "crs",
+            "coordinateOrder",
+            "origin",
+            "rotationRad",
+            "method"
+          ],
+          "properties": {
+            "crs": {
+              "type": "string"
+            },
+            "coordinateOrder": {
+              "type": "string"
+            },
+            "origin": {
+              "$ref": "#/$defs/Vec3"
+            },
+            "rotationRad": {
+              "type": "number"
+            },
+            "method": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "Polygon": {
+      "title": "Polygon",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outer",
+        "holes"
+      ],
+      "properties": {
+        "outer": {
+          "type": "array",
+          "minItems": 4,
+          "items": {
+            "$ref": "#/$defs/Vec3"
+          }
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 4,
+            "items": {
+              "$ref": "#/$defs/Vec3"
+            }
+          }
+        }
+      }
+    },
+    "MapNode": {
+      "title": "MapNode",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "position",
+        "kind",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/$defs/Vec3"
+        },
+        "kind": {
+          "enum": [
+            "ordinary",
+            "junction",
+            "access",
+            "service"
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "MapRoad": {
+      "title": "MapRoad",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "fromNodeId",
+        "toNodeId",
+        "shapePoints",
+        "direction",
+        "widthM",
+        "heightLimitM",
+        "massLimitKg",
+        "speedLimitMps",
+        "resourceIds",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "fromNodeId": {
+          "$ref": "#/$defs/Id"
+        },
+        "toNodeId": {
+          "$ref": "#/$defs/Id"
+        },
+        "shapePoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Vec3"
+          }
+        },
+        "direction": {
+          "enum": [
+            "unknown",
+            "forward",
+            "backward",
+            "both"
+          ]
+        },
+        "widthM": {
+          "$ref": "#/$defs/PhysicalValue"
+        },
+        "heightLimitM": {
+          "$ref": "#/$defs/PhysicalValue"
+        },
+        "massLimitKg": {
+          "$ref": "#/$defs/PhysicalValue"
+        },
+        "speedLimitMps": {
+          "$ref": "#/$defs/PhysicalValue"
+        },
+        "observedLengthM": {
+          "$ref": "#/$defs/PhysicalValue"
+        },
+        "corridorPolygon": {
+          "$ref": "#/$defs/Polygon"
+        },
+        "resourceIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "Junction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "nodeIds",
+        "model",
+        "resourceIds",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "nodeIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "model": {
+          "enum": [
+            "unknown",
+            "explicit_movements"
+          ]
+        },
+        "boundary": {
+          "$ref": "#/$defs/Polygon"
+        },
+        "resourceIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "ArcRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "roadId",
+        "direction"
+      ],
+      "properties": {
+        "roadId": {
+          "$ref": "#/$defs/Id"
+        },
+        "direction": {
+          "enum": [
+            "forward",
+            "backward"
+          ]
+        }
+      }
+    },
+    "Movement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "junctionId",
+        "incomingArc",
+        "outgoingArc",
+        "allowed",
+        "resourceIds",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "junctionId": {
+          "$ref": "#/$defs/Id"
+        },
+        "incomingArc": {
+          "$ref": "#/$defs/ArcRef"
+        },
+        "outgoingArc": {
+          "$ref": "#/$defs/ArcRef"
+        },
+        "allowed": {
+          "type": "boolean"
+        },
+        "internalPath": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/Vec3"
+          }
+        },
+        "resourceIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "Facility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "boundary",
+        "accessPointIds",
+        "servicePointIds",
+        "heightM",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "workshop",
+            "yard",
+            "assembly",
+            "dock",
+            "quay",
+            "other"
+          ]
+        },
+        "boundary": {
+          "$ref": "#/$defs/Polygon"
+        },
+        "accessPointIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "servicePointIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "heightM": {
+          "$ref": "#/$defs/PhysicalValue"
+        },
+        "assetId": {
+          "$ref": "#/$defs/Id"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "AccessPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "facilityId",
+        "nodeId",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "facilityId": {
+          "$ref": "#/$defs/Id"
+        },
+        "nodeId": {
+          "$ref": "#/$defs/Id"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "ServicePoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "nodeId",
+        "resourceIds",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "loading",
+            "unloading",
+            "parking",
+            "berth",
+            "other"
+          ]
+        },
+        "nodeId": {
+          "$ref": "#/$defs/Id"
+        },
+        "facilityId": {
+          "$ref": "#/$defs/Id"
+        },
+        "accessPointId": {
+          "$ref": "#/$defs/Id"
+        },
+        "resourceIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        },
+        "zoneId": {
+          "$ref": "#/$defs/Id"
+        },
+        "arrival": {
+          "$ref": "#/$defs/ServiceArrival"
+        }
+      }
+    },
+    "Zone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "boundary",
+        "passability",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "work",
+            "drivable",
+            "forbidden",
+            "water",
+            "buffer",
+            "waiting",
+            "obstacle"
+          ]
+        },
+        "boundary": {
+          "$ref": "#/$defs/Polygon"
+        },
+        "passability": {
+          "enum": [
+            "unknown",
+            "allowed",
+            "forbidden",
+            "explicit_access_only"
+          ]
+        },
+        "resourceIds": {
+          "$ref": "#/$defs/IdList"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "EntityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entityType",
+        "entityId"
+      ],
+      "properties": {
+        "entityType": {
+          "enum": [
+            "nodes",
+            "roads",
+            "junctions",
+            "movements",
+            "facilities",
+            "accessPoints",
+            "servicePoints",
+            "zones"
+          ]
+        },
+        "entityId": {
+          "$ref": "#/$defs/Id"
+        }
+      }
+    },
+    "Resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "capacityUnit",
+        "capacity",
+        "controlModel",
+        "appliesTo",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "road",
+            "junction_conflict",
+            "parking",
+            "loading",
+            "other"
+          ]
+        },
+        "capacityUnit": {
+          "enum": [
+            "vehicle",
+            "kg",
+            "area_m2"
+          ]
+        },
+        "capacity": {
+          "$ref": "#/$defs/PhysicalValue"
+        },
+        "controlModel": {
+          "enum": [
+            "unknown",
+            "exclusive",
+            "shared_capacity",
+            "directional_exclusive"
+          ]
+        },
+        "appliesTo": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "Source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "category",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "surveyed",
+            "drawing",
+            "imagery_derived",
+            "design_assumption",
+            "synthetic",
+            "unknown"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "Asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "mediaType",
+        "sourceRef"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^assets/.+"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "mediaType": {
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+          ]
+        },
+        "sourceRef": {
+          "$ref": "#/$defs/Id"
+        },
+        "widthPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "heightPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "BackgroundLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "assetId",
+        "pixelConvention",
+        "imageToWorld",
+        "method",
+        "controlPoints",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "assetId": {
+          "$ref": "#/$defs/Id"
+        },
+        "pixelConvention": {
+          "const": "top_left_x_right_y_down_exif_normalized"
+        },
+        "imageToWorld": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "number"
+          }
+        },
+        "method": {
+          "enum": [
+            "manual",
+            "similarity",
+            "affine"
+          ]
+        },
+        "controlPoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "pixel",
+              "world",
+              "role"
+            ],
+            "properties": {
+              "pixel": {
+                "$ref": "#/$defs/Vec2"
+              },
+              "world": {
+                "$ref": "#/$defs/Vec3"
+              },
+              "role": {
+                "enum": [
+                  "fit",
+                  "check"
+                ]
+              }
+            }
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      }
+    },
+    "ServiceArrival": {
+      "title": "ServiceArrival",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "transferAssumption",
+            "note"
+          ],
+          "properties": {
+            "mode": {
+              "const": "node_proxy"
+            },
+            "transferAssumption": {
+              "enum": [
+                "included_in_service_duration",
+                "excluded_from_model"
+              ]
+            },
+            "note": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "internalPath"
+          ],
+          "properties": {
+            "mode": {
+              "const": "explicit_internal"
+            },
+            "entryNodeId": {
+              "$ref": "#/$defs/Id"
+            },
+            "internalPath": {
+              "type": "array",
+              "maxItems": 2048,
+              "items": {
+                "$ref": "#/$defs/ArcRef"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

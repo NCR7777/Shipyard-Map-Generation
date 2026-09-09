@@ -1,1 +1,11 @@
 .spatial-property details{margin:12px 0}.spatial-property summary{cursor:pointer;font-weight:600;color:#355266;margin-bottom:10px}.spatial-measure p{font-size:13px;margin:7px 0}.spatial-vertex{display:grid;grid-template-columns:14px repeat(3,minmax(0,1fr)) 24px;gap:3px;align-items:center;margin:6px 0}.spatial-vertex input{width:100%;min-width:0;padding:6px 3px;font-size:11px}.spatial-vertex button{padding:4px}.ring-editor{border-top:1px solid #d9e4e7;padding:10px 0}.ring-editor>button{font-size:11px;padding:5px 8px;margin:3px}.spatial-property details>button{font-size:12px;margin:4px}.spatial-property .coordinate-fields input{min-width:0}.physical-fields fieldset{border:1px solid #d9e4e7;border-radius:6px;margin:10px 0;padding:10px}.physical-fields legend{font-size:12px;color:#355266}
+
+.point-creation-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.service-semantics { border: 1px solid #d5e2e1; border-radius: 6px; padding: 10px; margin: 12px 0; min-width: 0; }
+.service-semantics legend { font-size: 12px; padding: 0 5px; }
+.service-semantics textarea { width: 100%; min-height: 80px; resize: vertical; font: inherit; border: 1px solid #b9cccc; border-radius: 4px; padding: 7px; box-sizing: border-box; }
+.internal-arc { border-bottom: 1px solid #e1e8e9; padding-bottom: 8px; margin-bottom: 8px; }
+.point-pick-panel { position: fixed; right: 24px; bottom: 58px; width: min(320px, 80vw); padding: 16px; background: #fff; border: 2px solid #367d74; border-radius: 8px; box-shadow: 0 6px 24px #153f3b25; z-index: 8; }
+.point-pick-panel p { font-size: 13px; line-height: 1.5; }
+.point-pick-instruction { position: absolute; top: 34px; left: 12px; right: 12px; padding: 9px; background: #f2fbf7ed; color: #174e45; font-size: 12px; pointer-events: none; z-index: 2; }
+.service-connection-summary { border-top: 1px solid #d9e4e7; margin-top: 16px; padding-top: 12px; font-size: 12px; overflow-wrap: anywhere; }

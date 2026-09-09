@@ -15,7 +15,8 @@
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
-    "map:validate": "tsx scripts/map-validate.ts"
+    "map:validate": "tsx scripts/map-validate.ts",
+    "map:migrate": "tsx scripts/map-migrate.ts"
   },
   "dependencies": {
     "ajv": "8.20.0",

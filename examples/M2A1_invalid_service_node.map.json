@@ -1,0 +1,292 @@
+{
+  "accessPoints": {
+    "aWorkshop": {
+      "facilityId": "fWorkshop",
+      "name": "厂房西侧入口",
+      "nodeId": "nRoadWest",
+      "provenance": {
+        "category": "synthetic"
+      }
+    }
+  },
+  "assets": {},
+  "backgroundLayers": {},
+  "coordinateFrame": {
+    "angleUnit": "rad",
+    "groundPlane": "XY",
+    "handedness": "right",
+    "kind": "local_cartesian",
+    "lengthUnit": "m",
+    "massUnit": "kg",
+    "timeUnit": "s",
+    "upAxis": "Z"
+  },
+  "extensionNamespaces": {},
+  "extensions": {},
+  "facilities": {
+    "fWorkshop": {
+      "accessPointIds": [
+        "aWorkshop"
+      ],
+      "boundary": {
+        "holes": [],
+        "outer": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            60,
+            0,
+            0
+          ],
+          [
+            60,
+            30,
+            0
+          ],
+          [
+            0,
+            30,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "heightM": {
+        "state": "unknown"
+      },
+      "kind": "workshop",
+      "name": "60m×30m 合成厂房",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "servicePointIds": [
+        "sLoading"
+      ]
+    }
+  },
+  "junctions": {},
+  "mapId": "map_M2A_synthetic",
+  "metadata": {
+    "description": "",
+    "layoutBasis": "synthetic",
+    "name": "M2A.1 synthetic · 设施内部目标与独立区域代理"
+  },
+  "movements": {},
+  "nodes": {
+    "nLoading": {
+      "kind": "service",
+      "name": "装卸权威节点",
+      "position": [
+        15,
+        10,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic"
+      }
+    },
+    "nRoadEast": {
+      "kind": "ordinary",
+      "name": "东侧道路节点",
+      "position": [
+        100,
+        0,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic"
+      }
+    },
+    "nRoadWest": {
+      "kind": "access",
+      "name": "西侧入口节点",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic"
+      }
+    },
+    "nZoneTarget": {
+      "kind": "service",
+      "name": "synthetic 区域目标权威节点",
+      "position": [
+        80,
+        30,
+        0
+      ],
+      "provenance": {
+        "category": "synthetic"
+      }
+    }
+  },
+  "resources": {},
+  "revision": 15,
+  "roads": {
+    "rApproach": {
+      "direction": "both",
+      "fromNodeId": "nRoadWest",
+      "heightLimitM": {
+        "state": "unknown"
+      },
+      "massLimitKg": {
+        "state": "unknown"
+      },
+      "name": "显式入口至装卸点道路",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": [],
+      "shapePoints": [
+        [
+          5,
+          10,
+          0
+        ]
+      ],
+      "speedLimitMps": {
+        "state": "unknown"
+      },
+      "toNodeId": "nLoading",
+      "widthM": {
+        "state": "unknown"
+      }
+    },
+    "rMain": {
+      "direction": "both",
+      "fromNodeId": "nRoadWest",
+      "heightLimitM": {
+        "state": "unknown"
+      },
+      "massLimitKg": {
+        "state": "unknown"
+      },
+      "name": "100m 合成主路",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": [],
+      "shapePoints": [],
+      "speedLimitMps": {
+        "state": "unknown"
+      },
+      "toNodeId": "nRoadEast",
+      "widthM": {
+        "state": "unknown"
+      }
+    },
+    "rZoneConnection": {
+      "direction": "both",
+      "fromNodeId": "nRoadEast",
+      "heightLimitM": {
+        "state": "unknown"
+      },
+      "massLimitKg": {
+        "state": "unknown"
+      },
+      "name": "synthetic 区域显式接路",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": [],
+      "shapePoints": [],
+      "speedLimitMps": {
+        "state": "unknown"
+      },
+      "toNodeId": "nZoneTarget",
+      "widthM": {
+        "state": "unknown"
+      }
+    }
+  },
+  "schemaVersion": "0.2.0",
+  "servicePoints": {
+    "sLoading": {
+      "accessPointId": "aWorkshop",
+      "arrival": {
+        "internalPath": [
+          {
+            "direction": "forward",
+            "roadId": "rApproach"
+          }
+        ],
+        "mode": "explicit_internal"
+      },
+      "facilityId": "fWorkshop",
+      "kind": "loading",
+      "name": "合成装卸点",
+      "nodeId": "nLoading",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": []
+    },
+    "sZoneUnload": {
+      "arrival": {
+        "mode": "node_proxy",
+        "note": "synthetic：该节点代表本研究中的区域边界作业位；未建模场内转运明确忽略。此图未声明服务时长、资源容量或运输可达性。",
+        "transferAssumption": "excluded_from_model"
+      },
+      "kind": "unloading",
+      "name": "synthetic 等待区边界卸载代理",
+      "nodeId": "missing_service_node",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": [],
+      "zoneId": "zWaiting"
+    }
+  },
+  "siteBoundary": null,
+  "sources": {},
+  "zones": {
+    "zWaiting": {
+      "boundary": {
+        "holes": [],
+        "outer": [
+          [
+            70,
+            30,
+            0
+          ],
+          [
+            90,
+            30,
+            0
+          ],
+          [
+            90,
+            50,
+            0
+          ],
+          [
+            70,
+            50,
+            0
+          ],
+          [
+            70,
+            30,
+            0
+          ]
+        ]
+      },
+      "kind": "waiting",
+      "name": "20m×20m 合成候停区",
+      "passability": "unknown",
+      "provenance": {
+        "category": "synthetic"
+      },
+      "resourceIds": []
+    }
+  }
+}

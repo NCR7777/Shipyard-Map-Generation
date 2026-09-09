@@ -22,9 +22,9 @@ export function snapPosition(screen: Vec2, camera: Camera, nodes: SceneSnapshot[
   if (step && Number.isFinite(step) && step > 0) return { world: [Math.round(world[0] / step) * step, Math.round(world[1] / step) * step, z] };
   return { world };
 }
-export function useSpatialDrawing(tool: Tool, readonly: boolean, camera: Camera, onCreate?: (kind: 'facilities' | 'zones', polygon: Polygon) => boolean) {
+export function useSpatialDrawing(tool: Tool, readonly: boolean, camera: Camera, onCreate?: (kind: 'facilities' | 'zones', polygon: Polygon) => boolean, draftResetToken?: number) {
   const [vertices, setVertices] = useState<Vec3[]>([]); const [error, setError] = useState('');
-  useEffect(() => { setVertices([]); setError(''); }, [tool]);
+  useEffect(() => { setVertices([]); setError(''); }, [tool, draftResetToken]);
   function emit(polygon: Polygon) { if (onCreate?.(tool.startsWith('facility') ? 'facilities' : 'zones', polygon)) { setVertices([]); setError(''); } }
   function finish() {
     if (readonly || !isSpatialTool(tool) || vertices.length < 3) return;
@@ -48,7 +48,7 @@ export function useSpatialDrawing(tool: Tool, readonly: boolean, camera: Camera,
   useEffect(() => {
     function key(event: KeyboardEvent) {
       if (!isSpatialTool(tool) || (event.target as HTMLElement).closest('button,input,textarea,select,[contenteditable="true"],[role="dialog"]') || document.querySelector('[role="dialog"]')) return;
-      if (event.key === 'Escape') { setVertices([]); setError(''); }
+
       if (event.key === 'Enter' && !isRectangleTool(tool)) { event.preventDefault(); finish(); }
     }
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);

@@ -1,8 +1,8 @@
-import type { AccessPoint, Facility, MapNode, MapRoad, Polygon, ServicePoint, Vec3, YardMap, Zone } from './model';
+import type { AccessPoint, Facility, MapNode, MapRoad, Polygon, SchemaVersion, ServicePoint, Vec3, YardMap, Zone } from './model';
 
-export function newMap(mapId: string, name = '未命名地图'): YardMap {
+export function newMap(mapId: string, name = '未命名地图', schemaVersion: SchemaVersion = '0.2.0'): YardMap {
   return {
-    schemaVersion: '0.1.0', mapId, revision: 0,
+    schemaVersion, mapId, revision: 0,
     metadata: { name, description: '', layoutBasis: 'synthetic' },
     coordinateFrame: {
       kind: 'local_cartesian', handedness: 'right', groundPlane: 'XY', upAxis: 'Z',

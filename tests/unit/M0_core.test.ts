@@ -8,7 +8,7 @@ import { roadLength, roadPoints } from '../../src/geometry/roads';
 import { validateMap } from '../../src/validation/validate';
 
 function mapFixture(): YardMap {
-  const map = newMap('map_test', '独立测试地图');
+  const map = newMap('map_test', '独立测试地图', '0.1.0');
   map.metadata.layoutBasis = 'synthetic';
   map.nodes.node_A = { name: 'A', kind: 'ordinary', position: [0, 0, 0], provenance: { category: 'synthetic' } };
   map.nodes.node_B = { name: 'B', kind: 'ordinary', position: [100, 0, 0], provenance: { category: 'synthetic' } };
@@ -45,7 +45,7 @@ describe('M0 core: independent domain contract', () => {
   it('A01 creates a versioned map with explicit metre/right-handed coordinates in Node', () => {
     expect('document' in globalThis).toBe(false);
     expect('window' in globalThis).toBe(false);
-    const map = newMap('map_new', '新地图');
+    const map = newMap('map_new', '新地图', '0.1.0');
     expect(map).toMatchObject({ schemaVersion: '0.1.0', mapId: 'map_new', metadata: { name: '新地图' } });
     expect(map.coordinateFrame).toMatchObject({
       kind: 'local_cartesian', handedness: 'right', groundPlane: 'XY', upAxis: 'Z',

@@ -1,16 +1,20 @@
-import type { AccessPoint, Facility, Issue, MapNode, MapRoad, PhysicalValue, ServicePoint, Vec3, YardMap, Zone } from './model';
+import type { AccessPoint, Facility, Issue, MapNode, MapRoad, PhysicalValue, ServiceArrival, ServicePoint, Vec3, YardMap, Zone } from './model';
 import { validateMap } from '../validation/validate';
 import { mapCapabilities } from './capabilities';
 import { contentHash, serializeMap } from './serialization';
 import { transformPolygon } from '../geometry/polygons';
 import { polylineLength2D, roadPoints } from '../geometry/roads';
 import { newNode } from './factory';
+import { zoneServicePointIds } from '../topology/serviceConnections';
 
 export interface Selection { nodes: string[]; roads: string[]; facilities?: string[]; zones?: string[]; accessPoints?: string[]; servicePoints?: string[] }
 export const SELECTION_KINDS = ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints'] as const;
 export type SelectionKind = typeof SELECTION_KINDS[number];
 export type FullSelection = Record<SelectionKind, string[]>;
 export type FacilityMovePolicy = 'boundaryOnly' | 'withAssociatedNodes';
+export type ZoneMovePolicy = FacilityMovePolicy;
+export interface MigrationChange { path: string; before: string | number; after: string | number }
+export function schemaUpgradeChanges(map: YardMap): MigrationChange[] { return map.schemaVersion === '0.1.0' ? [{ path: '/schemaVersion', before: '0.1.0', after: '0.2.0' }, { path: '/revision', before: map.revision, after: map.revision + 1 }] : []; }
 export interface DesignAssumption { id: string; name?: string; description?: string }
 export interface SplitMapping { oldRoadId: string; newRoadIds: [string, string]; nodeId: string }
 export const LINEAGE_NAMESPACE = 'org.shipyard.editor.lineage';
@@ -28,17 +32,18 @@ export type MapCommand =
   | { type: 'addAccessPoint'; id: string; accessPoint: AccessPoint; newNode?: NewPointNode }
   | { type: 'updateAccessPoint'; id: string; patch: Partial<Pick<AccessPoint, 'name' | 'facilityId' | 'nodeId'>>; newNode?: NewPointNode }
   | { type: 'addServicePoint'; id: string; servicePoint: ServicePoint; newNode?: NewPointNode }
-  | { type: 'updateServicePoint'; id: string; patch: Partial<Pick<ServicePoint, 'name' | 'kind' | 'nodeId'>> & { facilityId?: string | null; accessPointId?: string | null }; newNode?: NewPointNode }
+  | { type: 'updateServicePoint'; id: string; patch: Partial<Pick<ServicePoint, 'name' | 'kind' | 'nodeId'>> & { facilityId?: string | null; accessPointId?: string | null; zoneId?: string | null; arrival?: ServiceArrival | null }; newNode?: NewPointNode }
   | { type: 'renameMap'; name: string }
-  | { type: 'translateSelection'; selection: Selection; delta: Vec3; facilityMovePolicy?: FacilityMovePolicy }
-  | { type: 'rotateSelection'; selection: Selection; pivot: Vec3; angleRad: number; facilityMovePolicy?: FacilityMovePolicy }
-  | { type: 'duplicateSelection'; selection: Selection; delta: Vec3; idMap: Record<string, string>; associationPolicy?: 'retainFacility' | 'rejectExternal' }
-  | { type: 'deleteSelection'; selection: Selection; facilityPolicy?: 'reject' | 'withAssociatedPoints'; orphanNodes?: 'keep' | 'deleteUnused' }
+  | { type: 'upgradeSchema'; targetVersion: '0.2.0' }
+  | { type: 'translateSelection'; selection: Selection; delta: Vec3; facilityMovePolicy?: FacilityMovePolicy; zoneMovePolicy?: ZoneMovePolicy }
+  | { type: 'rotateSelection'; selection: Selection; pivot: Vec3; angleRad: number; facilityMovePolicy?: FacilityMovePolicy; zoneMovePolicy?: ZoneMovePolicy }
+  | { type: 'duplicateSelection'; selection: Selection; delta: Vec3; idMap: Record<string, string>; associationPolicy?: 'retainFacility' | 'retainOwner' | 'rejectExternal' }
+  | { type: 'deleteSelection'; selection: Selection; facilityPolicy?: 'reject' | 'withAssociatedPoints'; zonePolicy?: 'reject' | 'withAssociatedPoints'; orphanNodes?: 'keep' | 'deleteUnused' }
   | { type: 'splitRoad'; id: string; distanceM: number; nodeId: string; existingNode?: boolean; newRoadIds: [string, string] };
 
 export interface Transaction { before: YardMap; after: YardMap; label: string }
 export type CommandResult =
-  | { ok: true; map: YardMap; changed: boolean; transaction?: Transaction; mapping?: SplitMapping }
+  | { ok: true; map: YardMap; changed: boolean; transaction?: Transaction; mapping?: SplitMapping; migrationChanges?: MigrationChange[] }
   | { ok: false; issues: Issue[] };
 class CommandError extends Error { constructor(readonly code: string, message: string, readonly path = '') { super(message); } }
 function problem(code: string, message: string, jsonPath = ''): Issue {
@@ -66,6 +71,9 @@ function addFacilityMembers(map: YardMap, selected: FullSelection): void {
     selected.servicePoints.push(...map.facilities[id]!.servicePointIds);
   }
 }
+function addZoneMembers(map: YardMap, selected: FullSelection): void {
+  for (const id of selected.zones) selected.servicePoints.push(...zoneServicePointIds(map, id));
+}
 function addPointNodes(map: YardMap, selected: FullSelection): void {
   for (const id of selected.accessPoints) selected.nodes.push(map.accessPoints[id]!.nodeId);
   for (const id of selected.servicePoints) selected.nodes.push(map.servicePoints[id]!.nodeId);
@@ -73,19 +81,23 @@ function addPointNodes(map: YardMap, selected: FullSelection): void {
 /** Copy closure includes facility membership and point coordinates, never adjacent external roads. */
 export function closureSelection(map: YardMap, selection: Selection): FullSelection {
   const selected = assertSelection(map, selection);
-  addFacilityMembers(map, selected);
+  addFacilityMembers(map, selected); addZoneMembers(map, selected);
   for (const id of selected.servicePoints) {
     const access = map.servicePoints[id]!.accessPointId;
     if (access) selected.accessPoints.push(access);
+    const arrival = map.servicePoints[id]!.arrival;
+    if (arrival?.mode === 'explicit_internal' && arrival.entryNodeId) selected.nodes.push(arrival.entryNodeId);
   }
   addPointNodes(map, selected);
   for (const id of selected.roads) selected.nodes.push(map.roads[id]!.fromNodeId, map.roads[id]!.toNodeId);
   return normalizeSelection(selected);
 }
-export function selectionImpact(map: YardMap, selection: Selection, facilityMovePolicy: FacilityMovePolicy = 'boundaryOnly'): { selection: FullSelection; affectedRoadIds: string[]; sharedNodeIds: string[] } {
+export function selectionImpact(map: YardMap, selection: Selection, facilityMovePolicy: FacilityMovePolicy = 'boundaryOnly', zoneMovePolicy: ZoneMovePolicy = 'boundaryOnly'): { selection: FullSelection; affectedRoadIds: string[]; sharedNodeIds: string[] } {
   const selected = assertSelection(map, selection);
   if (facilityMovePolicy === 'withAssociatedNodes') addFacilityMembers(map, selected);
   else if (facilityMovePolicy !== 'boundaryOnly') fail('INVALID_MOVE_POLICY', '未知设施移动策略。');
+  if (zoneMovePolicy === 'withAssociatedNodes') addZoneMembers(map, selected);
+  else if (zoneMovePolicy !== 'boundaryOnly') fail('INVALID_MOVE_POLICY', '未知区域移动策略。');
   addPointNodes(map, selected);
   for (const id of selected.roads) selected.nodes.push(map.roads[id]!.fromNodeId, map.roads[id]!.toNodeId);
   const complete = normalizeSelection(selected); const nodes = new Set(complete.nodes); const roads = new Set(complete.roads); const shared = new Set<string>();
@@ -170,7 +182,12 @@ function copySelection(map: YardMap, command: Extract<MapCommand, { type: 'dupli
   if (Object.keys(command.idMap).length !== sourceIds.length) fail('INVALID_COPY_ID_MAP', 'ID 映射必须恰好覆盖复制闭包。');
   for (const kind of ['accessPoints', 'servicePoints'] as const) for (const id of selected[kind]) {
     const facilityId = map[kind][id]!.facilityId;
-    if (facilityId && !selected.facilities.includes(facilityId) && command.associationPolicy !== 'retainFacility') fail('EXTERNAL_FACILITY_ASSOCIATION', '单独复制点须明确选择仍归属原设施；设施整体复制不会连接回旧设施。');
+    if (facilityId && !selected.facilities.includes(facilityId) && command.associationPolicy !== 'retainFacility' && command.associationPolicy !== 'retainOwner') fail('EXTERNAL_FACILITY_ASSOCIATION', '单独复制点须明确选择仍归属原设施；设施整体复制不会连接回旧设施。');
+  }
+  for (const id of selected.servicePoints) {
+    const point = map.servicePoints[id]!;
+    if (point.zoneId && !selected.zones.includes(point.zoneId) && command.associationPolicy !== 'retainOwner') fail('EXTERNAL_ZONE_ASSOCIATION', '单独复制区域服务点须明确保留原区域归属。');
+    if (point.arrival?.mode === 'explicit_internal' && point.arrival.internalPath.some(arc => !selected.roads.includes(arc.roadId))) fail('UNSUPPORTED_COPY_INTERNAL_PATH', '内部道路未全部显式选入复制范围；不会隐式复制外部路网。');
   }
   for (const id of selected.nodes) { const node = structuredClone(map.nodes[id]!); node.position = moved(node.position, command.delta); put(map, map.nodes, command.idMap[id]!, node); }
   for (const id of selected.roads) {
@@ -191,6 +208,11 @@ function copySelection(map: YardMap, command: Extract<MapCommand, { type: 'dupli
     const point = structuredClone(map.servicePoints[id]!); point.nodeId = command.idMap[point.nodeId]!;
     if (point.facilityId) point.facilityId = Object.hasOwn(command.idMap, point.facilityId) ? command.idMap[point.facilityId]! : point.facilityId;
     if (point.accessPointId) point.accessPointId = command.idMap[point.accessPointId]!;
+    if (point.zoneId) point.zoneId = Object.hasOwn(command.idMap, point.zoneId) ? command.idMap[point.zoneId]! : point.zoneId;
+    if (point.arrival?.mode === 'explicit_internal') {
+      point.arrival.internalPath = point.arrival.internalPath.map(arc => ({ ...arc, roadId: command.idMap[arc.roadId]! }));
+      if (point.arrival.entryNodeId) point.arrival.entryNodeId = command.idMap[point.arrival.entryNodeId]!;
+    }
     put(map, map.servicePoints, command.idMap[id]!, point); facilityMember(map, 'servicePointIds', command.idMap[id]!, undefined, point.facilityId);
   }
 }
@@ -200,9 +222,12 @@ function deleteSelection(map: YardMap, command: Extract<MapCommand, { type: 'del
     const facility = map.facilities[id]!;
     if ((facility.accessPointIds.length || facility.servicePointIds.length) && command.facilityPolicy !== 'withAssociatedPoints') fail('FACILITY_HAS_POINTS', '设施有关联点，请明确选择一并删除成员点并处理其节点。', '/facilities/' + id);
   }
+  for (const id of selected.zones) if (zoneServicePointIds(map, id).length && command.zonePolicy !== 'withAssociatedPoints') fail('ZONE_HAS_POINTS', '区域有关联服务点，请明确选择一并删除。', '/zones/' + id);
   if (command.facilityPolicy === 'withAssociatedPoints') addFacilityMembers(map, selected);
+  if (command.zonePolicy === 'withAssociatedPoints') addZoneMembers(map, selected);
   const deleted = normalizeSelection(selected); const candidateNodes = new Set<string>();
   for (const kind of ['accessPoints', 'servicePoints'] as const) for (const id of deleted[kind]) candidateNodes.add(map[kind][id]!.nodeId);
+  for (const id of deleted.servicePoints) { const arrival = map.servicePoints[id]!.arrival; if (arrival?.mode === 'explicit_internal' && arrival.entryNodeId) candidateNodes.add(arrival.entryNodeId); }
   for (const [id, service] of Object.entries(map.servicePoints)) if (!deleted.servicePoints.includes(id) && service.accessPointId && deleted.accessPoints.includes(service.accessPointId)) fail('ENTITY_IN_USE', '服务点仍引用待删除入口，请显式一并选择服务点。', '/servicePoints/' + id + '/accessPointId');
   for (const id of deleted.accessPoints) { facilityMember(map, 'accessPointIds', id, map.accessPoints[id]!.facilityId); delete map.accessPoints[id]; }
   for (const id of deleted.servicePoints) { facilityMember(map, 'servicePointIds', id, map.servicePoints[id]!.facilityId); delete map.servicePoints[id]; }
@@ -210,6 +235,7 @@ function deleteSelection(map: YardMap, command: Extract<MapCommand, { type: 'del
   const uses = (nodeId: string): string | null => {
     for (const [id, road] of Object.entries(map.roads)) for (const field of ['fromNodeId', 'toNodeId'] as const) if (road[field] === nodeId) return '/roads/' + id + '/' + field;
     for (const kind of ['accessPoints', 'servicePoints'] as const) for (const [id, point] of Object.entries(map[kind])) if (point.nodeId === nodeId) return '/' + kind + '/' + id + '/nodeId';
+    for (const [id, point] of Object.entries(map.servicePoints)) if (point.arrival?.mode === 'explicit_internal' && point.arrival.entryNodeId === nodeId) return '/servicePoints/' + id + '/arrival/entryNodeId';
     return null;
   };
   for (const id of deleted.nodes) { const path = uses(id); if (path) fail('ENTITY_IN_USE', '节点 ' + id + ' 仍被引用；保留它或显式一并选择依赖对象。', path); }
@@ -220,6 +246,7 @@ interface Lineage { version: '1.0.0'; roadSplits: (SplitMapping & { distanceM: n
 function splitRoad(map: YardMap, command: Extract<MapCommand, { type: 'splitRoad' }>): SplitMapping {
   assertSelection(map, { nodes: [], roads: [command.id] });
   const road = map.roads[command.id]!;
+  for (const [id, point] of Object.entries(map.servicePoints)) if (point.arrival?.mode === 'explicit_internal' && point.arrival.internalPath.some(arc => arc.roadId === command.id)) fail('ROAD_USED_BY_INTERNAL_PATH', '道路已被服务点内部接续引用，尚不支持拆分时重写声明路径。', '/servicePoints/' + id + '/arrival/internalPath');
   if (road.resourceIds.length || road.corridorPolygon || Object.keys(road.extensions ?? {}).length || road.observedLengthM)
     fail('UNSUPPORTED_SPLIT_REFERENCES', '道路含资源、人工边界、扩展或登记长度，尚不能安全拆分其语义。');
   for (const collection of ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints', 'sources'] as const)
@@ -265,7 +292,7 @@ function splitRoad(map: YardMap, command: Extract<MapCommand, { type: 'splitRoad
 export function applyMapCommand(input: YardMap, command: MapCommand): CommandResult {
   const initial = validateMap(input);
   if (!initial.ok) return { ok: false, issues: initial.issues };
-  if (!mapCapabilities(input).editable) return { ok: false, issues: [problem('READ_ONLY_MAP', '该地图含未支持的高级实体或行为，整图只读保护。')] };
+  if (command.type !== 'upgradeSchema' && !mapCapabilities(input).editable) return { ok: false, issues: [problem('READ_ONLY_MAP', '该地图含未支持的高级实体或行为，整图只读保护。')] };
   const next = structuredClone(input); let mapping: SplitMapping | undefined;
   try {
     switch (command.type) {
@@ -298,16 +325,20 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'addServicePoint':
         addPointNode(next, command.servicePoint.nodeId, command.newNode); put(next, next.servicePoints, command.id, command.servicePoint); facilityMember(next, 'servicePointIds', command.id, undefined, command.servicePoint.facilityId); break;
       case 'updateServicePoint': {
-        assertSelection(next, { nodes: [], roads: [], servicePoints: [command.id] }); checkPatch(command.patch, ['name', 'kind', 'nodeId', 'facilityId', 'accessPointId']);
+        assertSelection(next, { nodes: [], roads: [], servicePoints: [command.id] }); checkPatch(command.patch, ['name', 'kind', 'nodeId', 'facilityId', 'accessPointId', 'zoneId', 'arrival']);
         const previous = next.servicePoints[command.id]!; const point = structuredClone(previous);
         for (const [field, value] of Object.entries(command.patch)) { if (value === null) delete (point as unknown as Record<string, unknown>)[field]; else Object.defineProperty(point, field, { value: structuredClone(value), writable: true, enumerable: true, configurable: true }); }
         addPointNode(next, point.nodeId, command.newNode); facilityMember(next, 'servicePointIds', command.id, previous.facilityId, point.facilityId); next.servicePoints[command.id] = point; break;
       }
+      case 'upgradeSchema':
+        if (command.targetVersion !== '0.2.0') fail('UNSUPPORTED_MIGRATION', '只支持显式升级到 0.2.0。');
+        next.schemaVersion = '0.2.0'; break;
       case 'renameMap': next.metadata.name = command.name; break;
       case 'translateSelection': case 'rotateSelection': {
         const selection = assertSelection(next, command.selection);
         if (selection.facilities.length && command.facilityMovePolicy === undefined) fail('FACILITY_MOVE_POLICY_REQUIRED', '移动设施前必须明确仅边界或连同关联节点。');
-        const impact = selectionImpact(next, selection, command.facilityMovePolicy);
+        if (selection.zones.some(id => zoneServicePointIds(next, id).length) && command.zoneMovePolicy === undefined) fail('ZONE_MOVE_POLICY_REQUIRED', '移动有服务点的区域前必须明确仅边界或连同关联节点。');
+        const impact = selectionImpact(next, selection, command.facilityMovePolicy, command.zoneMovePolicy);
         if (command.type === 'translateSelection') transformSelection(next, impact.selection, point => moved(point, command.delta));
         else {
           checkVector(command.pivot); if (!Number.isFinite(command.angleRad)) fail('INVALID_COMMAND', '旋转角度必须为有限弧度。');
@@ -323,10 +354,10 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError ? error.path : '')] }; }
   const report = validateMap(next);
   if (!report.ok) return { ok: false, issues: report.issues };
-  if (contentHash(input) === contentHash(next)) return { ok: true, map: input, changed: false };
+  if (contentHash(input) === contentHash(next)) return { ok: true, map: input, changed: false, ...(command.type === 'upgradeSchema' ? { migrationChanges: [] } : {}) };
   next.revision = input.revision + 1;
   const finalReport = validateMap(next); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };
   try { serializeMap(next); } catch (error) { return { ok: false, issues: [problem('JSON_SIZE_LIMIT', error instanceof Error ? error.message : '规范化 JSON 超过限制。')] }; }
   const before = freezeMap(structuredClone(input)); const after = freezeMap(next);
-  return { ok: true, map: after, changed: true, transaction: { before, after, label: command.type }, ...(mapping ? { mapping } : {}) };
+  return { ok: true, map: after, changed: true, transaction: { before, after, label: command.type }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input) } : {}) };
 }

@@ -280,5 +280,11 @@ test('keeps text-field undo and deletion separate from map commands', async ({ p
   await expect(page.getByTestId('node-count')).toHaveText('2');
   await expect(page.getByTestId('map-hash')).toHaveText(hash ?? '');
   await page.getByRole('button', { name: '撤销', exact: true }).click();
+  const leaveGuard = page.getByRole('dialog', { name: '未应用输入保护', exact: true });
+  await expect(leaveGuard).toBeVisible();
+  await expect(page.getByTestId('map-hash')).toHaveText(hash ?? '');
+  await expect(name).toHaveValue('');
+  await leaveGuard.getByRole('button', { name: '丢弃未应用输入并继续', exact: true }).click();
+  await expect(leaveGuard).not.toBeVisible();
   await expect(page.getByLabel('名称', { exact: true })).toHaveValue('A');
 });

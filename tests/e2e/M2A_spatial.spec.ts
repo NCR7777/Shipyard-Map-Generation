@@ -152,6 +152,7 @@ test('G02 true facility entrance/service creation round-trips through JSON and s
   await serviceModal.getByLabel('所属设施', { exact: true }).selectOption(facilityId);
   await serviceModal.getByLabel('关联入口', { exact: true }).selectOption(accessId);
   await serviceModal.getByLabel('服务类型', { exact: true }).selectOption('loading');
+  await serviceModal.getByLabel('代理到达说明', { exact: true }).fill('synthetic：该测试声明代理业务点；未建模场内转运留待场景说明');
   await serviceModal.getByLabel('定位方式', { exact: true }).selectOption('new');
   await serviceModal.getByLabel('X (m)', { exact: true }).fill('15');
   await serviceModal.getByLabel('Y (m)', { exact: true }).fill('10');
@@ -317,7 +318,7 @@ test('G03 facility copy remaps member nodes without copying external roads; expl
   await deleteModal.getByRole('button', { name: '确认删除', exact: true }).click();
   await expect(deleteModal).toContainText('FACILITY_HAS_POINTS');
   await expect(page.getByTestId('map-hash')).toHaveText(beforeFailedDelete!);
-  await deleteModal.getByLabel('一并删除设施成员入口和服务点', { exact: true }).check();
+  await deleteModal.getByLabel('一并删除设施或区域成员入口和服务点', { exact: true }).check();
   await deleteModal.getByLabel('清理成员点不再使用的节点', { exact: true }).check();
   await deleteModal.getByRole('button', { name: '确认删除', exact: true }).click();
   await expect(deleteModal).not.toBeVisible();

@@ -14,6 +14,8 @@ import type { Selection } from '../../domain/commands';
 import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '../../geometry/coordinates';
 
 export type Tool = 'select' | 'node' | 'road' | 'pan' | 'facilityRect' | 'facilityPolygon' | 'zoneRect' | 'zonePolygon';
+export type PointPickResult = { nodeId: string } | { position: Vec3 };
+export interface PointPick { mode: 'existing' | 'new'; nodeId?: string; position?: Vec3 }
 export interface DraftRoad { fromNodeId: string; points: Vec3[] }
 interface Props {
   scene: SceneSnapshot;
@@ -33,6 +35,10 @@ interface Props {
   draftRoad: DraftRoad | null;
   onPolygonCreate?: (kind: 'facilities' | 'zones', boundary: Polygon) => boolean;
   onDraftChange?: (dirty: boolean) => void;
+  hasUnappliedInput?: boolean;
+  draftResetToken?: number;
+  pointPick?: PointPick;
+  onPointPick?: (result: PointPickResult) => void;
   movingNodeIds?: string[];
   facilityMovePolicy?: 'boundaryOnly' | 'withAssociatedNodes';
   snap?: SnapOptions;
@@ -51,7 +57,9 @@ export function MapCanvas(props: Props) {
   const [size, setSize] = useState({ width: 800, height: 540 });
   const [previewDelta, setPreviewDelta] = useState<Vec3 | null>(null);
   const [rubberEnd, setRubberEnd] = useState<Vec3 | null>(null);
-  const drawing = useSpatialDrawing(props.tool, props.readonly, props.camera, props.onPolygonCreate);
+  const [pickNotice, setPickNotice] = useState('');
+  useEffect(() => { setPickNotice(''); }, [props.pointPick?.mode]);
+  const drawing = useSpatialDrawing(props.tool, props.readonly || !!props.pointPick, props.camera, props.onPolygonCreate, props.draftResetToken);
   const drawingDirty = drawing.vertices.length > 0;
   useEffect(() => { props.onDraftChange?.(drawingDirty); return () => props.onDraftChange?.(false); }, [drawingDirty, props.onDraftChange]);
   useEffect(() => {
@@ -95,7 +103,7 @@ export function MapCanvas(props: Props) {
   for (let x = Math.ceil(left / step) * step; x <= right && grid.length < 150; x += step) grid.push({ value: x, pixel: worldToScreen([x, 0, 0], props.camera)[0], axis: 'x' });
   for (let y = Math.ceil(bottom / step) * step; y <= top && grid.length < 300; y += step) grid.push({ value: y, pixel: worldToScreen([0, y, 0], props.camera)[1], axis: 'y' });
   function handleStageDown(event: KonvaEventObject<MouseEvent>) {
-    if (props.tool === 'pan' || event.evt.button === 1) {
+    if ((!props.pointPick && props.tool === 'pan') || event.evt.button === 1) {
       const point = pointer(); if (point) pan.current = { pointer: point, camera: props.camera };
       event.evt.preventDefault();
     }
@@ -105,7 +113,21 @@ export function MapCanvas(props: Props) {
     const screen = pointer(); if (!screen) return;
     drawAt(screen);
   }
+  function pickNode(id: string) {
+    if (!props.pointPick || props.readonly) return;
+    if (props.pointPick.mode === 'existing') props.onPointPick?.({ nodeId: id });
+    else {
+      const node = nodeById.get(id);
+      if (node) props.onPointPick?.({ position: [...node.position] });
+    }
+  }
   function drawAt(screen: Vec2) {
+    if (props.pointPick) {
+      if (props.readonly) return;
+      if (props.pointPick.mode === 'new') props.onPointPick?.({ position: snapPosition(screen, props.camera, props.scene.nodes, props.snap).world });
+      else setPickNotice('请选择已有节点或入口/服务点标记；背景、道路中部和附近坐标不代表已有节点。');
+      return;
+    }
     const { world } = snapPosition(screen, props.camera, props.scene.nodes, props.snap);
     if (isSpatialTool(props.tool)) drawing.click(world, screen);
     else if (props.tool === 'node' && !props.readonly) props.onAddNode(world);
@@ -119,7 +141,8 @@ export function MapCanvas(props: Props) {
   const unprojectable = props.scene.nodes.length + props.scene.roads.length - visibleNodes.length - visibleRoads.length;
   const spatialProps: SpatialLayerProps = {
     scene: props.scene, camera: props.camera, selection: props.selection, previewDelta,
-    snap: props.snap, readonly: props.readonly, selecting: props.tool === 'select', drawingRoad: props.tool === 'road', movingNodeIds: selectedNodeIds,
+    snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && props.tool === 'road', movingNodeIds: selectedNodeIds,
+    disableDrag: props.hasUnappliedInput, pickingPoint: !!props.pointPick, onPickNode: pickNode,
     onSelect: props.onSelect, onRoadNode: props.onRoadNode, onDrawClick: () => { const p = pointer(); if (p) drawAt(p); },
     onDragStart: origin => { dragStart.current = origin; }, onPreview: setPreviewDelta,
     onDragEnd: delta => { dragStart.current = null; props.onTranslate(delta); },
@@ -149,7 +172,8 @@ export function MapCanvas(props: Props) {
         <SpatialLayer {...spatialProps} />
         {visibleRoads.map(road => <Line key={road.id} name="road" points={points(road)} stroke={props.selection.roads.includes(road.id) ? '#e08128' : '#216b88'} strokeWidth={props.selection.roads.includes(road.id) ? 5 : 3} hitStrokeWidth={14} lineCap="round" lineJoin="round"
           onClick={event => {
-            if (props.tool === 'select') { event.cancelBubble = true; props.onSelect('roads', road.id, event.evt.shiftKey); }
+            if (props.pointPick) { event.cancelBubble = true; const screen = pointer(); if (screen) drawAt(screen); }
+            else if (props.tool === 'select') { event.cancelBubble = true; props.onSelect('roads', road.id, event.evt.shiftKey); }
             else if (!props.readonly && (props.tool === 'node' || props.tool === 'road' || isSpatialTool(props.tool))) {
               const screen = pointer(); if (!screen) return; event.cancelBubble = true;
               drawAt(screen);
@@ -157,14 +181,16 @@ export function MapCanvas(props: Props) {
           }} />)}
         {visibleNodes.map(node => {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
-          const selected = selectedNodeIds.has(node.id);
+          const selected = selectedNodeIds.has(node.id) || props.pointPick?.nodeId === node.id;
           return <Circle _useStrictMode key={node.id} x={x} y={y} radius={selected ? 6.5 : 5} fill={selected ? '#e08128' : '#ffffff'} stroke={selected ? '#9a4c0d' : '#216b88'} strokeWidth={2} hitStrokeWidth={12}
-            draggable={props.tool === 'select' && !props.readonly}
+            draggable={!props.hasUnappliedInput && !props.pointPick && props.tool === 'select' && !props.readonly}
             onMouseDown={event => {
-              if (props.tool === 'select' && (!selected || event.evt.shiftKey)) props.onSelect('nodes', node.id, event.evt.shiftKey);
+              if (event.evt.button === 0 && !props.pointPick && props.tool === 'select' && (!selected || event.evt.shiftKey)) props.onSelect('nodes', node.id, event.evt.shiftKey);
             }}
             onClick={event => {
-              if (props.tool === 'road' && !props.readonly) { event.cancelBubble = true; props.onRoadNode(node.id); }
+              if (event.evt.button !== 0) return;
+              if (props.pointPick) { event.cancelBubble = true; pickNode(node.id); }
+              else if (props.tool === 'road' && !props.readonly) { event.cancelBubble = true; props.onRoadNode(node.id); }
               else if (props.tool === 'select') { event.cancelBubble = true; if (!event.evt.shiftKey) props.onSelect('nodes', node.id, false); }
               else if (isSpatialTool(props.tool)) { const screen = pointer(); if (screen) { event.cancelBubble = true; drawAt(screen); } }
             }}
@@ -198,6 +224,7 @@ export function MapCanvas(props: Props) {
       {!isRectangleTool(props.tool) && <button onClick={drawing.finish} disabled={drawing.vertices.length < 3 || props.readonly}>完成多边形</button>}
       <button onClick={drawing.cancel}>取消绘制</button>{drawing.error && <p role="alert">{drawing.error}</p>}
     </div>}
+    {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
     <div className="canvas-label">LOCAL XY · 米制 · Z ↑</div>
     {unprojectable > 0 && <div className="projection-warning" aria-live="polite">{unprojectable} 个对象超出屏幕数值范围，JSON 完整保留；请数值调整坐标。</div>}
     <div className="scale-label">{roundTick(step)} m 网格 · 道路线宽仅表示外观</div>

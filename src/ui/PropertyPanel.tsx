@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { MapNode, MapRoad, Vec3, YardMap } from '../domain/model';
-import type { FacilityMovePolicy, MapCommand } from '../domain/commands';
+import type { FacilityMovePolicy, ZoneMovePolicy, MapCommand } from '../domain/commands';
 import { SpatialPropertyPanel, type SpatialSelection } from './SpatialPropertyPanel';
 import { RoadPhysicalFields, makePhysicalDraft, parsePhysicalDraft, physicalFields, type PhysicalDraft } from './RoadPhysicalFields';
 
 type NetworkSelection = { kind: 'node'; id: string; value: MapNode } | { kind: 'road'; id: string; value: MapRoad; lengthM: number };
 type Props = {
   map: YardMap;
+  zoneMovePolicy?: ZoneMovePolicy;
+  onZoneMovePolicyChange?: (policy: ZoneMovePolicy) => void;
   facilityMovePolicy: FacilityMovePolicy;
   onMovePolicyChange: (policy: FacilityMovePolicy) => void;
   selected: NetworkSelection | SpatialSelection | null;

@@ -1,12 +1,16 @@
 import Ajv2020, { type ErrorObject } from 'ajv/dist/2020';
-import schema from '../../schemas/map.schema.json';
+import legacySchema from '../../schemas/map.schema.json';
+import currentSchema from '../../schemas/map-0.2.schema.json';
 import type { Issue, PhysicalValue, Provenance, ValidationReport, YardMap } from '../domain/model';
 import { roadLength, roadPoints } from '../geometry/roads';
 import { MAX_MAP_POLYGON_VERTICES, validatePolygon } from '../geometry/polygons';
 import type { Polygon } from '../domain/model';
+import { inspectServiceConnections } from '../topology/serviceConnections';
 import { mapCapabilities } from '../domain/capabilities';
 
-const structuralValidator = new Ajv2020({ allErrors: true, strict: true, ownProperties: true }).compile<YardMap>(schema);
+const ajv = new Ajv2020({ allErrors: true, strict: true, ownProperties: true });
+const legacyValidator = ajv.compile<YardMap>(legacySchema);
+const currentValidator = ajv.compile<YardMap>(currentSchema);
 const collections = ['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const;
 function pointer(key: string): string { return key.replace(/~/g, '~0').replace(/\//g, '~1'); }
 
@@ -47,9 +51,10 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   const issues: Issue[] = [];
   checkJsonValues(input, '', issues, 0, new Set());
   if (issues.length) return { ok: false, profile, status: 'invalid', issues };
-  if (input && typeof input === 'object' && 'schemaVersion' in input && input.schemaVersion !== '0.1.0') {
-    return { ok: false, profile, status: 'invalid', issues: [issue('UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', '仅支持 schemaVersion 0.1.0；未执行自动迁移。')] };
+  if (input && typeof input === 'object' && 'schemaVersion' in input && input.schemaVersion !== '0.1.0' && input.schemaVersion !== '0.2.0') {
+    return { ok: false, profile, status: 'invalid', issues: [issue('UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', '仅支持 schemaVersion 0.1.0 / 0.2.0；未执行自动迁移。')] };
   }
+  const structuralValidator = input && typeof input === 'object' && 'schemaVersion' in input && input.schemaVersion === '0.2.0' ? currentValidator : legacyValidator;
   if (!structuralValidator(input)) return { ok: false, profile, status: 'invalid', issues: (structuralValidator.errors ?? []).map(schemaIssue) };
   const map = input as YardMap;
   function ref(collection: typeof collections[number], id: string | undefined, path: string): void {
@@ -151,11 +156,19 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   for (const [id, service] of Object.entries(map.servicePoints)) {
     const path = '/servicePoints/' + pointer(id);
     ref('nodes', service.nodeId, path + '/nodeId'); ref('facilities', service.facilityId, path + '/facilityId');
+    if (map.schemaVersion === '0.2.0') ref('zones', service.zoneId, path + '/zoneId');
     ref('accessPoints', service.accessPointId, path + '/accessPointId'); refs('resources', service.resourceIds, path + '/resourceIds');
     if (service.facilityId && Object.hasOwn(map.facilities, service.facilityId) && !map.facilities[service.facilityId]!.servicePointIds.includes(id)) issues.push(issue('FACILITY_MEMBERSHIP_MISSING', path + '/facilityId', '服务点声明的设施必须反向列出该服务点 ID。'));
     if (service.facilityId && service.accessPointId && Object.hasOwn(map.accessPoints, service.accessPointId)
       && map.accessPoints[service.accessPointId]!.facilityId !== service.facilityId)
       issues.push(issue('SERVICE_ACCESS_FACILITY_CONFLICT', path + '/accessPointId', '服务点与所引用出入口的设施归属不一致。'));
+  }
+  if (map.schemaVersion === '0.2.0') {
+    const services = Object.values(map.servicePoints);
+    const geometrySegments = Object.values(map.roads).reduce((sum, road) => sum + road.shapePoints.length + 1, 0);
+    const work = geometrySegments + services.length * Object.keys(map.roads).length + services.reduce((sum, service) => sum + (service.arrival?.mode === 'explicit_internal' ? service.arrival.internalPath.length * Math.max(1, Object.keys(map.movements).length) : 0), 0);
+    if (work > 2_000_000) issues.push(issue('SERVICE_CONNECTION_COMPLEXITY_LIMIT', '/servicePoints', '服务点与道路/转向诊断组合超过 2000000，本轮不能完成接续校验；请拆分地图，不返回未检查的成功。'));
+    else for (const summary of inspectServiceConnections(map)) issues.push(...summary.issues);
   }
   for (const [id, zone] of Object.entries(map.zones)) refs('resources', zone.resourceIds, '/zones/' + pointer(id) + '/resourceIds');
   for (const [id, resource] of Object.entries(map.resources)) {
