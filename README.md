@@ -1,33 +1,59 @@
-> 当前工程状态：M0 + M1 + M1.1 + M2A + M2A.1 已完成。支持保存恢复、空间编辑、服务点画布定位、设施/区域显式归属、边界代理/内部路径声明、未应用输入保护及双版本 JSON/CLI。此次实际验证：230 项单元、26 项集成、36 项 Chrome 测试全部通过，Schema/类型/lint/构建通过。见 [M2A.1 阶段报告](docs/M2A1_STAGE_REPORT.md)、[使用指南](docs/M2A1_USER_GUIDE.md)、[Schema 兼容合同](docs/M2A1_SCHEMA_COMPATIBILITY.md) 和 [结构化验证记录](docs/M2A1_VALIDATION_RESULTS.json)。本目录运行 npm ci、npm run dev -- --host 127.0.0.1。当前仅 draft 和局部接路检查；[M3A 是后续实施计划](docs/M3A_IMPLEMENTATION_PLAN.md)，没有装卸仿真/资源执行。底图和 ZIP 属 M2B，3D/VR 未实现。系统文件授权待按[手工步骤](docs/M11_NATIVE_FILE_ACCEPTANCE.md)核验。下方原开发任务包保留为历史。
+# 船厂拓扑地图绘制器
 
-# 船厂空间布局编辑器：Codex 开发任务包
+轻量、本地优先的二维地图绘制与外部系统数据准备工具。节点、道路、设施、区域和服务点保存为可由人及 Codex 直接修改的米制 JSON。地图校验不等于现场运输安全认证，synthetic 示例不代表实测船厂。
 
-版本：需求建议版 1.0，2026-09-09。
+本仓库停止按历史 M3A 路线建设装卸仿真、调度平台、资源竞争、任务回放、3D 或 VR。已有服务语义、稳定 ID、保存与接入合同保留；运行执行属于外部系统。历史报告保留作参考，不自动授权后续开发。
 
-这是一组开发任务、架构约束与验收标准，不是已经开发完成的软件，也不是已验证的船厂地图。它不包含已经实现的应用、JSON Schema、仿真引擎或三维模型。
+## 启动与文件
 
-## 使用
+要求 Node >=22.18.0，在本目录执行：
 
-把本包放入一个新的项目目录。若放入已有仓库，请合并而不是覆盖原 AGENTS.md，先检查现有工程。然后将 CODEX_START_PROMPT.md 的内容发给 Codex。
+```powershell
+npm ci
+npm run dev -- --host 127.0.0.1
+npm run map:validate -- examples/M2A1_synthetic_service_targets.map.json
+```
 
-持久工程规则见 AGENTS.md；完整产品与数据要求见 docs/PRODUCT_SPEC.md；按阶段开发见 docs/IMPLEMENTATION_PLAN.md；可执行验收要求见 docs/ACCEPTANCE_TESTS.md。技术依据和边界见 docs/SOURCES.md。
+浏览器支持多工程保存恢复、撤销重做、JSON 导入导出和外部修改冲突保护。新地图为 Schema 0.2.0，0.1.0 原样兼容；升级必须显式执行并保留原件。底图/ZIP 尚未实现，单 JSON 已包含全部矢量语义几何。
 
-首次任务只要求完成 M0 和 M1。M1 是一个可运行、可验证的竖向闭环，不代表完整第二层地图工具已经完成。M0 的数据契约应覆盖后续实体，但不应一次实现所有高级功能。
+## 边界直接编辑
 
-## 最终产品
+单选设施或区域时，从权威边界识别矩形，显示四角控制柄。拖动固定对角，沿自身局部坐标轴独立改变宽高，旋转后的矩形仍保持直角；不默认等比。新尺寸下限为 0.01 m，越过对角时夹至下限。右侧“矩形宽/高”和“固定对角”使用同一算法；宽高为派生值，不另存一套尺寸。鼠标精度受浏览器原生指针事件限制；需要精确的米制宽高时使用数值输入，程序不会隐式吸附或反复舍入 JSON。
 
-面向浏览器的船厂空间模型编辑器，用于手工设计、基于参考底图描绘和管理多套船厂布局。地图以框架无关、可直接编辑的 JSON 保存，后续由二维运输仿真、Python/Codex 工具和三维渲染适配器读取。
+不规则多边形及孔洞显示真实顶点控制柄。矩形若需自由变形，先明确选择“自由多边形”；不会按任意四边形猜测矩形，也不会自动删除孔洞或重排原顶点。编辑模式只属于会话，重新导入按实际边界识别。
 
-第一版不建设全栈数字孪生平台，不运行真实派车，不声称大型构件扫掠安全，不需要账户、云数据库、微服务、在线地图服务或 VR 硬件。
+拖动中仅预览，松开提交一次已有领域事务；Esc、窗口失焦或编辑上下文变化取消预览，非法几何回退并报错。缩放和顶点调整只改边界，不移动入口、服务点或道路节点。整体平移/旋转继续使用原有的关联点策略。保存只包含已提交地图；未应用输入保护继续生效。
 
-## 核心原则
+## 开发与核验
 
-JSON 保存船厂领域模型，不保存画布场景树。空间几何、网络连通、资源规则、运行场景、运行状态、编辑器状态分别定义。
+采用项目级 [Ponytail full](.agents/skills/ponytail/SKILL.md) 与 [冗余审查](.agents/skills/ponytail-review/SKILL.md)，固定上游提交 `356918eba965ee1eac64bd3a7f0dd02108350de5`；直接读取技能文件执行，未安装全局插件、hooks、MCP 或应用运行依赖。两份技能及 MIT 许可证 blob 已与 [来源说明](UPSTREAM.md) 中的哈希核对。本次 ZIP 实际只有三份说明，技能由安装工具从该固定提交补齐。
 
-导入参考图不自动等于真实地图；手绘布局不自动等于实测布局；结构校验通过不自动等于真实运输可执行。每一种结果应有准确标签。
+本次只复用选择枚举、已有几何校验/坐标转换及 updateFacility/updateZone 提交链；专用控制柄不缩放现有含文字的图形组。没有新框架或第二套历史/持久化引擎。原校验、输入保护、数据恢复和回归测试保留。
 
-## 当前工程入口
+本批验证（2026-09-09，Windows / PowerShell 7，Node 22.18.0，npm 10.9.3）：
 
-上文为初始任务包说明，原文保留。实际工程已在本目录完成 M0/M1、M1.1、M2A 和 M2A.1；当前使用方法见 [M2A.1 使用指南](docs/M2A1_USER_GUIDE.md)，实现状态和限制见 [M2A.1 阶段报告](docs/M2A1_STAGE_REPORT.md)。旧 [M1 能力清单](docs/M1_CAPABILITIES.md) 保留为历史。数据契约见 [M0 字段与坐标文档](docs/M0_DATA_CONTRACT.md)，架构决策见 [M0 ADR](docs/M0_ADR.md)。检查命令和结果以各阶段报告为准。
+| 实际命令 | 结果 | 退出码 |
+| --- | --- | --- |
+| `npm.cmd run schema:check` | 两版本生成类型一致 | 0 |
+| `npm.cmd run typecheck` | 应用与纯核心均通过 | 0 |
+| `npm.cmd run lint` | ESLint 与核心依赖边界通过 | 0 |
+| `npm.cmd run test` | 14 文件，253/253 通过 | 0 |
+| `npm.cmd run test:integration` | 3 文件，26/26 通过 | 0 |
+| `npm.cmd run build` | 216 模块；JS 856.80 kB，gzip 260.31 kB | 0 |
+| `npm.cmd run test:e2e` | Chrome，47/47 通过，2.1 min | 0 |
+| `npm.cmd run map:validate -- examples/M2A1_synthetic_service_targets.map.json` | 合法草稿，保留未知物理值提示 | 0 |
+| `npm.cmd run map:validate -- examples/M2A1_invalid_service_node.map.json` | 按预期拒绝：`DANGLING_REFERENCE`，`/servicePoints/sZoneUnload/nodeId` | 1（预期） |
 
-在本目录运行 `npm ci`、`npm run dev -- --host 127.0.0.1` 启动本地应用；无浏览器验证使用 `npm run map:validate -- examples/M1_synthetic.map.json`。本次地图与消息示例均为 synthetic，不是实测船厂或真实运输记录。
+实施前定向单元回归 `npx.cmd vitest run tests/unit/M2A_commands.test.ts tests/unit/M2A_physicalEquality.test.ts tests/unit/M0_coordinates.test.ts` 为 53/53；新增单元 23 项。实施后先运行 `npm.cmd run test:e2e -- tests/e2e/rectangleEditing.spec.ts tests/e2e/M2A_spatial.spec.ts`，20/20 通过，再执行完整门禁。最终 47 项浏览器测试包含原有 36 项及新增 11 项；实际绘制和百帧拖动覆盖矩形、旋转、孔洞、非法回退、单事务、保存重开和关联节点不变。
+
+失败记录：最初新测试的 Node/Ajv 导入导致未能收集用例，移除不必要的序列化器导入；首轮针对性执行 17/20，修复原生指针精度与夹限后重复反投影，并让输入保护测试显式处理现有确认框，随后 20/20。首次全量 46/47，旧 N07 整体拖动起点命中新角柄；只把起终点移到内部，保留原位移、100 帧和全部断言，单项 1/1 及最终全量 47/47 均通过。旧顶点编辑测试仅增加显式多边形模式选择。未删测试或放宽 JSON 全等检查。
+
+分工与裁决：`project_persistence` 实现纯几何并独立复审 UI/提交链；`local_file_save` 实现控制柄并复审几何；`save_baseline_tests` 独立执行浏览器与工程门禁；主代理整合数值编辑、交互保护、文档并作最终只读核对。数值等价输入残留未应用状态已修复；最终正确性和 Ponytail 冗余审查无阻断，本批通过。输入为任务包及既有源码；新增主体为 `src/geometry/rectangles.ts`、`src/renderers/2d/BoundaryHandles.tsx` 和同名测试，接入现有 App/属性面板/二维图层。Schema、保存模块、适配器及依赖锁文件未变。
+
+命令与退出码留存本地 `.cache/rectangle_final_results.json`，失败首轮单独保留；运行日志、失败 trace 和检查截图不提交 Git。本次复用锁定依赖，未重新执行 `npm ci`；Chrome 测试自动启动 Vite，未运行 Firefox/Safari 或系统原生文件权限手工验收。鼠标坐标有浏览器精度限制，精确尺寸使用数值入口。下一步仅维护绘制/数据交换与修复反馈，不自动恢复历史仿真路线。
+
+## 接口和已有说明
+
+- [数据字段与坐标](docs/M0_DATA_CONTRACT.md)、[双版本兼容合同](docs/M2A1_SCHEMA_COMPATIBILITY.md)、[保存与服务点使用](docs/M2A1_USER_GUIDE.md)。
+- [本次任务](CODEX_TASK.md)、[工程规则](AGENTS.md)。旧 [M3A 计划](docs/M3A_IMPLEMENTATION_PLAN.md) 已停止执行，仿真适配器仍仅为接口合同。
+- 系统原生文件权限/任意磁盘写回须按[手工验收](docs/M11_NATIVE_FILE_ACCEPTANCE.md)核验；自动化 OPFS 不能代替它。相邻标签可能重叠；无现场几何、安全或工程可行性认证。

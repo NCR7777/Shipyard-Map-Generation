@@ -10,7 +10,9 @@ import type { SceneSnapshot } from '../../adapters/contracts';
 import type { Polygon, Vec3 } from '../../domain/model';
 import { SpatialLayer, AssociatedPointLayer, type SpatialLayerProps } from './SpatialLayer';
 import { useSpatialDrawing, isSpatialTool, isRectangleTool, snapPosition, type SnapOptions } from './useSpatialDrawing';
-import type { Selection } from '../../domain/commands';
+import { SELECTION_KINDS, type Selection } from '../../domain/commands';
+import { rectangleFrame } from '../../geometry/rectangles';
+import { BoundaryHandles, type BoundaryTarget, type BoundaryPreview } from './BoundaryHandles';
 import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '../../geometry/coordinates';
 
 export type Tool = 'select' | 'node' | 'road' | 'pan' | 'facilityRect' | 'facilityPolygon' | 'zoneRect' | 'zonePolygon';
@@ -40,7 +42,10 @@ interface Props {
   pointPick?: PointPick;
   onPointPick?: (result: PointPickResult) => void;
   movingNodeIds?: string[];
-  facilityMovePolicy?: 'boundaryOnly' | 'withAssociatedNodes';
+  boundaryEditMode: 'auto' | 'polygon';
+  boundaryChangeToken: number;
+  onBoundaryCommit: (kind: 'facilities' | 'zones', id: string, boundary: Polygon, baseMapHash: string, baseChangeToken: number) => boolean;
+  onBoundaryInteractionChange: (active: boolean) => void;
   snap?: SnapOptions;
 }
 function tickStep(scale: number): number {
@@ -58,9 +63,33 @@ export function MapCanvas(props: Props) {
   const [previewDelta, setPreviewDelta] = useState<Vec3 | null>(null);
   const [rubberEnd, setRubberEnd] = useState<Vec3 | null>(null);
   const [pickNotice, setPickNotice] = useState('');
+  const [boundaryPreview, setBoundaryPreview] = useState<BoundaryPreview | null>(null);
+  const [boundaryActive, setBoundaryActive] = useState(false);
+  const boundaryActiveRef = useRef(false);
+  const [boundaryError, setBoundaryError] = useState('');
   useEffect(() => { setPickNotice(''); }, [props.pointPick?.mode]);
   const drawing = useSpatialDrawing(props.tool, props.readonly || !!props.pointPick, props.camera, props.onPolygonCreate, props.draftResetToken);
   const drawingDirty = drawing.vertices.length > 0;
+  const boundaryTarget = useMemo<BoundaryTarget | null>(() => {
+    if (props.readonly || props.hasUnappliedInput || props.pointPick || props.draftRoad || drawingDirty || previewDelta || props.tool !== 'select'
+      || SELECTION_KINDS.reduce((count, kind) => count + (props.selection[kind]?.length ?? 0), 0) !== 1) return null;
+    for (const kind of ['facilities', 'zones'] as const) {
+      const id = props.selection[kind]?.[0];
+      const item = props.scene[kind].find(value => value.id === id);
+      if (item) return { kind, id: item.id, boundary: item.boundary };
+    }
+    return null;
+  }, [props.readonly, props.hasUnappliedInput, props.pointPick, props.draftRoad, drawingDirty, previewDelta, props.tool, props.selection, props.scene]);
+  const boundaryFrame = useMemo(() => boundaryTarget && props.boundaryEditMode === 'auto' ? rectangleFrame(boundaryTarget.boundary) : null, [boundaryTarget, props.boundaryEditMode]);
+  const boundaryMode = boundaryTarget ? boundaryFrame ? 'rectangle' : 'polygon' : 'none';
+  const boundaryHandleCount = boundaryTarget ? [boundaryTarget.boundary.outer, ...boundaryTarget.boundary.holes].reduce((count, ring) => count + ring.length - 1, 0) : 0;
+  const boundaryContextKey = JSON.stringify([props.scene.mapContentHash, props.boundaryChangeToken, props.boundaryEditMode,
+    SELECTION_KINDS.map(kind => props.selection[kind] ?? []), props.tool, props.readonly, props.hasUnappliedInput,
+    !!props.pointPick, !!props.draftRoad, drawingDirty, props.draftResetToken, props.camera, size]);
+  function boundaryInteraction(active: boolean) {
+    boundaryActiveRef.current = active; setBoundaryActive(active); pan.current = null;
+    props.onBoundaryInteractionChange(active);
+  }
   useEffect(() => { props.onDraftChange?.(drawingDirty); return () => props.onDraftChange?.(false); }, [drawingDirty, props.onDraftChange]);
   useEffect(() => {
     const observer = new ResizeObserver(entries => {
@@ -103,13 +132,14 @@ export function MapCanvas(props: Props) {
   for (let x = Math.ceil(left / step) * step; x <= right && grid.length < 150; x += step) grid.push({ value: x, pixel: worldToScreen([x, 0, 0], props.camera)[0], axis: 'x' });
   for (let y = Math.ceil(bottom / step) * step; y <= top && grid.length < 300; y += step) grid.push({ value: y, pixel: worldToScreen([0, y, 0], props.camera)[1], axis: 'y' });
   function handleStageDown(event: KonvaEventObject<MouseEvent>) {
+    if (boundaryActiveRef.current) return;
     if ((!props.pointPick && props.tool === 'pan') || event.evt.button === 1) {
       const point = pointer(); if (point) pan.current = { pointer: point, camera: props.camera };
       event.evt.preventDefault();
     }
   }
   function handleStageClick(event: KonvaEventObject<MouseEvent>) {
-    if (event.target !== event.target.getStage() || event.evt.button !== 0) return;
+    if (boundaryActiveRef.current || event.target !== event.target.getStage() || event.evt.button !== 0) return;
     const screen = pointer(); if (!screen) return;
     drawAt(screen);
   }
@@ -122,6 +152,7 @@ export function MapCanvas(props: Props) {
     }
   }
   function drawAt(screen: Vec2) {
+    if (boundaryActiveRef.current) return;
     if (props.pointPick) {
       if (props.readonly) return;
       if (props.pointPick.mode === 'new') props.onPointPick?.({ position: snapPosition(screen, props.camera, props.scene.nodes, props.snap).world });
@@ -140,9 +171,9 @@ export function MapCanvas(props: Props) {
   const visibleRoads = props.scene.roads.filter(road => points(road).every(Number.isFinite));
   const unprojectable = props.scene.nodes.length + props.scene.roads.length - visibleNodes.length - visibleRoads.length;
   const spatialProps: SpatialLayerProps = {
-    scene: props.scene, camera: props.camera, selection: props.selection, previewDelta,
+    scene: props.scene, camera: props.camera, selection: props.selection, previewDelta, boundaryPreview,
     snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && props.tool === 'road', movingNodeIds: selectedNodeIds,
-    disableDrag: props.hasUnappliedInput, pickingPoint: !!props.pointPick, onPickNode: pickNode,
+    disableDrag: props.hasUnappliedInput || boundaryActive, pickingPoint: !!props.pointPick, onPickNode: pickNode,
     onSelect: props.onSelect, onRoadNode: props.onRoadNode, onDrawClick: () => { const p = pointer(); if (p) drawAt(p); },
     onDragStart: origin => { dragStart.current = origin; }, onPreview: setPreviewDelta,
     onDragEnd: delta => { dragStart.current = null; props.onTranslate(delta); },
@@ -156,19 +187,20 @@ export function MapCanvas(props: Props) {
       onMouseDown={handleStageDown} onMouseUp={() => { pan.current = null; }} onMouseLeave={() => { pan.current = null; props.onCursor(null); }}
       onClick={handleStageClick}
       onMouseMove={() => {
+        if (boundaryActiveRef.current) return;
         const point = pointer(); if (!point) return;
         if (pan.current) props.onCamera({ ...pan.current.camera, offsetX: pan.current.camera.offsetX + point[0] - pan.current.pointer[0], offsetY: pan.current.camera.offsetY + point[1] - pan.current.pointer[1] });
         const world = snapPosition(point, props.camera, props.scene.nodes, props.snap).world; props.onCursor(world); setRubberEnd(world);
       }}
       onWheel={event => {
-        event.evt.preventDefault(); if (dragStart.current) return; const point = pointer(); if (!point) return;
+        event.evt.preventDefault(); if (dragStart.current || boundaryActiveRef.current) return; const point = pointer(); if (!point) return;
         props.onCamera(zoomAt(props.camera, point, Math.min(100, Math.max(0.02, props.camera.scale * (event.evt.deltaY < 0 ? 1.15 : 1 / 1.15)))));
       }}>
       <Layer listening={false}>
         {grid.filter(tick => Number.isFinite(tick.pixel)).map((tick, index) => <Line key={'grid-' + index} points={tick.axis === 'x' ? [tick.pixel, 0, tick.pixel, size.height] : [0, tick.pixel, size.width, tick.pixel]} stroke={Math.abs(tick.value) < 1e-9 ? '#8ba6b4' : '#e5edf1'} strokeWidth={Math.abs(tick.value) < 1e-9 ? 1.5 : 1} />)}
         {grid.filter(tick => Number.isFinite(tick.pixel)).map((tick, index) => <Text key={'label-' + index} x={tick.axis === 'x' ? tick.pixel + 4 : 5} y={tick.axis === 'x' ? 6 : tick.pixel + 4} text={roundTick(tick.value)} fill="#7b8f9d" fontSize={10} />)}
       </Layer>
-      <Layer>
+      <Layer listening={!boundaryActive}>
         <SpatialLayer {...spatialProps} />
         {visibleRoads.map(road => <Line key={road.id} name="road" points={points(road)} stroke={props.selection.roads.includes(road.id) ? '#e08128' : '#216b88'} strokeWidth={props.selection.roads.includes(road.id) ? 5 : 3} hitStrokeWidth={14} lineCap="round" lineJoin="round"
           onClick={event => {
@@ -183,7 +215,7 @@ export function MapCanvas(props: Props) {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
           const selected = selectedNodeIds.has(node.id) || props.pointPick?.nodeId === node.id;
           return <Circle _useStrictMode key={node.id} x={x} y={y} radius={selected ? 6.5 : 5} fill={selected ? '#e08128' : '#ffffff'} stroke={selected ? '#9a4c0d' : '#216b88'} strokeWidth={2} hitStrokeWidth={12}
-            draggable={!props.hasUnappliedInput && !props.pointPick && props.tool === 'select' && !props.readonly}
+            draggable={!boundaryActive && !props.hasUnappliedInput && !props.pointPick && props.tool === 'select' && !props.readonly}
             onMouseDown={event => {
               if (event.evt.button === 0 && !props.pointPick && props.tool === 'select' && (!selected || event.evt.shiftKey)) props.onSelect('nodes', node.id, event.evt.shiftKey);
             }}
@@ -218,7 +250,17 @@ export function MapCanvas(props: Props) {
         {spatialPreview.length > 1 && <Line points={spatialPreview.flatMap(point => worldToScreen(point, props.camera))} stroke="#bd741d" strokeWidth={2} dash={[7, 5]} />}
         {drawing.vertices.map((point, index) => { const p = worldToScreen(point, props.camera); return <Circle key={index} x={p[0]} y={p[1]} radius={4} fill="#bd741d" />; })}
       </Layer>
+      <BoundaryHandles target={boundaryTarget} mode={props.boundaryEditMode} preview={boundaryPreview} camera={props.camera}
+        mapHash={props.scene.mapContentHash} changeToken={props.boundaryChangeToken} contextKey={boundaryContextKey}
+        onPreview={setBoundaryPreview} onActive={boundaryInteraction} onError={setBoundaryError} onCommit={props.onBoundaryCommit} />
     </Stage>
+    {boundaryPreview && <output data-testid="boundary-edit-preview" data-width-m={boundaryPreview.widthM} data-height-m={boundaryPreview.heightM} data-clamped={boundaryPreview.clamped ?? false}
+      style={{ position: 'absolute', top: 34, left: 14, padding: 8, background: '#fff', border: '1px solid #c9d6d8', borderRadius: 6, pointerEvents: 'none' }}>
+      {boundaryPreview.widthM === undefined ? '顶点预览' : '局部宽 ' + roundTick(boundaryPreview.widthM) + ' m × 高 ' + roundTick(boundaryPreview.heightM!) + ' m'}
+      {boundaryPreview.clamped ? ' · 最小边长 0.01 m' : ''} · 松开应用，Esc 取消；仅修改边界
+    </output>}
+    {boundaryError && <div role="alert" style={{ position: 'absolute', bottom: 38, left: 14, right: 14, background: '#fff4ed', padding: 8 }}>{boundaryError}</div>}
+    <output className="sr-only" data-testid="boundary-handles" data-count={boundaryHandleCount} data-mode={boundaryMode}>{boundaryHandleCount} 个边界控制柄</output>
     {drawing.vertices.length > 0 && <div style={{ position: 'absolute', top: 34, left: 14, padding: 8, background: '#fff', border: '1px solid #c9d6d8', borderRadius: 6, zIndex: 2 }}>
       <span>{isRectangleTool(props.tool) ? '再点击对角点；Esc 取消' : `${drawing.vertices.length} 个顶点 · Enter 完成`}</span>
       {!isRectangleTool(props.tool) && <button onClick={drawing.finish} disabled={drawing.vertices.length < 3 || props.readonly}>完成多边形</button>}

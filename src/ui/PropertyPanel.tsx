@@ -7,6 +7,8 @@ import { RoadPhysicalFields, makePhysicalDraft, parsePhysicalDraft, physicalFiel
 type NetworkSelection = { kind: 'node'; id: string; value: MapNode } | { kind: 'road'; id: string; value: MapRoad; lengthM: number };
 type Props = {
   map: YardMap;
+  boundaryEditMode?: 'auto' | 'polygon';
+  onBoundaryModeChange?: (mode: 'auto' | 'polygon') => void;
   zoneMovePolicy?: ZoneMovePolicy;
   onZoneMovePolicyChange?: (policy: ZoneMovePolicy) => void;
   facilityMovePolicy: FacilityMovePolicy;

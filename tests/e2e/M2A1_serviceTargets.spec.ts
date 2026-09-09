@@ -217,7 +217,7 @@ test('N07 a zone drag, copy and explicit member deletion retain shared-road safe
   await ready(page); const original = zoneServiceFixture(); await importMap(page, original);
   await page.getByTestId('zones-item-zA').click();
   await page.getByLabel('区域移动关联点', { exact: true }).selectOption('withAssociatedNodes');
-  const from = await position(page, 72, 22); const to = await position(page, 82, 27);
+  const from = await position(page, 72, 30); const to = await position(page, 82, 35);
   await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 100 }); await page.mouse.up();
   const moved = await download(page, info, 'zone-moved.map.json');
   expect(moved.nodes.nZone!.position).toEqual([90, 35, 0]);

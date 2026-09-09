@@ -5,9 +5,10 @@ import type { Selection } from '../../domain/commands';
 import type { Vec3 } from '../../domain/model';
 import { worldToScreen, type Camera } from '../../geometry/coordinates';
 import { snapPosition, type SnapOptions } from './useSpatialDrawing';
+import type { BoundaryPreview } from './BoundaryHandles';
 
 export interface SpatialLayerProps {
-  scene: SceneSnapshot; camera: Camera; selection: Selection; previewDelta: Vec3 | null;
+  scene: SceneSnapshot; camera: Camera; selection: Selection; previewDelta: Vec3 | null; boundaryPreview?: BoundaryPreview | null;
   snap?: SnapOptions; readonly: boolean; selecting: boolean; drawingRoad: boolean; movingNodeIds: Set<string>;
   disableDrag?: boolean; pickingPoint?: boolean; onPickNode?: (id: string) => void;
   onSelect: (kind: keyof Selection, id: string, additive: boolean) => void;
@@ -25,8 +26,9 @@ export function SpatialLayer(props: SpatialLayerProps) {
   return <>{polygons.map(item => {
     const selected = !!props.selection[item.entityType]?.includes(item.id);
     const origin = item.boundary.outer[0]; const offset = selected ? props.previewDelta : null;
+    const boundary = props.boundaryPreview?.kind === item.entityType && props.boundaryPreview.id === item.id ? props.boundaryPreview.boundary : item.boundary;
     const anchor = worldToScreen(move(origin, offset), props.camera);
-    const rings = [item.boundary.outer, ...item.boundary.holes].map(ring => ring.map(point => {
+    const rings = [boundary.outer, ...boundary.holes].map(ring => ring.map(point => {
       const p = worldToScreen(move(point, offset), props.camera); return [p[0] - anchor[0], p[1] - anchor[1]];
     }));
     if (!anchor.every(Number.isFinite) || rings.some(ring => ring.some(point => !point.every(Number.isFinite)))) return null;

@@ -115,6 +115,7 @@ test('G05 real polygon drawing closes explicitly and invalid numeric vertices le
   await page.keyboard.press('Enter');
   await dimensions(page, 60, 30, 1800);
   const original = await download(page, info, 'polygon-valid.map.json');
+  await page.getByLabel('边界编辑模式', { exact: true }).selectOption('polygon');
   await page.getByLabel('外环 顶点 2 Y (m)', { exact: true }).fill('30');
   await page.getByLabel('外环 顶点 3 Y (m)', { exact: true }).fill('0');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
