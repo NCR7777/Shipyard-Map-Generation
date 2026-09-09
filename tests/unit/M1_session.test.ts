@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createSession, editSession, isDirty, markExported, prepareImport, redoSession, resolveImport, undoSession } from '../../src/editor/session';
+import { createSession, editSession, isDirty, acknowledgeMap, prepareImport, redoSession, resolveImport, undoSession } from '../../src/editor/session';
 import { contentHash, serializeMap } from '../../src/domain/serialization';
 import { editorFixture } from '../helpers/M1_fixtures';
 
 describe('M1 history and external-edit conflict sessions', () => {
-  it('marks new maps dirty until the exported content matches the current map', () => {
+  it('marks new maps dirty until an acknowledged persisted snapshot matches the current map', () => {
     let session = createSession(editorFixture());
     expect(isDirty(session)).toBe(true);
-    session = markExported(session, contentHash(session.map));
+    session = acknowledgeMap(session, contentHash(session.map));
     expect(isDirty(session)).toBe(false);
   });
 
@@ -84,11 +84,11 @@ describe('M1 history and external-edit conflict sessions', () => {
     if (proposal.status === 'invalid') throw new Error('Valid external map rejected.');
     const result = resolveImport(dirty, proposal, 'cancel');
     expect(result.session).toEqual(dirty);
-    expect(result.session.savedHash).toBe(initial.savedHash);
+    expect(result.session.acknowledgedHash).toBe(initial.acknowledgedHash);
     expect(isDirty(result.session)).toBe(true);
   });
 
-  it('allows export-current then explicit replacement and resets history to the imported baseline', () => {
+  it('allows acknowledged persistence then explicit replacement and resets history to the imported baseline', () => {
     const initial = createSession(editorFixture(), true);
     const dirty = editSession(initial, { type: 'updateNode', id: 'nA', patch: { name: '先保存这份' } }).session;
     const external = editorFixture();
@@ -96,7 +96,7 @@ describe('M1 history and external-edit conflict sessions', () => {
     const proposal = prepareImport(dirty, serializeMap(external));
     expect(proposal.status).toBe('conflict');
     if (proposal.status === 'invalid') throw new Error('Valid external map rejected.');
-    const exported = markExported(dirty, contentHash(dirty.map));
+    const exported = acknowledgeMap(dirty, contentHash(dirty.map));
     expect(isDirty(exported)).toBe(false);
     const result = resolveImport(exported, proposal, 'replace');
     expect(result.ok).toBe(true);
@@ -143,13 +143,13 @@ describe('M1 history and external-edit conflict sessions', () => {
     expect(undoSession(result.session).map).toEqual(initial.map);
   });
 
-  it('does not mark a later document as saved when an earlier export completes', () => {
+  it('does not mark a later document as saved when earlier persistence completes', () => {
     const initial = createSession(editorFixture(), true);
     const oldHash = contentHash(initial.map);
     const dirty = editSession(initial, { type: 'updateNode', id: 'nB', patch: { position: [120, 0, 0] } }).session;
-    const result = markExported(dirty, oldHash);
+    const result = acknowledgeMap(dirty, oldHash);
     expect(isDirty(result)).toBe(true);
-    expect(result.savedHash).toBe(initial.savedHash);
+    expect(result.acknowledgedHash).toBe(initial.acknowledgedHash);
     expect(result.map).toEqual(dirty.map);
   });
 });

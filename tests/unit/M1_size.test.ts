@@ -42,7 +42,7 @@ describe('M1 import/export capacity remains a closed contract', () => {
     expect(result.session).toBe(initial);
     expect(serializeMap(result.session.map)).toBe(before);
     expect(result.session.past).toHaveLength(0);
-    expect(result.session.savedHash).toBe(initial.savedHash);
+    expect(result.session.acknowledgedHash).toBe(initial.acknowledgedHash);
   });
 
   it('returns a structured refusal if a prepared candidate is subsequently enlarged past the export limit', () => {

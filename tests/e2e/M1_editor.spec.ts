@@ -87,7 +87,8 @@ test('draws a true polyline, edits to 100m, exports, externally edits to 120m, v
   await newDialog.getByRole('button', { name: '创建地图', exact: true }).click();
   await expect(newDialog).not.toBeVisible();
   await expect(page.getByTestId('node-count')).toHaveText('0');
-  await expect(page.getByTestId('save-status')).toContainText('有未导出编辑');
+  // M1.1 replaces the download baseline with durable browser storage (S09 tests independence).
+  await expect(page.getByTestId('browser-save-status')).toContainText('浏览器草稿');
   const ids = await drawRoadWithMouse(page);
   const before = await downloadMap(page, testInfo, 'before.map.json');
   expect(before.map.roads[ids.road]!.fromNodeId).toBe(ids.a);

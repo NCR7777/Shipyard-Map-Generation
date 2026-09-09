@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MapNode, MapRoad, Vec3 } from '../domain/model';
 import type { MapCommand } from '../domain/commands';
 
@@ -7,14 +7,19 @@ type Props = {
   readonly: boolean;
   count: number;
   onApply: (command: MapCommand) => boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
-export function PropertyPanel({ selected, readonly, count, onApply }: Props) {
+export function PropertyPanel({ selected, readonly, count, onApply, onDirtyChange }: Props) {
   const [name, setName] = useState(selected?.value.name ?? '');
   const [coords, setCoords] = useState<string[]>(selected?.kind === 'node' ? selected.value.position.map(String) : []);
   const [shapePoints, setShapePoints] = useState<string[][]>(selected?.kind === 'road' ? selected.value.shapePoints.map(p => p.map(String)) : []);
   const [direction, setDirection] = useState<MapRoad['direction']>(selected?.kind === 'road' ? selected.value.direction : 'unknown');
   const [error, setError] = useState('');
+  const pending = !!selected && (name !== selected.value.name || (selected.kind === 'node'
+    ? JSON.stringify(coords) !== JSON.stringify(selected.value.position.map(String))
+    : JSON.stringify(shapePoints) !== JSON.stringify(selected.value.shapePoints.map(point => point.map(String))) || direction !== selected.value.direction));
+  useEffect(() => { onDirtyChange?.(pending); return () => onDirtyChange?.(false); }, [pending, onDirtyChange]);
   if (!selected) return <div className="empty-properties"><div className="empty-glyph">↖</div><strong>{count > 1 ? `已选择 ${count} 个对象` : '选择对象查看属性'}</strong><p>{count > 1 ? '可一起移动、复制；道路平移会连同其显式端点。' : '点击节点或道路，也可使用左侧对象列表。Shift 点击可多选。'}</p></div>;
   function vec(values: string[]): Vec3 | null {
     if (values.some(value => value.trim() === '' || !Number.isFinite(Number(value)))) return null;

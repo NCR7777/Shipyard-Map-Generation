@@ -4,7 +4,7 @@ import { contentHash, serializeMap } from '../domain/serialization';
 import { mapCapabilities } from '../domain/capabilities';
 import { closureSelection, type MapCommand, type Selection } from '../domain/commands';
 import type { Issue, Vec3 } from '../domain/model';
-import { createSession, editSession, isDirty, markExported, prepareImport, redoSession, resolveImport, undoSession, type EditorSession, type ImportProposal } from '../editor/session';
+import { createSession, editSession, isDirty, acknowledgeMap, prepareImport, redoSession, resolveImport, undoSession, type EditorSession, type ImportProposal } from '../editor/session';
 import { toSceneSnapshot } from '../compiler/scene';
 import { validateMap } from '../validation/validate';
 import { downloadMap, readJsonFile } from '../adapters/files';
@@ -12,6 +12,9 @@ import { MapCanvas, type DraftRoad, type Tool } from '../renderers/2d/MapCanvas'
 import type { Camera } from '../geometry/coordinates';
 import { PropertyPanel } from './PropertyPanel';
 import { Modal } from './Modal';
+import { useProjectWorkspace } from './useProjectWorkspace';
+import { LocalFileController } from '../adapters/localFiles';
+type FileConflict = Extract<Awaited<ReturnType<LocalFileController['check']>>, { status: 'conflict' }>;
 
 const emptySelection = (): Selection => ({ nodes: [], roads: [] });
 const uid = (prefix: string) => prefix + '_' + crypto.randomUUID();
@@ -38,11 +41,43 @@ export function App() {
   const importSequence = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const initializedCanvas = useRef(false);
+  const [propertyDirty, setPropertyDirty] = useState(false);
+  const onPropertyDirty = useCallback((value: boolean) => setPropertyDirty(value), []);
+  const [saveDialog, setSaveDialog] = useState(false);
+  const [recentDialog, setRecentDialog] = useState(false);
+  const [storageConflictDialog, setStorageConflictDialog] = useState(false);
+  const [local] = useState(() => new LocalFileController());
+  const [localState, setLocalState] = useState(local.snapshot());
+  const [localMessage, setLocalMessage] = useState('');
+  const [fileConflict, setFileConflict] = useState<FileConflict | null>(null);
+  const [overwriteReady, setOverwriteReady] = useState<{ token: number; mapHash: string } | null>(null);
+  const preserveNative = useRef(false);
+  const nativeTransition = useRef(false);
+  const [exportMessage, setExportMessage] = useState('尚未导出 JSON');
+  const projects = useProjectWorkspace({
+    map: session.map, camera,
+    onAcknowledged: hash => updateSession(acknowledgeMap(sessionRef.current, hash)),
+    onRestore: recovery => {
+      importSequence.current++; setFileLoading(false);
+      if (!preserveNative.current && !local.reset()) throw new Error('本地文件仍在处理中，工程界面未切换；请等待并重试。');
+      updateSession({ ...createSession(recovery.map, true), changeToken: sessionRef.current.changeToken + 1 });
+      setMapName(recovery.map.metadata.name); setSelection(emptySelection()); setDraftRoad(null); setTool('select');
+      setPropertyDirty(false); initializedCanvas.current = true;
+      setCamera(recovery.editorState?.camera ?? { offsetX: 80, offsetY: 460, scale: 4 });
+      if (!preserveNative.current) { setLocalState(local.snapshot()); setFileConflict(null); setLocalMessage(''); }
+      setExportMessage('尚未导出 JSON');
+      setStatus(recovery.source === 'new' ? '新工程已打开；浏览器草稿将自动保存。' : '已恢复浏览器工程，地图经共同校验与派生路径重建。');
+    },
+  });
+  const unapplied = propertyDirty || mapName !== session.map.metadata.name;
+  const saveGuard = useRef({ browserDirty: true, unapplied: false });
+  saveGuard.current = { browserDirty: projects.state.active?.draftHash !== contentHash(session.map), unapplied };
   useEffect(() => setMapName(session.map.metadata.name), [session.map.metadata.name]);
   const scene = useMemo(() => toSceneSnapshot(session.map), [session.map]);
   const capabilities = useMemo(() => mapCapabilities(session.map), [session.map]);
   const report = useMemo(() => validateMap(session.map), [session.map]);
-  const readonly = !capabilities.editable;
+  const domainReadonly = !capabilities.editable;
+  const readonly = domainReadonly || !projects.ready || projects.transitioning || localState.busy;
   const dirty = isDirty(session);
   const validSelection = useMemo(() => ({
     nodes: selection.nodes.filter(id => Object.hasOwn(session.map.nodes, id)),
@@ -58,7 +93,9 @@ export function App() {
     if (!initializedCanvas.current) { initializedCanvas.current = true; setCamera({ offsetX: 80, offsetY: size.height - 80, scale: 4 }); }
   }, []);
   function updateSession(next: EditorSession) { sessionRef.current = next; setSession(next); }
+  function operationsBlocked() { return !projects.ready || projects.isNavigating() || local.snapshot().busy || nativeTransition.current; }
   function apply(command: MapCommand): boolean {
+    if (operationsBlocked()) { setStatus('工程或文件操作进行中，暂不接受地图修改。'); return false; }
     const result = editSession(sessionRef.current, command);
     setOperationIssues(result.issues);
     if (!result.ok) { setStatus('操作被拒绝，地图及历史记录保持不变。'); return false; }
@@ -73,14 +110,92 @@ export function App() {
   function changeTool(value: Tool) { setTool(value); setDraftRoad(null); }
   function exportCurrent() {
     try {
-      const current = sessionRef.current; const hash = contentHash(current.map);
+      const current = sessionRef.current;
       const filename = downloadMap(current.map);
-      updateSession(markExported(sessionRef.current, hash));
+      setExportMessage('已发起 JSON 下载；不改变浏览器或本地文件保存状态。');
       setStatus('已发起下载 ' + filename + '；单 JSON 不包含底图二进制。');
     } catch (error) { setOperationIssues([localIssue('EXPORT_FAILED', error instanceof Error ? error.message : String(error))]); }
   }
-  function undo() { updateSession(undoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已撤销一个事务。'); }
-  function redo() { updateSession(redoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已重做一个事务。'); }
+  function saveProject(confirmed = false) {
+    if (unapplied && !confirmed) { setSaveDialog(true); return; }
+    setSaveDialog(false);
+    void projects.save().then(() => setStatus('已提交地图已保存到浏览器工程；未应用输入仍留在表单中。')).catch(error => setOperationIssues([localIssue('PROJECT_SAVE_FAILED', String(error))]));
+  }
+  function showRecent() {
+    void projects.showRecent().then(() => setRecentDialog(true)).catch(error => setOperationIssues([localIssue('PROJECT_LIST_FAILED', String(error))]));
+  }
+  async function openProject(id: string) {
+    if (operationsBlocked()) return;
+    if (unapplied) { setStatus('有未应用输入，请先应用或恢复输入后再切换工程。'); return; }
+    try { await projects.open(id); setRecentDialog(false); } catch (error) { setOperationIssues([localIssue('PROJECT_OPEN_FAILED', String(error))]); }
+  }
+  async function reloadStoredProject() {
+    if (operationsBlocked()) return;
+    try { await projects.reloadStored(); setStorageConflictDialog(false); } catch (error) { setStatus(String(error)); }
+  }
+  async function copyProject() {
+    if (operationsBlocked()) return;
+    if (unapplied) { setSaveDialog(true); return; }
+    try { await projects.recoveryCopy(); setStorageConflictDialog(false); setFileConflict(null); setStatus('已另存浏览器恢复副本；地图 ID 保留，存储项目 ID 独立。'); }
+    catch (error) { setOperationIssues([localIssue('PROJECT_COPY_FAILED', String(error))]); }
+  }
+  function refreshLocal() { setLocalState(local.snapshot()); }
+  async function checkFile() {
+    if (operationsBlocked()) return;
+    const pending = local.check(); refreshLocal();
+    const result = await pending; refreshLocal();
+    if (result.status === 'conflict') { setFileConflict(result); setOverwriteReady(null); }
+    else if (result.status !== 'unchanged' && result.status !== 'unlinked' && result.status !== 'busy') setLocalMessage(result.message);
+  }
+  async function openNative(reload = false) {
+    if (operationsBlocked()) return;
+    nativeTransition.current = true;
+    const pending = reload ? local.readCurrent() : local.open(); refreshLocal();
+    const result = await pending; refreshLocal();
+    if (result.status !== 'opened') { nativeTransition.current = false; setLocalMessage(result.message); if (result.issues) setOperationIssues(result.issues); return; }
+    if (saveGuard.current.unapplied) { nativeTransition.current = false; local.cancelOpen(result.token); setLocalMessage('有未应用输入；先应用或撤销输入，再关联文件。'); return; }
+    preserveNative.current = true;
+    try {
+      await projects.create(result.loaded.map);
+      const accepted = local.acceptOpen(result.token);
+      setLocalMessage(accepted.status === 'linked' ? '文件已关联；写回需要单独操作。' : accepted.message);
+      setFileConflict(null); setOverwriteReady(null);
+    } catch (error) { local.cancelOpen(result.token); setLocalMessage(String(error)); }
+    finally { preserveNative.current = false; nativeTransition.current = false; refreshLocal(); }
+  }
+  async function writeNative(saveAs = false, overwriteToken?: number) {
+    if (operationsBlocked()) return;
+    if (unapplied) { setLocalMessage('有未应用输入，请先应用属性；未写回文件。'); return; }
+    const map = sessionRef.current.map;
+    if (overwriteToken !== undefined && (overwriteReady?.token !== overwriteToken || overwriteReady.mapHash !== contentHash(map))) {
+      setLocalMessage('当前地图或外部版本已变化，请重新保留恢复副本后确认。'); return;
+    }
+    const pending = saveAs ? local.saveAs(map) : local.write(map, overwriteToken); refreshLocal();
+    const result = await pending; refreshLocal();
+    if (result.status === 'conflict') { setFileConflict(result); setOverwriteReady(null); }
+    else if (result.status === 'saved') { setLocalMessage('文件写回并关闭成功：' + result.name); setFileConflict(null); setOverwriteReady(null); }
+    else setLocalMessage(result.message);
+  }
+  async function prepareOverwrite() {
+    if (operationsBlocked()) return;
+    const startingHash = contentHash(sessionRef.current.map);
+    if (!fileConflict?.loaded?.ok) { setLocalMessage('外部文件非法，保留原件；可另存当前地图到新文件。'); return; }
+    try {
+      await projects.save();
+      await projects.backup(fileConflict.loaded.map);
+      if (contentHash(sessionRef.current.map) !== startingHash) { setOverwriteReady(null); setLocalMessage('备份期间产生新编辑，请重新保存双方副本再确认。'); return; }
+      setOverwriteReady({ token: fileConflict.token, mapHash: startingHash });
+      setLocalMessage('当前版本和外部版本已各自存入浏览器，可明确确认覆盖。');
+    } catch (error) { setLocalMessage('恢复副本保存失败，未覆盖外部文件：' + String(error)); }
+  }
+  useEffect(() => {
+    const focus = () => { void checkFile(); };
+    window.addEventListener('focus', focus);
+    return () => window.removeEventListener('focus', focus);
+  });
+  function undo() {
+    if (operationsBlocked()) return; updateSession(undoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已撤销一个事务。'); }
+  function redo() { if (operationsBlocked()) return; updateSession(redoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已重做一个事务。'); }
   function remove() {
     if (selectedCount === 0 || readonly) return;
     if (apply({ type: 'deleteSelection', selection: validSelection })) setSelection(emptySelection());
@@ -95,20 +210,21 @@ export function App() {
     if (!Object.values(next).every(Number.isFinite)) { setStatus('当前坐标超出视图可表示范围；请通过数值属性调整坐标。'); return; }
     setCamera(next);
   }
-  function finishImport(candidate: ImportProposal, isNew: boolean) {
+  async function finishImport(candidate: ImportProposal, isNew: boolean) {
+    if (operationsBlocked()) return;
     const result = resolveImport(sessionRef.current, candidate, 'replace');
     setOperationIssues(result.issues);
     if (!result.ok) { setProposal(null); setStatus('候选已过期或无效，请重新导入。'); return; }
-    const next = isNew ? { ...result.session, savedHash: null } : result.session;
-    updateSession(next); setMapName(next.map.metadata.name);
-    setSelection(emptySelection()); setDraftRoad(null); setTool('select'); setProposal(null);
-    setCamera({ offsetX: 80, offsetY: canvasSize.height - 80, scale: 4 });
-    setStatus(isNew ? '已新建 synthetic 地图，尚未导出。' : '已从 JSON 重建地图与派生几何。');
-  }
-  function prepare(text: string, isNew = false) {
+    try {
+      await projects.create(result.session.map);
+      setProposal(null);
+      setStatus(isNew ? '已新建 synthetic 工程；上一工程保留在浏览器中。' : '已从 JSON 新建浏览器工程，原工程保存版本保留。');
+    } catch (error) { setOperationIssues([localIssue('PROJECT_SWITCH_FAILED', String(error))]); }
+  }  function prepare(text: string, isNew = false) {
+    if (operationsBlocked()) return;
     const result = prepareImport(sessionRef.current, text);
     if (result.status === 'invalid') { setOperationIssues(result.issues); setStatus('导入失败；当前地图、历史和保存基线保持不变。'); return; }
-    if (result.status === 'conflict') setProposal({ value: result, isNew });
+    if (result.status === 'conflict' || saveGuard.current.unapplied) setProposal({ value: result, isNew });
     else finishImport(result, isNew);
   }
   async function importFile(file: File) {
@@ -118,6 +234,7 @@ export function App() {
     finally { if (sequence === importSequence.current) setFileLoading(false); }
   }
   function createNew() {
+    if (operationsBlocked()) return;
     if (!newName.trim()) return;
     importSequence.current++; setFileLoading(false); setNewDialog(false);
     prepare(serializeMap(newMap(uid('map'), newName.trim())), true);
@@ -136,18 +253,22 @@ export function App() {
     if (point) setCamera(current => ({ ...current, offsetX: canvasSize.width / 2 - point[0] * current.scale, offsetY: canvasSize.height / 2 + point[1] * current.scale }));
   }
   useEffect(() => {
-    function beforeUnload(event: BeforeUnloadEvent) { if (isDirty(sessionRef.current)) { event.preventDefault(); event.returnValue = ''; } }
+    function beforeUnload(event: BeforeUnloadEvent) { if (saveGuard.current.browserDirty || saveGuard.current.unapplied) { event.preventDefault(); event.returnValue = ''; } }
     window.addEventListener('beforeunload', beforeUnload);
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, []);
   useEffect(() => {
     function key(event: KeyboardEvent) {
-      const target = event.target as HTMLElement;
-      if (target.closest('input, textarea, select, [contenteditable="true"]') || proposal || newDialog || copyDialog) return;
       const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); saveProject(); return; }
+      const target = event.target as HTMLElement;
+      if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict) {
+        if ((modifier && ['z', 'y'].includes(event.key.toLowerCase())) || ['Delete', 'Backspace'].includes(event.key)) event.preventDefault();
+        return;
+      }
       if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
       else if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
-      else if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); exportCurrent(); }
       else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(); }
       else if (event.key === 'Escape') { setDraftRoad(null); setTool('select'); setSelection(emptySelection()); }
     }
@@ -165,9 +286,22 @@ export function App() {
     : '拖动节点移动；Shift 点击多选；滚轮缩放；中键平移。';
 
   return <main className="app-shell">
-    <header className="app-header"><div className="brand-mark">Y</div><div><h1>船厂空间布局编辑器</h1><p>YARD SPACE / M1 · 本地米制布局</p></div><div className="header-actions"><button onClick={() => { setNewName('新建布局'); setNewDialog(true); }}>新建地图</button><button onClick={() => fileInput.current?.click()} disabled={fileLoading}>{fileLoading ? '读取中…' : '导入 JSON'}</button><button className="primary-button" onClick={exportCurrent}>导出 JSON</button></div></header>
+    <header className="app-header"><div className="brand-mark">Y</div><div><h1>船厂空间布局编辑器</h1><p>YARD SPACE / M1.1 · 本地工程</p></div><div className="header-actions"><button onClick={showRecent} disabled={!projects.ready || projects.transitioning || localState.busy}>最近项目</button><button onClick={() => void copyProject()} disabled={!projects.ready || projects.transitioning || localState.busy}>浏览器另存为</button><button className="primary-button" onClick={() => saveProject()} disabled={!projects.ready || projects.transitioning}>保存工程</button><button disabled={!projects.ready || projects.transitioning || localState.busy} onClick={() => { setNewName('新建布局'); setNewDialog(true); }}>新建地图</button><button onClick={() => fileInput.current?.click()} disabled={fileLoading || !projects.ready || projects.transitioning || localState.busy}>{fileLoading ? '读取中…' : '导入 JSON'}</button><button className="primary-button" onClick={exportCurrent}>导出 JSON</button></div></header>
     <input ref={fileInput} data-testid="json-file-input" type="file" accept=".json,application/json" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importFile(file); }} />
-    <div className="document-bar"><strong>{session.map.metadata.name}</strong><span className="basis-chip">{session.map.metadata.layoutBasis}</span><span className={dirty ? 'save-status dirty' : 'save-status'} data-testid="save-status">{dirty ? '● 有未导出编辑' : '○ 相对导入/导出基线无修改'}</span><span className="document-meta">r{session.map.revision} · 本地坐标 · m / rad / kg / s</span></div>
+    <div className="document-bar"><strong>{session.map.metadata.name}</strong><span className="basis-chip">{session.map.metadata.layoutBasis}</span><span className={dirty ? 'save-status dirty' : 'save-status'} data-testid="save-status"><span data-testid="browser-save-status">{projects.browserStatus}</span></span><span className="document-meta">r{session.map.revision} · 本地坐标 · m / rad / kg / s</span></div>
+    <div className="project-save-bar">
+      <span data-testid="local-save-status">{localState.busy ? '本地文件处理中…' : localState.conflict ? '本地文件冲突' : !localState.linkedName ? '本地文件未关联' : localState.confirmedContentHash === scene.mapContentHash ? '本地文件已确认：' + localState.linkedName : '本地文件有未写回变化：' + localState.linkedName}</span>
+      <button onClick={() => void openNative()} disabled={!local.capabilities().open || localState.busy || projects.transitioning} title="浏览器能力检测；点击后才请求文件授权">关联本地 JSON</button>
+      <button onClick={() => void writeNative()} disabled={!localState.linkedName || localState.busy || projects.transitioning}>写回关联文件</button>
+      <button onClick={() => void writeNative(true)} disabled={!local.capabilities().saveAs || localState.busy || projects.transitioning}>文件另存为</button>
+      <button onClick={() => void checkFile()} disabled={!localState.linkedName || localState.busy}>检查外部变化</button>
+      <button onClick={() => void openNative(true)} disabled={!localState.linkedName || localState.busy}>重新载入文件</button>
+      <span data-testid="export-status">{exportMessage}</span>
+    </div>
+    {projects.warning && <div className="project-note">{projects.warning}</div>}
+    {localMessage && <div className="project-note" role="status">{localMessage}</div>}
+    {unapplied && <div className="project-note pending" data-testid="unapplied-inputs">有未应用输入：仅保存在属性表单中；请点击“应用属性”或“应用地图名称”。</div>}
+    {projects.state.error?.code === 'PROJECT_CONFLICT' && <div className="project-note conflict" role="alert">其他标签页已保存此工程，当前编辑尚未覆盖远程浏览器版本。<button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => { if (!operationsBlocked()) setStorageConflictDialog(true); }}>重新载入浏览器版本</button></div>}
     <div className="workspace">
       <aside className="left-panel">
         <div className="panel-title">绘制工具<span>M1</span></div>
@@ -182,8 +316,8 @@ export function App() {
         <div className="left-footer"><b>数据独立于画布</b><p>JSON 保存全部语义几何。平移和缩放仅改变视图。</p><code>{session.map.mapId}</code></div>
       </aside>
       <section className="center-panel">
-        <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => { setOperationIssues([]); setCopyDialog(true); }} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
-        {readonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含 M1 未支持的数据；保留完整 JSON，编辑已锁定。</div>}
+        <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => { setOperationIssues([]); setCopyDialog(true); }} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
+        {domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含 M1 未支持的数据；保留完整 JSON，编辑已锁定。</div>}
         <div className="tool-hint">{hint}</div>
         <MapCanvas scene={scene} camera={camera} onCamera={setCamera} onSize={onCanvasSize} tool={tool} readonly={readonly} selection={validSelection} onSelect={choose} onClearSelection={() => setSelection(emptySelection())} onCursor={setCursor} draftRoad={draftRoad}
           onAddNode={point => { const id = uid('node'); if (apply({ type: 'addNode', id, node: newNode(point, '节点 ' + (scene.nodes.length + 1)) })) setSelection({ nodes: [id], roads: [] }); }}
@@ -200,14 +334,19 @@ export function App() {
         <div className="canvas-status"><span>{cursor ? `X ${cursor[0].toFixed(3)} m  ·  Y ${cursor[1].toFixed(3)} m` : '本地 XY；屏幕 Y 方向仅影响显示'}</span><span>{selectedCount} 个选中 · {session.past.length} 个撤销事务</span></div>
         <section className="issue-panel" data-testid="issue-panel"><div className="issue-heading"><strong>检查器</strong><span className={errorCount ? 'error-count' : 'warning-count'}>{errorCount} 错误 · {issues.length - errorCount} 提示</span><span>draft 校验；不代表现场安全</span></div><div className="issue-list">{issues.map((issue, index) => <button key={issue.code + index} className={'issue-item ' + issue.severity} onClick={() => locate(issue)}><span className="issue-symbol">{issue.severity === 'error' ? '!' : '△'}</span><span><strong>{issue.code}</strong> {issue.message}<small>{issue.jsonPath || '/'} · {issue.suggestedAction}</small></span></button>)}</div></section>
       </section>
-      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind === 'node' ? 'NODE' : 'ROAD' : 'INSPECT'}</span></div><PropertyPanel key={(selected?.id ?? 'none') + '-' + session.changeToken} selected={selected} readonly={readonly} count={selectedCount} onApply={apply} />
-        {readonly && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
+      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind === 'node' ? 'NODE' : 'ROAD' : 'INSPECT'}</span></div><PropertyPanel onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken} selected={selected} readonly={readonly} count={selectedCount} onApply={apply} />
+        {domainReadonly && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
         <div className="capability-box"><h3>本阶段未校验</h3><p>{capabilities.unchecked.join(' · ')}</p></div>
       </aside>
     </div>
     <footer className="app-footer"><span role="status">{status}</span><code data-testid="map-hash" title={scene.mapContentHash}>{scene.mapContentHash}</code></footer>
+    {!projects.ready && <Modal title="恢复浏览器工程" onCancel={() => {}}><p>{projects.error || '正在读取 IndexedDB；恢复完成前不会写入空地图。'}</p>{projects.error && <div className="dialog-actions"><button onClick={projects.retry}>重试恢复</button><button onClick={projects.continueTemporary}>仅内存继续编辑</button></div>}</Modal>}
+    {saveDialog && <Modal title="有未应用输入" onCancel={() => setSaveDialog(false)}><p>表单中的改动尚未成为地图事务。保存只包含已提交地图，未应用输入仍留在表单中。</p><div className="dialog-actions"><button data-cancel onClick={() => setSaveDialog(false)}>返回应用属性</button><button onClick={() => saveProject(true)}>仅保存已提交地图</button></div></Modal>}
+    {recentDialog && <Modal title="最近项目" onCancel={() => setRecentDialog(false)}><p>浏览器数据按站点保存，可能被清理；请保留导出备份。切换前将确认保存当前已提交版本。</p><div className="recent-projects">{projects.recent.map(item => <button key={item.projectId} data-testid={'project-item-' + item.projectId} onClick={() => void openProject(item.projectId)}><strong>{item.name}</strong><small>{item.projectId} · 存储版本 {item.storageVersion} · {new Date(item.updatedAt).toLocaleString()}</small></button>)}</div><div className="dialog-actions"><button data-cancel onClick={() => setRecentDialog(false)}>关闭</button></div></Modal>}
+    {storageConflictDialog && <Modal title="重新载入浏览器版本" onCancel={() => setStorageConflictDialog(false)}><p>重新载入会放弃当前未保存输入。建议先“保留当前恢复副本”；其他标签页已保存版本不会被覆盖。</p><div className="dialog-actions"><button data-cancel onClick={() => setStorageConflictDialog(false)}>取消</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button className="danger-button" onClick={() => void reloadStoredProject()}>明确放弃并重新载入</button></div></Modal>}
+    {fileConflict && <Modal title="外部文件内容已变化" onCancel={() => setFileConflict(null)}><p>文件 {fileConflict.name} 与已确认基线不同。当前地图保持不变，写回前会再次读取外部内容。</p><p>{localMessage}</p>{fileConflict.issues.map((issue, index) => <p key={index} className="inline-error">{issue.code} · {issue.jsonPath || "/"} · {issue.message}</p>)}<div className="dialog-actions"><button data-cancel onClick={() => setFileConflict(null)}>取消</button><button onClick={() => void openNative(true)}>重新载入文件</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => void writeNative(true)}>文件另存为</button>{overwriteReady?.token === fileConflict.token ? <button className="danger-button" onClick={() => void writeNative(false, fileConflict.token)}>明确覆盖外部版本</button> : <button onClick={() => void prepareOverwrite()} disabled={!fileConflict.loaded?.ok}>先保存双方恢复副本</button>}</div><p className="field-note">写前比对不能锁定其他应用；不保证跨应用原子写入。非法外部文件保留原件，不能直接覆盖。</p></Modal>}
     {newDialog && <Modal title="新建地图" onCancel={() => setNewDialog(false)}><p>创建本地米制 synthetic 布局。地图 ID 独立生成。</p><label className="field-label">新地图名称<input aria-label="新地图名称" value={newName} onChange={event => setNewName(event.target.value)} /></label><div className="dialog-actions"><button data-cancel onClick={() => setNewDialog(false)}>取消</button><button className="primary-button" onClick={createNew} disabled={!newName.trim()}>创建地图</button></div></Modal>}
-    {proposal && <Modal title="未保存编辑冲突" onCancel={() => { resolveImport(sessionRef.current, proposal.value, 'cancel'); setProposal(null); }}><p>当前地图有未导出编辑。候选 JSON 已完成校验，选择后才会替换当前地图。</p><div className="conflict-summary"><strong>当前：{session.map.metadata.name}</strong><span>候选：{proposal.value.loaded.map.metadata.name}</span></div><p className="field-note">“先导出当前版本”会下载独立文件并保留此对话。M1 不监听磁盘，不覆盖原文件。</p><div className="dialog-actions"><button data-cancel onClick={() => setProposal(null)}>取消</button><button onClick={exportCurrent}>先导出当前版本</button><button className="danger-button" onClick={() => finishImport(proposal.value, proposal.isNew)}>放弃编辑并重载</button></div></Modal>}
+    {proposal && <Modal title="未保存编辑冲突" onCancel={() => { resolveImport(sessionRef.current, proposal.value, 'cancel'); setProposal(null); }}><p>当前存在尚未确认的编辑或未应用输入。候选 JSON 已校验；继续前会保存原工程的已提交地图，未应用输入将丢弃。</p><div className="conflict-summary"><strong>当前：{session.map.metadata.name}</strong><span>候选：{proposal.value.loaded.map.metadata.name}</span></div><p className="field-note">“先导出当前版本”会下载独立文件并保留此对话。下载不是工程保存。原工程保留在最近项目；文件写回单独授权。</p><div className="dialog-actions"><button data-cancel onClick={() => setProposal(null)}>取消</button><button onClick={exportCurrent}>先导出当前版本</button><button className="danger-button" onClick={() => finishImport(proposal.value, proposal.isNew)}>放弃编辑并重载</button></div></Modal>}
     {copyDialog && <Modal title="复制选中对象" onCancel={() => setCopyDialog(false)}><p>将复制 <strong>{closure.nodes.length} 个节点</strong>、<strong>{closure.roads.length} 条道路</strong>，道路端点自动包含并重映射为新 ID。</p><div className="coordinate-fields">{(['X', 'Y', 'Z'] as const).map((axis, index) => <label key={axis} className="field-label">{axis} 偏移 (m)<input aria-label={axis + ' 偏移 (m)'} type="number" step="any" value={copyDelta[index] ?? ''} onChange={event => setCopyDelta(values => values.map((v, i) => i === index ? event.target.value : v))} /></label>)}</div><p className="field-note">复制为一个事务；不会连接回原节点。对象扩展含未知引用语义时拒绝复制。</p>{operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map(issue => <p key={issue.code}>{issue.code}：{issue.message}</p>)}</div>}<div className="dialog-actions"><button data-cancel onClick={() => setCopyDialog(false)}>取消</button><button className="primary-button" onClick={duplicate}>确认复制</button></div></Modal>}
   </main>;
 }

@@ -1,4 +1,4 @@
-> 当前工程状态：M0 + M1 已完成，范围为二维基础编辑与 JSON/CLI 往返闭环；M2—M5 尚未实现。启动：在本目录运行 `npm ci`、`npm run dev -- --host 127.0.0.1`。使用方法见 [M1 使用指南](docs/M1_USER_GUIDE.md)，实现边界见 [M1 能力清单](docs/M1_CAPABILITIES.md)。下方“开发任务包”为初始说明原文，作为历史保留；当前实现与验证结果见 [M0 阶段报告](docs/M0_STAGE_REPORT.md) 和 [M1 阶段报告](docs/M1_STAGE_REPORT.md)。
+> 当前工程状态：M0 + M1 + M1.1 已完成。M1.1 增加浏览器工程保存、自动草稿与恢复、最近项目及可选授权文件写回，见 [M1.1 阶段报告](docs/M11_STAGE_REPORT.md) 和 [持久化契约](docs/M11_PERSISTENCE_CONTRACT.md)。M2A 正按新任务推进，尚未完成验收；M2B—M5 未实现。启动：在本目录运行 `npm ci`、`npm run dev -- --host 127.0.0.1`。使用方法见 [M1 使用指南](docs/M1_USER_GUIDE.md)，实现边界见 [M1 能力清单](docs/M1_CAPABILITIES.md)。下方“开发任务包”为初始说明原文，作为历史保留；当前实现与验证结果见 [M0 阶段报告](docs/M0_STAGE_REPORT.md) 和 [M1 阶段报告](docs/M1_STAGE_REPORT.md)。
 
 # 船厂空间布局编辑器：Codex 开发任务包
 

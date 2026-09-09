@@ -8,7 +8,7 @@ export interface EditorSession {
   map: YardMap;
   past: Transaction[];
   future: Transaction[];
-  savedHash: string | null;
+  acknowledgedHash: string | null;
   changeToken: number;
 }
 export interface SessionResult { ok: boolean; session: EditorSession; issues: Issue[] }
@@ -23,11 +23,11 @@ const HISTORY_LIMIT = 100;
 export function createSession(map: YardMap, saved = false): EditorSession {
   const result = validateMap(map);
   if (!result.ok) throw new Error('Cannot create session from invalid map.');
-  return { map: freezeMap(structuredClone(map)), past: [], future: [], savedHash: saved ? contentHash(map) : null, changeToken: 0 };
+  return { map: freezeMap(structuredClone(map)), past: [], future: [], acknowledgedHash: saved ? contentHash(map) : null, changeToken: 0 };
 }
 
 export function isDirty(session: EditorSession): boolean {
-  return session.savedHash !== contentHash(session.map);
+  return session.acknowledgedHash !== contentHash(session.map);
 }
 
 export function editSession(session: EditorSession, command: MapCommand): SessionResult {
@@ -52,10 +52,10 @@ export function redoSession(session: EditorSession): EditorSession {
   return { ...session, map: transaction.after, future: session.future.slice(0, -1), past: [...session.past, transaction], changeToken: session.changeToken + 1 };
 }
 
-/** Only the exported snapshot becomes the baseline; a late export cannot mark newer edits clean. */
-export function markExported(session: EditorSession, expectedHash = contentHash(session.map)): EditorSession {
+/** Import/committed persistence acknowledgement only; export never calls this. Storage targets own their separate confirmed hashes. */
+export function acknowledgeMap(session: EditorSession, expectedHash = contentHash(session.map)): EditorSession {
   if (expectedHash !== contentHash(session.map)) return session;
-  return { ...session, savedHash: expectedHash };
+  return { ...session, acknowledgedHash: expectedHash };
 }
 
 export function prepareImport(session: EditorSession, text: string): ImportPreparation {
