@@ -6,12 +6,13 @@ import { transformPolygon } from '../geometry/polygons';
 import { polylineLength2D, roadPoints } from '../geometry/roads';
 import { newNode } from './factory';
 import { zoneServicePointIds } from '../topology/serviceConnections';
+import { inspectPlanning, PLANNING_NAMESPACE as PLANNING, type PlanningSlot } from './planning';
 
 export interface Selection { nodes: string[]; roads: string[]; facilities?: string[]; zones?: string[]; accessPoints?: string[]; servicePoints?: string[] }
 export const SELECTION_KINDS = ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints'] as const;
 export type SelectionKind = typeof SELECTION_KINDS[number];
 export type FullSelection = Record<SelectionKind, string[]>;
-export type FacilityMovePolicy = 'boundaryOnly' | 'withAssociatedNodes';
+export type FacilityMovePolicy = 'boundaryOnly' | 'withAssociatedNodes' | 'withStaticContents';
 export type ZoneMovePolicy = FacilityMovePolicy;
 export interface MigrationChange { path: string; before: string | number; after: string | number }
 export function schemaUpgradeChanges(map: YardMap): MigrationChange[] { return map.schemaVersion === '0.1.0' ? [{ path: '/schemaVersion', before: '0.1.0', after: '0.2.0' }, { path: '/revision', before: map.revision, after: map.revision + 1 }] : []; }
@@ -41,7 +42,7 @@ export type MapCommand =
   | { type: 'deleteSelection'; selection: Selection; facilityPolicy?: 'reject' | 'withAssociatedPoints'; zonePolicy?: 'reject' | 'withAssociatedPoints'; orphanNodes?: 'keep' | 'deleteUnused' }
   | { type: 'splitRoad'; id: string; distanceM: number; nodeId: string; existingNode?: boolean; newRoadIds: [string, string] };
 
-export interface Transaction { before: YardMap; after: YardMap; label: string }
+export interface Transaction { before: YardMap; after: YardMap; label: string; readonly affectedRefs: ReadonlyArray<Readonly<CommandAffectedRef>> }
 export type CommandResult =
   | { ok: true; map: YardMap; changed: boolean; transaction?: Transaction; mapping?: SplitMapping; migrationChanges?: MigrationChange[] }
   | { ok: false; issues: Issue[] };
@@ -52,6 +53,7 @@ function problem(code: string, message: string, jsonPath = ''): Issue {
 }
 function fail(code: string, message: string, path = ''): never { throw new CommandError(code, message, path); }
 export function normalizeSelection(selection: Selection): FullSelection {
+  if (!selection || typeof selection !== 'object' || Object.keys(selection).some(key => !SELECTION_KINDS.includes(key as SelectionKind))) fail('INVALID_SELECTION', '选择包含未知对象类型。');
   const result = {} as FullSelection;
   for (const kind of SELECTION_KINDS) {
     const values = selection[kind] ?? [];
@@ -92,21 +94,227 @@ export function closureSelection(map: YardMap, selection: Selection): FullSelect
   for (const id of selected.roads) selected.nodes.push(map.roads[id]!.fromNodeId, map.roads[id]!.toNodeId);
   return normalizeSelection(selected);
 }
-export function selectionImpact(map: YardMap, selection: Selection, facilityMovePolicy: FacilityMovePolicy = 'boundaryOnly', zoneMovePolicy: ZoneMovePolicy = 'boundaryOnly'): { selection: FullSelection; affectedRoadIds: string[]; sharedNodeIds: string[] } {
+export interface CommandAffectedRef { kind: SelectionKind | 'junctions' | 'movements' | 'resources' | 'slots' | 'sources' | 'extensions'; id: string; ownerId?: string }
+export interface SelectionImpact {
+  affectedRefs: CommandAffectedRef[];
+  selection: FullSelection;
+  affectedRoadIds: string[];
+  sharedNodeIds: string[];
+  fixedAnchorNodeIds: string[];
+  rigidRoadIds: string[];
+  connectorRoadIds: string[];
+  junctionIds: string[];
+  slots: PlanningSlot[];
+}
+function planningFields(entity: { extensions?: Record<string, unknown> }): Record<string, unknown> {
+  const value = entity.extensions?.[PLANNING];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+function advancedMap(map: YardMap): boolean {
+  return Object.hasOwn(map.extensionNamespaces, PLANNING) || (['junctions', 'movements', 'resources'] as const).some(key => Object.keys(map[key]).length > 0);
+}
+/** Static contents preserve public attachment nodes and never acquire another owner's nodes. */
+export function selectionImpact(map: YardMap, selection: Selection, facilityMovePolicy: FacilityMovePolicy = 'boundaryOnly', zoneMovePolicy: ZoneMovePolicy = 'boundaryOnly'): SelectionImpact {
   const selected = assertSelection(map, selection);
-  if (facilityMovePolicy === 'withAssociatedNodes') addFacilityMembers(map, selected);
-  else if (facilityMovePolicy !== 'boundaryOnly') fail('INVALID_MOVE_POLICY', '未知设施移动策略。');
-  if (zoneMovePolicy === 'withAssociatedNodes') addZoneMembers(map, selected);
-  else if (zoneMovePolicy !== 'boundaryOnly') fail('INVALID_MOVE_POLICY', '未知区域移动策略。');
+  const policies = [facilityMovePolicy, zoneMovePolicy];
+  if (policies.some(policy => !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(policy))) fail('INVALID_MOVE_POLICY', '未知移动策略。');
+  if (facilityMovePolicy !== 'boundaryOnly') addFacilityMembers(map, selected);
+  if (zoneMovePolicy !== 'boundaryOnly') addZoneMembers(map, selected);
   addPointNodes(map, selected);
   for (const id of selected.roads) selected.nodes.push(map.roads[id]!.fromNodeId, map.roads[id]!.toNodeId);
+  const staticOwners = [
+    ...(facilityMovePolicy === 'withStaticContents' ? selected.facilities : []),
+    ...(zoneMovePolicy === 'withStaticContents' ? selected.zones : []),
+  ];
+  const fixed = new Set<string>(); const rigid = new Set<string>(); const connectors = new Set<string>();
+  const junctionIds = new Set<string>(); let slots: PlanningSlot[] = [];
+  if (staticOwners.length) {
+    const planning = inspectPlanning(map);
+    if (!planning.present || !planning.supported) fail('STATIC_CONTENTS_UNSUPPORTED', '整体联动需要已识别的 sr02.planning 1.0 静态契约。');
+    const incident = new Map<string, string[]>();
+    for (const [id, road] of Object.entries(map.roads)) for (const node of [road.fromNodeId, road.toNodeId]) incident.set(node, [...(incident.get(node) ?? []), id]);
+    for (const owner of staticOwners) {
+      const entity = Object.hasOwn(map.facilities, owner) ? map.facilities[owner]! : map.zones[owner]!;
+      const fields = planningFields(entity);
+      for (const [id, zone] of Object.entries(map.zones)) if (planningFields(zone).overlayOf === owner) fail('STATIC_OVERLAY_DEPENDENCY', '另有覆盖区引用该对象；尚不支持安全同步变换覆盖区。', '/zones/' + id + '/extensions/' + PLANNING + '/overlayOf');
+      if (!Array.isArray(fields.slots) || !fields.slots.length || fields.overlayOf) fail('STATIC_CONTENTS_UNSUPPORTED', '该对象没有可联动的明确槽位内容。', '/' + (Object.hasOwn(map.facilities, owner) ? 'facilities' : 'zones') + '/' + owner);
+      const ownedRoads = Object.entries(map.roads).filter(([, road]) => planningFields(road).ownerEntityId === owner);
+      const ownedIds = new Set(ownedRoads.map(([id]) => id));
+      const ownerNodes = new Set(ownedRoads.flatMap(([, road]) => [road.fromNodeId, road.toNodeId]));
+      const seeds = new Set<string>();
+      for (const point of Object.values(map.accessPoints)) if (point.facilityId === owner) seeds.add(point.nodeId);
+      for (const point of Object.values(map.servicePoints)) if ((point.facilityId ?? point.zoneId) === owner) {
+        seeds.add(point.nodeId);
+        if (point.arrival?.mode === 'explicit_internal') {
+          if (point.arrival.entryNodeId) seeds.add(point.arrival.entryNodeId);
+          if (point.arrival.internalPath.some(arc => !ownedIds.has(arc.roadId))) fail('STATIC_EXTERNAL_INTERNAL_PATH', '服务内部路径包含不归属当前对象的道路。');
+        }
+      }
+      if (!ownedRoads.length || [...seeds].some(id => !ownerNodes.has(id))) fail('STATIC_CONTENTS_REFERENCE', '关联点必须由已声明的内部道路连接，不能推测移动归属。');
+      const moving = new Set<string>();
+      for (const id of ownerNodes) {
+        const external = (incident.get(id) ?? []).some(roadId => !ownedIds.has(roadId));
+        if (external) {
+          if (seeds.has(id) || selected.nodes.includes(id)) fail('STATIC_SHARED_NODE', '关联点同时属于公共道路或其他对象，不能安全移动：' + id, '/nodes/' + id);
+          fixed.add(id);
+        } else moving.add(id);
+      }
+      for (const [id, point] of Object.entries(map.accessPoints)) if (moving.has(point.nodeId) && point.facilityId !== owner) fail('STATIC_SHARED_NODE', '内部节点被其他设施入口使用。', '/accessPoints/' + id + '/nodeId');
+      for (const [id, point] of Object.entries(map.servicePoints)) {
+        const entry = point.arrival?.mode === 'explicit_internal' ? point.arrival.entryNodeId : undefined;
+        if ((moving.has(point.nodeId) || (entry && moving.has(entry))) && (point.facilityId ?? point.zoneId) !== owner) fail('STATIC_SHARED_NODE', '内部节点被其他对象服务点或入口使用。', '/servicePoints/' + id);
+      }
+      selected.nodes.push(...moving);
+      for (const [id, road] of ownedRoads) {
+        const from = moving.has(road.fromNodeId), to = moving.has(road.toNodeId);
+        if (!from && !to) continue;
+        if (road.corridorPolygon || road.observedLengthM) fail('STATIC_ROAD_GEOMETRY_UNSUPPORTED', '道路存在需要独立维护的人工边界或登记长度。', '/roads/' + id);
+        if (from && to) { rigid.add(id); selected.roads.push(id); }
+        else {
+          if (road.shapePoints.length) fail('STATIC_CONNECTOR_SHAPE_UNSUPPORTED', '接入段含折点，无法推测哪些折点应随对象移动。', '/roads/' + id + '/shapePoints');
+          connectors.add(id);
+        }
+      }
+    }
+    const moving = new Set(selected.nodes);
+    if ([...fixed].some(id => moving.has(id))) fail('STATIC_SHARED_NODE', '组合选择包含应保持固定的公共锚点。');
+    for (const [id, junction] of Object.entries(map.junctions)) if (junction.nodeIds.some(node => moving.has(node))) {
+      if (junction.nodeIds.some(node => !moving.has(node))) fail('STATIC_PARTIAL_JUNCTION', '多节点路口只能整体变换，不能移动部分节点。', '/junctions/' + id);
+      junctionIds.add(id);
+    }
+    const affected = new Set([...rigid, ...connectors]);
+    for (const [id, movement] of Object.entries(map.movements)) if (movement.internalPath && (affected.has(movement.incomingArc.roadId) || affected.has(movement.outgoingArc.roadId))) fail('STATIC_MOVEMENT_PATH_UNSUPPORTED', '转向声明含独立几何，尚不支持联动重写。', '/movements/' + id + '/internalPath');
+    slots = planning.slots.filter(slot => staticOwners.includes(slot.ownerId));
+  }
   const complete = normalizeSelection(selected); const nodes = new Set(complete.nodes); const roads = new Set(complete.roads); const shared = new Set<string>();
   const affectedRoadIds: string[] = [];
   for (const [id, road] of Object.entries(map.roads)) {
     if (roads.has(id) || nodes.has(road.fromNodeId) || nodes.has(road.toNodeId)) affectedRoadIds.push(id);
     if (!roads.has(id)) for (const nodeId of [road.fromNodeId, road.toNodeId]) if (nodes.has(nodeId)) shared.add(nodeId);
   }
-  return { selection: complete, affectedRoadIds: affectedRoadIds.sort(), sharedNodeIds: [...shared].sort() };
+  const refs: CommandAffectedRef[] = SELECTION_KINDS.flatMap(kind => complete[kind].map(id => ({ kind, id })));
+  refs.push(...affectedRoadIds.map(id => ({ kind: 'roads' as const, id })));
+  for (const kind of ['accessPoints', 'servicePoints'] as const) for (const [id, point] of Object.entries(map[kind])) if (nodes.has(point.nodeId)) refs.push({ kind, id });
+  const affectedRoads = new Set(affectedRoadIds);
+  const affectedJunctions = new Set(junctionIds);
+  for (const [id, movement] of Object.entries(map.movements)) if (affectedRoads.has(movement.incomingArc.roadId) || affectedRoads.has(movement.outgoingArc.roadId)) {
+    refs.push({ kind: 'movements', id }); affectedJunctions.add(movement.junctionId);
+  }
+  refs.push(...[...affectedJunctions].map(id => ({ kind: 'junctions' as const, id })), ...slots.map(slot => ({ kind: 'slots' as const, id: slot.id, ownerId: slot.ownerId })));
+  const keys = new Set(refs.map(ref => ref.kind + '/' + ref.id));
+  const linkedResources = new Set(refs.flatMap(ref => ref.kind === 'slots' || ref.kind === 'resources' ? [] : (map[ref.kind][ref.id] as { resourceIds?: string[] } | undefined)?.resourceIds ?? []));
+  for (const [id, resource] of Object.entries(map.resources)) if (resource.appliesTo.some(target => keys.has(target.entityType + '/' + target.entityId))
+    || linkedResources.has(id)) refs.push({ kind: 'resources', id });
+  for (const slot of slots) refs.push({ kind: 'extensions', id: '/' + slot.ownerKind + '/' + slot.ownerId + '/extensions/' + PLANNING });
+  const affectedRefs = [...new Map(refs.map(ref => [ref.kind + '/' + ref.id, ref])).values()];
+  return { affectedRefs, selection: complete, affectedRoadIds: affectedRoadIds.sort(), sharedNodeIds: [...shared].sort(), fixedAnchorNodeIds: [...fixed].sort(), rigidRoadIds: [...rigid].sort(), connectorRoadIds: [...connectors].sort(), junctionIds: [...junctionIds].sort(), slots };
+}
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const aa = a as Record<string, unknown>, bb = b as Record<string, unknown>;
+  return Object.keys(aa).length === Object.keys(bb).length && Object.keys(aa).every(key => Object.hasOwn(bb, key) && sameValue(aa[key], bb[key]));
+}
+function canChangeBoundary(map: YardMap, kind: 'facilities' | 'zones', id: string): boolean {
+  const entity = map[kind][id]!; const fields = planningFields(entity);
+  if (Object.keys(fields).length && fields.role !== 'process_separation' && !(typeof fields.role === 'string' && fields.role.startsWith('aux_'))) return false;
+  if (fields.slots || fields.overlayOf || fields.storageResourceId) return false;
+  if (kind === 'facilities' && (map.facilities[id]!.accessPointIds.length || map.facilities[id]!.servicePointIds.length || map.facilities[id]!.assetId)) return false;
+  if (kind === 'zones' && ((map.zones[id]!.resourceIds?.length ?? 0) || zoneServicePointIds(map, id).length)) return false;
+  return !Object.values(map.roads).some(road => planningFields(road).ownerEntityId === id)
+    && !Object.values(map.resources).some(resource => resource.appliesTo.some(ref => ref.entityType === kind && ref.entityId === id))
+    && ![...Object.values(map.facilities), ...Object.values(map.zones)].some(item => planningFields(item).overlayOf === id);
+}
+export interface CommandSupport { allowed: boolean; issues: Issue[]; affectedRefs: CommandAffectedRef[]; impact?: SelectionImpact }
+/** Capability/dependency inspection only; applyMapCommand owns structural validation and mutation. */
+export function commandSupport(map: YardMap, command: MapCommand): CommandSupport {
+  try {
+    if (command.type === 'upgradeSchema') return { allowed: true, issues: [], affectedRefs: [] };
+    const capability = mapCapabilities(map);
+    if (!capability.editable) return { allowed: false, issues: [problem('READ_ONLY_MAP', capability.reasons.join(' '))], affectedRefs: [] };
+    const advanced = advancedMap(map);
+    if (command.type === 'translateSelection' || command.type === 'rotateSelection') {
+      const selected = assertSelection(map, command.selection);
+      if (command.type === 'translateSelection') checkVector(command.delta);
+      else { checkVector(command.pivot); if (!Number.isFinite(command.angleRad)) fail('INVALID_COMMAND', '旋转角度必须是有限弧度。'); }
+      if (advanced) {
+        if (selected.nodes.length || selected.roads.length || selected.accessPoints.length || selected.servicePoints.length || (!selected.facilities.length && !selected.zones.length)) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '含高级依赖的图仅支持已批准设施或区域的整体移动；不能单独改变其点或路网。');
+        for (const kind of ['facilities', 'zones'] as const) for (const id of selected[kind]) {
+          const policy = kind === 'facilities' ? command.facilityMovePolicy : command.zoneMovePolicy;
+          if (policy !== 'withStaticContents' && !(policy === 'boundaryOnly' && canChangeBoundary(map, kind, id))) fail('STATIC_CONTENTS_REQUIRED', '该边界与槽位或其他声明关联，必须使用明确的静态内容联动策略。', '/' + kind + '/' + id);
+        }
+      }
+      const impact = selectionImpact(map, selected, command.facilityMovePolicy, command.zoneMovePolicy);
+      for (const id of impact.affectedRoadIds) if (map.roads[id]!.corridorPolygon || map.roads[id]!.observedLengthM) fail('ROAD_GEOMETRY_DEPENDENCY', '移动影响含人工边界或登记长度的道路，尚不支持同步维护。', '/roads/' + id);
+      return { allowed: true, issues: [], affectedRefs: impact.affectedRefs, impact };
+    }
+    const updates = { updateNode: 'nodes', updateRoad: 'roads', updateFacility: 'facilities', updateZone: 'zones', updateAccessPoint: 'accessPoints', updateServicePoint: 'servicePoints' } as const;
+    if (command.type in updates) {
+      const update = command as Extract<MapCommand, { patch: object }>;
+      const kind = updates[update.type];
+      assertSelection(map, { nodes: [], roads: [], [kind]: [update.id] });
+      const previous = map[kind][update.id]! as unknown as Record<string, unknown>;
+      const changed = Object.keys(update.patch).filter(key => !sameValue(previous[key], (update.patch as Record<string, unknown>)[key]));
+      const namedOnly = changed.every(key => key === 'name') && !('newNode' in update && update.newNode);
+      if (advanced && !namedOnly && !((kind === 'facilities' || kind === 'zones') && changed.every(key => key === 'name' || key === 'boundary') && canChangeBoundary(map, kind, update.id))) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '该字段涉及高级引用或静态内容；本批只开放名称和已批准的边界/刚体联动。', '/' + kind + '/' + update.id);
+      if (kind === 'roads' && !namedOnly && (map.roads[update.id]!.corridorPolygon || map.roads[update.id]!.observedLengthM)) fail('ROAD_GEOMETRY_DEPENDENCY', '道路含人工边界或登记长度，尚不支持同步编辑。', '/roads/' + update.id);
+      if (kind === 'nodes' && changed.includes('position')) {
+        const impact = selectionImpact(map, { nodes: [update.id], roads: [] });
+        if (impact.affectedRoadIds.some(id => map.roads[id]!.corridorPolygon || map.roads[id]!.observedLengthM)) fail('ROAD_GEOMETRY_DEPENDENCY', '节点影响含独立几何的道路。', '/nodes/' + update.id);
+        return { allowed: true, issues: [], affectedRefs: impact.affectedRefs, impact };
+      }
+      const affectedRefs: CommandAffectedRef[] = [{ kind, id: update.id }];
+      if (update.type === 'updateAccessPoint' || update.type === 'updateServicePoint') {
+        if (update.newNode) affectedRefs.push({ kind: 'nodes', id: update.newNode.id });
+        for (const field of ['facilityId', 'zoneId'] as const) if (changed.includes(field)) {
+          for (const id of [previous[field], (update.patch as Record<string, unknown>)[field]]) if (typeof id === 'string') affectedRefs.push({ kind: field === 'facilityId' ? 'facilities' : 'zones', id });
+        }
+      }
+      if ((update.type === 'updateRoad' || update.type === 'updateFacility') && update.designAssumption
+        && changed.some(field => { const value = (update.patch as Record<string, unknown>)[field] as PhysicalValue | undefined; return value && typeof value === 'object' && value.state === 'known' && !value.sourceRef; })) affectedRefs.push({ kind: 'sources', id: update.designAssumption.id });
+      return { allowed: true, issues: [], affectedRefs };
+    }
+    if (advanced && command.type !== 'renameMap') fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '本批不对高级图执行新增、复制、删除或拆路，保留所有现有语义。');
+    if ('selection' in command) {
+      const selected = command.type === 'duplicateSelection' ? closureSelection(map, command.selection) : assertSelection(map, command.selection);
+      if (command.type === 'deleteSelection') {
+        if (command.facilityPolicy === 'withAssociatedPoints') addFacilityMembers(map, selected);
+        if (command.zonePolicy === 'withAssociatedPoints') addZoneMembers(map, selected);
+      }
+      const complete = normalizeSelection(selected);
+      const affectedRefs: CommandAffectedRef[] = SELECTION_KINDS.flatMap(kind => complete[kind].map(id => ({ kind, id })));
+      for (const kind of ['accessPoints', 'servicePoints'] as const) for (const id of complete[kind]) {
+        const point = map[kind][id]!;
+        if (point.facilityId) affectedRefs.push({ kind: 'facilities', id: point.facilityId });
+        if (kind === 'servicePoints' && map.servicePoints[id]!.zoneId) affectedRefs.push({ kind: 'zones', id: map.servicePoints[id]!.zoneId! });
+        if (command.type === 'deleteSelection' && command.orphanNodes === 'deleteUnused') {
+          affectedRefs.push({ kind: 'nodes', id: point.nodeId });
+          if (kind === 'servicePoints') {
+            const arrival = map.servicePoints[id]!.arrival;
+            if (arrival?.mode === 'explicit_internal' && arrival.entryNodeId) affectedRefs.push({ kind: 'nodes', id: arrival.entryNodeId });
+          }
+        }
+      }
+      return { allowed: true, issues: [], affectedRefs };
+    }
+    if (command.type === 'splitRoad') return { allowed: true, issues: [], affectedRefs: [{ kind: 'roads', id: command.id }, ...command.newRoadIds.map(id => ({ kind: 'roads' as const, id })), ...(!command.existingNode ? [{ kind: 'nodes' as const, id: command.nodeId }] : []), { kind: 'extensions', id: LINEAGE_NAMESPACE }] };
+    const additions = { addNode: 'nodes', addRoad: 'roads', addFacility: 'facilities', addZone: 'zones', addAccessPoint: 'accessPoints', addServicePoint: 'servicePoints' } as const;
+    if (command.type in additions) {
+      const add = command as Extract<MapCommand, { type: keyof typeof additions }>;
+      const affectedRefs: CommandAffectedRef[] = [{ kind: additions[add.type], id: add.id }];
+      if (add.type === 'addRoad') affectedRefs.push({ kind: 'nodes', id: add.road.fromNodeId }, { kind: 'nodes', id: add.road.toNodeId });
+      if (add.type === 'addAccessPoint') affectedRefs.push({ kind: 'facilities', id: add.accessPoint.facilityId }, { kind: 'nodes', id: add.accessPoint.nodeId });
+      if (add.type === 'addServicePoint') {
+        affectedRefs.push({ kind: 'nodes', id: add.servicePoint.nodeId });
+        if (add.servicePoint.facilityId) affectedRefs.push({ kind: 'facilities', id: add.servicePoint.facilityId });
+        if (add.servicePoint.zoneId) affectedRefs.push({ kind: 'zones', id: add.servicePoint.zoneId });
+      }
+      return { allowed: true, issues: [], affectedRefs };
+    }
+    return { allowed: true, issues: [], affectedRefs: [] };
+  } catch (error) {
+    return { allowed: false, issues: [problem(error instanceof CommandError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '无法检查操作依赖。', error instanceof CommandError ? error.path : '')], affectedRefs: [] };
+  }
 }
 export function freezeMap(map: YardMap): YardMap {
   const freeze = (value: unknown): void => { if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) { Object.values(value).forEach(freeze); Object.freeze(value); } };
@@ -122,11 +330,20 @@ function put<T>(map: YardMap, collection: Record<string, T>, id: string, value: 
 function checkPatch(patch: object, keys: readonly string[]): void { if (Object.keys(patch).some(key => !keys.includes(key))) fail('UNSUPPORTED_PATCH', '补丁包含未经此命令支持的字段。'); }
 function checkVector(vector: Vec3): void { if (!Array.isArray(vector) || vector.length !== 3 || vector.some(value => !Number.isFinite(value))) fail('INVALID_COMMAND', '必须输入三个有限米制数值。'); }
 function moved(position: Vec3, delta: Vec3): Vec3 { checkVector(delta); return [position[0] + delta[0], position[1] + delta[1], position[2] + delta[2]]; }
-function transformSelection(map: YardMap, selected: FullSelection, transform: (point: Vec3) => Vec3): void {
+function transformSelection(map: YardMap, selected: FullSelection, transform: (point: Vec3) => Vec3, impact?: SelectionImpact): void {
   for (const id of selected.nodes) map.nodes[id]!.position = transform(map.nodes[id]!.position);
   for (const id of selected.roads) map.roads[id]!.shapePoints = map.roads[id]!.shapePoints.map(transform);
   for (const id of selected.facilities) map.facilities[id]!.boundary = transformPolygon(map.facilities[id]!.boundary, transform);
   for (const id of selected.zones) map.zones[id]!.boundary = transformPolygon(map.zones[id]!.boundary, transform);
+  const slotOwners = new Map((impact?.slots ?? []).map(slot => [slot.ownerKind + '/' + slot.ownerId, slot]));
+  for (const slot of slotOwners.values()) {
+    const owner = planningFields(map[slot.ownerKind][slot.ownerId]!);
+    for (const stored of owner.slots as { boundary: typeof slot.boundary }[]) stored.boundary = transformPolygon(stored.boundary, transform);
+  }
+  for (const id of impact?.junctionIds ?? []) {
+    const junction = map.junctions[id]!;
+    if (junction.boundary) junction.boundary = transformPolygon(junction.boundary, transform);
+  }
 }
 function addPointNode(map: YardMap, nodeId: string, candidate?: NewPointNode): void {
   if (!candidate) return;
@@ -292,7 +509,8 @@ function splitRoad(map: YardMap, command: Extract<MapCommand, { type: 'splitRoad
 export function applyMapCommand(input: YardMap, command: MapCommand): CommandResult {
   const initial = validateMap(input);
   if (!initial.ok) return { ok: false, issues: initial.issues };
-  if (command.type !== 'upgradeSchema' && !mapCapabilities(input).editable) return { ok: false, issues: [problem('READ_ONLY_MAP', '该地图含未支持的高级实体或行为，整图只读保护。')] };
+  const support = commandSupport(input, command);
+  if (!support.allowed) return { ok: false, issues: support.issues };
   const next = structuredClone(input); let mapping: SplitMapping | undefined;
   try {
     switch (command.type) {
@@ -338,12 +556,12 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
         const selection = assertSelection(next, command.selection);
         if (selection.facilities.length && command.facilityMovePolicy === undefined) fail('FACILITY_MOVE_POLICY_REQUIRED', '移动设施前必须明确仅边界或连同关联节点。');
         if (selection.zones.some(id => zoneServicePointIds(next, id).length) && command.zoneMovePolicy === undefined) fail('ZONE_MOVE_POLICY_REQUIRED', '移动有服务点的区域前必须明确仅边界或连同关联节点。');
-        const impact = selectionImpact(next, selection, command.facilityMovePolicy, command.zoneMovePolicy);
-        if (command.type === 'translateSelection') transformSelection(next, impact.selection, point => moved(point, command.delta));
+        const impact = support.impact ?? selectionImpact(next, selection, command.facilityMovePolicy, command.zoneMovePolicy);
+        if (command.type === 'translateSelection') transformSelection(next, impact.selection, point => moved(point, command.delta), impact);
         else {
           checkVector(command.pivot); if (!Number.isFinite(command.angleRad)) fail('INVALID_COMMAND', '旋转角度必须为有限弧度。');
           const c = Math.cos(command.angleRad); const s = Math.sin(command.angleRad); const [px, py] = command.pivot;
-          transformSelection(next, impact.selection, point => [px + c * (point[0] - px) - s * (point[1] - py), py + s * (point[0] - px) + c * (point[1] - py), point[2]]);
+          transformSelection(next, impact.selection, point => [px + c * (point[0] - px) - s * (point[1] - py), py + s * (point[0] - px) + c * (point[1] - py), point[2]], impact);
         } break;
       }
       case 'duplicateSelection': copySelection(next, command); break;
@@ -354,10 +572,14 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError ? error.path : '')] }; }
   const report = validateMap(next);
   if (!report.ok) return { ok: false, issues: report.issues };
+  if (support.impact?.slots.length) {
+    const planning = inspectPlanning(next);
+    if (!planning.supported) return { ok: false, issues: [problem('STATIC_CONTENTS_INVALID', '变换后静态槽位契约不再有效，整个事务已拒绝。'), ...planning.issues] };
+  }
   if (contentHash(input) === contentHash(next)) return { ok: true, map: input, changed: false, ...(command.type === 'upgradeSchema' ? { migrationChanges: [] } : {}) };
   next.revision = input.revision + 1;
   const finalReport = validateMap(next); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };
   try { serializeMap(next); } catch (error) { return { ok: false, issues: [problem('JSON_SIZE_LIMIT', error instanceof Error ? error.message : '规范化 JSON 超过限制。')] }; }
   const before = freezeMap(structuredClone(input)); const after = freezeMap(next);
-  return { ok: true, map: after, changed: true, transaction: { before, after, label: command.type }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input) } : {}) };
+  return { ok: true, map: after, changed: true, transaction: { before, after, label: command.type, affectedRefs: Object.freeze(support.affectedRefs.map(ref => Object.freeze({ ...ref }))) }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input) } : {}) };
 }

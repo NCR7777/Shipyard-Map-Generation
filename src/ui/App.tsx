@@ -1,15 +1,18 @@
+import type { SceneItem, SceneKind } from '../adapters/contracts';
+import { itemPositions } from '../compiler/catalog';
+import { ObjectDirectory, ObjectInspector } from './ObjectDirectory';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { newMap, newNode, newRoad, newFacility, newZone } from '../domain/factory';
 import { contentHash, serializeMap } from '../domain/serialization';
 import { mapCapabilities } from '../domain/capabilities';
-import { SELECTION_KINDS as selectionKinds, closureSelection, normalizeSelection, selectionImpact, type FullSelection, type MapCommand, type Selection } from '../domain/commands';
+import { SELECTION_KINDS as selectionKinds, closureSelection, normalizeSelection, selectionImpact, commandSupport, type CommandAffectedRef, type FullSelection, type MapCommand, type Selection } from '../domain/commands';
 import type { Facility, Zone, Polygon, Issue, Vec3 } from '../domain/model';
 import { createSession, editSession, isDirty, acknowledgeMap, prepareImport, redoSession, resolveImport, undoSession, type EditorSession, type ImportProposal } from '../editor/session';
 import { toSceneSnapshot } from '../compiler/scene';
 import { validateMap } from '../validation/validate';
 import { downloadMap, readJsonFile } from '../adapters/files';
 import { MapCanvas, type DraftRoad, type Tool } from '../renderers/2d/MapCanvas';
-import type { Camera } from '../geometry/coordinates';
+import { fitCamera, type Camera } from '../geometry/coordinates';
 import { PropertyPanel, type RoadShapePreview } from './PropertyPanel';
 import { Modal } from './Modal';
 import { PointCreationPanel, makePointCreationDraft, applyPointPick, buildPointCreationCommand, type PointCreationDraft } from './PointCreationPanel';
@@ -20,7 +23,6 @@ import { DEFAULT_DRAWING_CONFIG, type DrawingConfig } from '../editor/projectCon
 type FileConflict = Extract<Awaited<ReturnType<LocalFileController['check']>>, { status: 'conflict' }>;
 
 type SelectionKind = keyof FullSelection;
-const selectionNames: Record<SelectionKind, string> = { nodes: '节点', roads: '道路', facilities: '设施', zones: '区域', accessPoints: '入口', servicePoints: '服务点' };
 const emptySelection = (): FullSelection => normalizeSelection({ nodes: [], roads: [] });
 const uid = (prefix: string) => prefix + '_' + crypto.randomUUID();
 function localIssue(code: string, message: string): Issue { return { code, severity: 'error', jsonPath: '', message, suggestedAction: '检查输入，当前有效地图未被替换。' }; }
@@ -29,6 +31,7 @@ export function App() {
   const [session, setSession] = useState(() => createSession(newMap(uid('map'), '未命名布局'), true));
   const sessionRef = useRef<EditorSession>(session);
   const [tool, setTool] = useState<Tool>('select');
+  const [inspectionKeys, setInspectionKeys] = useState<string[]>([]);
   const [selection, setSelection] = useState<Selection>(emptySelection);
   const [camera, setCamera] = useState<Camera>({ offsetX: 80, offsetY: 460, scale: 4 });
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 540 });
@@ -45,7 +48,8 @@ export function App() {
   const [copyDelta, setCopyDelta] = useState(['10', '10', '0']);
   const [copyRetainFacility, setCopyRetainFacility] = useState(false);
   const [drawingConfig, setDrawingConfig] = useState<DrawingConfig>(() => ({ ...DEFAULT_DRAWING_CONFIG }));
-  const { facilityKind, zoneKind, facilityMovePolicy, zoneMovePolicy, snapGrid, snapNodes, showRoadBands, showRoadCenterlines, showOrdinaryNodes } = drawingConfig;
+  const drawingRef = useRef(drawingConfig); drawingRef.current = drawingConfig;
+  const { facilityKind, zoneKind, facilityMovePolicy, zoneMovePolicy, snapGrid, snapNodes, showRoadBands, showRoadCenterlines, showOrdinaryNodes, hiddenTypes, lockedTypes, showLabels } = drawingConfig;
   const editorState = useMemo(() => ({ camera, drawing: drawingConfig }), [camera, drawingConfig]);
   const [pointDraft, setPointDraft] = useState<PointCreationDraft | null>(null);
   const [leaveIntent, setLeaveIntent] = useState<{ label: string; action: () => void } | null>(null);
@@ -95,7 +99,7 @@ export function App() {
       importSequence.current++; setFileLoading(false);
       if (!preserveNative.current && !local.reset()) throw new Error('本地文件仍在处理中，工程界面未切换；请等待并重试。');
       updateSession({ ...createSession(recovery.map, true), changeToken: sessionRef.current.changeToken + 1 });
-      setMapName(recovery.map.metadata.name); setSelection(emptySelection()); setDraftRoad(null); setTool('select');
+      setMapName(recovery.map.metadata.name); setInspectionKeys([]); setSelection(emptySelection()); setDraftRoad(null); setTool('select');
       setBoundaryEditMode('auto'); onBoundaryInteractionChange(false);
       setPropertyDirty(false); setPolygonDraftDirty(false); setRecentDialog(false); setStorageConflictDialog(false); setNewDialog(false); setProposal(null); setOverwriteReady(null); setPointDraft(null); setLeaveIntent(null); setUpgradeDialog(false); setDraftResetToken(value => value + 1); setCopyDialog(false); setDeleteDialog(false); setRotateDialog(false); setSplitDialog(false); setSaveDialog(false); setOperationIssues([]); initializedCanvas.current = true;
       setCamera(recovery.editorState?.camera ?? { offsetX: 80, offsetY: 460, scale: 4 });
@@ -119,9 +123,21 @@ export function App() {
     const current = normalizeSelection(selection);
     return Object.fromEntries(selectionKinds.map(kind => [kind, current[kind].filter(id => Object.hasOwn(session.map[kind], id))])) as FullSelection;
   }, [selection, session.map]);
-  const selectedCount = selectionKinds.reduce((total, kind) => total + validSelection[kind].length, 0);
+  const selectedCount = selectionKinds.reduce((total, kind) => total + validSelection[kind].length, 0) + inspectionKeys.length;
+  const inspected = scene.items.find(item => inspectionKeys.includes(item.key));
   const closure = useMemo(() => closureSelection(session.map, validSelection), [session.map, validSelection]);
-  const impact = useMemo(() => selectionImpact(session.map, validSelection, facilityMovePolicy, zoneMovePolicy), [session.map, validSelection, facilityMovePolicy, zoneMovePolicy]);  const issues = [...operationIssues, ...report.issues];
+  const moveSupport = useMemo(() => commandSupport(session.map, { type: 'translateSelection', selection: validSelection, delta: [0, 0, 0], facilityMovePolicy, zoneMovePolicy }), [session.map, validSelection, facilityMovePolicy, zoneMovePolicy]);
+  const impact = moveSupport.impact ?? selectionImpact(session.map, emptySelection());
+  const boundaryPermissions = useMemo(() => {
+    const allowed = new Set<string>();
+    for (const kind of ['facilities', 'zones'] as const) for (const id of validSelection[kind]) {
+      const boundary = structuredClone(session.map[kind][id]!.boundary);
+      boundary.outer[0][0] += 1; boundary.outer[boundary.outer.length - 1] = [...boundary.outer[0]];
+      const command: MapCommand = kind === 'facilities' ? { type: 'updateFacility', id, patch: { boundary } } : { type: 'updateZone', id, patch: { boundary } };
+      if (commandSupport(session.map, command).allowed && !lockedTypes.includes(kind)) allowed.add(kind + '/' + id);
+    }
+    return allowed;
+  }, [session.map, validSelection, lockedTypes]);  const issues = [...operationIssues, ...report.issues];
   const errorCount = issues.filter(i => i.severity === 'error').length;
 
   const onCanvasSize = useCallback((size: { width: number; height: number }) => {
@@ -130,15 +146,29 @@ export function App() {
   }, []);
   function updateDrawingConfig(patch: Partial<DrawingConfig>) {
     if (!projects.ready || projects.isNavigating()) return;
-    setDrawingConfig(current => ({ ...current, ...patch }));
+    const searchOnly = Object.keys(patch).every(key => key === 'objectSearch');
+    const change = () => {
+      if (!searchOnly) { cancelBoundaryInteraction(); setDraftResetToken(value => value + 1); setRoadShapePreview(null); }
+      const next = { ...drawingRef.current, ...patch }; drawingRef.current = next; setDrawingConfig(next);
+    };
+    if (searchOnly) change(); else requestLeave('修改绘图配置', change);
   }
   function updateSession(next: EditorSession) {
     if (next.changeToken !== sessionRef.current.changeToken) setRoadShapePreview(null);
     sessionRef.current = next; setSession(next);
   }
   function operationsBlocked() { return !projects.ready || projects.isNavigating() || local.snapshot().busy || nativeTransition.current || upgrading.current; }
+  function rejectLocked(refs: readonly CommandAffectedRef[]): boolean {
+    const locked = refs.filter(ref => drawingRef.current.lockedTypes.includes(ref.kind as SceneKind));
+    if (!locked.length) return false;
+    setOperationIssues([localIssue('LOCKED_DEPENDENCY', '操作影响已锁定对象：' + locked.map(ref => ref.kind + '/' + ref.id).join('、'))]);
+    setStatus('操作被拒绝，地图及历史记录保持不变。'); return true;
+  }
   function apply(command: MapCommand): boolean {
     if (operationsBlocked()) { setStatus('工程或文件操作进行中，暂不接受地图修改。'); return false; }
+    if (inspectionKeys.length) { setOperationIssues([localIssue('INSPECTION_SELECTION_READ_ONLY', '所选厂界、资源或扩展对象仅可检查；请先取消检查选择，不能混入编辑事务。')]); return false; }
+    const support = commandSupport(sessionRef.current.map, command);
+    if (rejectLocked(support.affectedRefs)) return false;
     const result = editSession(sessionRef.current, command);
     setOperationIssues(result.issues);
     if (!result.ok) { setStatus('操作被拒绝，地图及历史记录保持不变。'); return false; }
@@ -150,7 +180,7 @@ export function App() {
   }
   function commitBoundary(kind: 'facilities' | 'zones', id: string, boundary: Polygon, baseMapHash: string, baseChangeToken: number): boolean {
     const current = sessionRef.current;
-    if (readonly || operationsBlocked() || tool !== 'select' || propertyDirty || mapName !== current.map.metadata.name
+    if (readonly || drawingRef.current.lockedTypes.includes(kind) || !boundaryPermissions.has(kind + '/' + id) || operationsBlocked() || tool !== 'select' || propertyDirty || mapName !== current.map.metadata.name
       || selectedCount !== 1 || validSelection[kind][0] !== id || baseChangeToken !== current.changeToken || baseMapHash !== contentHash(current.map)) {
       setStatus('边界预览的编辑上下文已变化，未提交旧几何。'); return false;
     }
@@ -177,6 +207,7 @@ export function App() {
   function choose(kind: SelectionKind, id: string, additive: boolean) {
     return requestLeave('切换所选对象', () => {
       if (additive || selectedCount !== 1 || validSelection[kind][0] !== id) setBoundaryEditMode('auto');
+      if (!additive) setInspectionKeys([]);
       setSelection(current => {
         const normalized = normalizeSelection(current);
         if (!additive) return { ...emptySelection(), [kind]: [id] };
@@ -185,7 +216,7 @@ export function App() {
       setTool('select');
     });
   }
-  function changeTool(value: Tool) { requestLeave('切换绘制工具', () => { setTool(value); setDraftRoad(null); }); }
+  function changeTool(value: Tool) { requestLeave('切换绘制工具', () => { setInspectionKeys([]); setTool(value); setDraftRoad(null); }); }
   async function upgradeSchema() {
     if (operationsBlocked() || unapplied || sessionRef.current.map.schemaVersion !== '0.1.0') return;
     const before = sessionRef.current;
@@ -296,8 +327,17 @@ export function App() {
     window.addEventListener('focus', focus);
     return () => window.removeEventListener('focus', focus);
   });
-  function undo() { requestLeave('撤销地图事务', () => { updateSession(undoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已撤销一个事务。'); }); }
-  function redo() { requestLeave('重做地图事务', () => { updateSession(redoSession(sessionRef.current)); setOperationIssues([]); setDraftRoad(null); setStatus('已重做一个事务。'); }); }
+  function history(direction: 'undo' | 'redo') {
+    requestLeave(direction === 'undo' ? '撤销地图事务' : '重做地图事务', () => {
+      const current = sessionRef.current;
+      const transaction = (direction === 'undo' ? current.past : current.future).at(-1);
+      if (!transaction || rejectLocked(transaction.affectedRefs)) return;
+      updateSession(direction === 'undo' ? undoSession(current) : redoSession(current));
+      setOperationIssues([]); setDraftRoad(null); setStatus(direction === 'undo' ? '已撤销一个事务。' : '已重做一个事务。');
+    });
+  }
+  function undo() { history('undo'); }
+  function redo() { history('redo'); }
   function addPolygon(kind: 'facilities' | 'zones', boundary: Polygon) {
     const id = uid(kind === 'facilities' ? 'facility' : 'zone');
     const command: MapCommand = kind === 'facilities'
@@ -342,11 +382,8 @@ export function App() {
     cancelBoundaryInteraction();
     const bounds = scene.bounds;
     if (!bounds) { setCamera({ offsetX: 80, offsetY: canvasSize.height - 80, scale: 4 }); return; }
-    const halfWidth = Math.max(5, bounds.max[0] / 2 - bounds.min[0] / 2);
-    const halfHeight = Math.max(5, bounds.max[1] / 2 - bounds.min[1] / 2);
-    const scale = Math.min(10, Math.max(1, canvasSize.width - 100) / 2 / halfWidth, Math.max(1, canvasSize.height - 100) / 2 / halfHeight);
-    const next = { scale, offsetX: canvasSize.width / 2 - (bounds.min[0] / 2 + bounds.max[0] / 2) * scale, offsetY: canvasSize.height / 2 + (bounds.min[1] / 2 + bounds.max[1] / 2) * scale };
-    if (scale <= 0 || !Object.values(next).every(Number.isFinite)) { setStatus('当前坐标超出视图可表示范围；请通过数值属性调整坐标。'); return; }
+    const next = fitCamera(bounds, canvasSize.width, canvasSize.height);
+    if (!next) { setStatus('当前坐标超出视图可表示范围；请通过数值属性调整坐标。'); return; }
     setCamera(next);
   }
   async function finishImport(candidate: ImportProposal, isNew: boolean) {
@@ -386,11 +423,38 @@ export function App() {
       setSelection(Object.fromEntries(selectionKinds.map(kind => [kind, closure[kind].map(id => idMap[id]!)])) as FullSelection); setCopyDialog(false);
     }
   }
+  function chooseItem(item: SceneItem, additive = false) {
+    if (selectionKinds.includes(item.kind as SelectionKind)) { choose(item.kind as SelectionKind, item.id, additive); return; }
+    requestLeave('查看声明对象', () => {
+      if (!additive) setSelection(emptySelection());
+      setInspectionKeys(current => additive ? current.includes(item.key) ? current.filter(key => key !== item.key) : [...current, item.key] : [item.key]);
+      setTool('select');
+    });
+  }
+  function locateItem(item: SceneItem) {
+    requestLeave('定位对象', () => {
+      const positions = itemPositions(item);
+      if (!positions.length) { setStatus(item.reason || '该逻辑对象没有声明可定位的几何。'); return; }
+      const minX = Math.min(...positions.map(p => p[0])); const maxX = Math.max(...positions.map(p => p[0]));
+      const minY = Math.min(...positions.map(p => p[1])); const maxY = Math.max(...positions.map(p => p[1]));
+      const next = fitCamera({ min: [minX, minY, 0], max: [maxX, maxY, 0] }, canvasSize.width, canvasSize.height);
+      if (!next) { setStatus('当前坐标超出视图可表示范围；相机保持不变。'); return; }
+      setCamera(next);
+      setStatus(hiddenTypes.includes(item.kind) ? '已定位；该类型仍隐藏，可在基础图层中显示。' : '已定位 ' + item.id);
+    });
+  }
+  function canDrag(kind: keyof Selection, id: string) {
+    if (lockedTypes.includes(kind as SceneKind) || inspectionKeys.length) return false;
+    if (!Object.keys(session.map.junctions).length && !Object.keys(session.map.resources).length && !Object.keys(session.map.extensionNamespaces).some(key => session.map.extensionNamespaces[key]!.category === 'behavior')) return true;
+    return validSelection[kind]?.includes(id) === true && moveSupport.allowed && !moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind));
+  }
   function locate(issue: Issue) {
     const kind = issue.entityType as SelectionKind | undefined;
     if (kind && selectionKinds.includes(kind) && issue.entityId && Object.hasOwn(session.map[kind], issue.entityId)) { choose(kind, issue.entityId, false); }
+    const item = scene.items.find(entry => entry.jsonPath === issue.jsonPath || entry.jsonPath === '/' + issue.entityType + '/' + issue.entityId);
+    if (item && !selectionKinds.includes(item.kind as SelectionKind)) { chooseItem(item); locateItem(item); return; }
     const point = issue.location?.position;
-    if (point) setCamera(current => ({ ...current, offsetX: canvasSize.width / 2 - point[0] * current.scale, offsetY: canvasSize.height / 2 + point[1] * current.scale }));
+    if (point) { const next = fitCamera({ min: point, max: point }, canvasSize.width, canvasSize.height); if (next) setCamera(next); else setStatus('当前坐标超出视图可表示范围；相机保持不变。'); }
   }
   useEffect(() => {
     function beforeUnload(event: BeforeUnloadEvent) { if (saveGuard.current.browserDirty || saveGuard.current.unapplied) { event.preventDefault(); event.returnValue = ''; } }
@@ -410,7 +474,7 @@ export function App() {
       if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
       else if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
       else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(); }
-      else if (event.key === 'Escape') { event.preventDefault(); requestLeave('取消绘制和选择', () => { setDraftRoad(null); setDraftResetToken(value => value + 1); setTool('select'); setSelection(emptySelection()); }); }
+      else if (event.key === 'Escape') { event.preventDefault(); requestLeave('取消绘制和选择', () => { setDraftRoad(null); setDraftResetToken(value => value + 1); setTool('select'); setInspectionKeys([]); setSelection(emptySelection()); }); }
     }
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
@@ -459,31 +523,32 @@ export function App() {
           <div className="tool-grid"><button onClick={() => openPointDialog('accessPoints')} disabled={readonly}>添加入口</button><button onClick={() => openPointDialog('servicePoints')} disabled={readonly}>添加服务点</button></div>
           <label className="field-label">网格吸附<select aria-label="网格吸附" disabled={!projects.ready || projects.transitioning} value={snapGrid} onChange={event => updateDrawingConfig({ snapGrid: Number(event.target.value) as DrawingConfig['snapGrid'] })}><option value="0">关闭</option><option value="1">1 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
           <label className="check-field"><input type="checkbox" aria-label="节点吸附" disabled={!projects.ready || projects.transitioning} checked={snapNodes} onChange={event => updateDrawingConfig({ snapNodes: event.target.checked })} />节点吸附（坐标，不自动接路）</label>
-          <label className="field-label">设施移动策略<select aria-label="设施移动策略" disabled={!projects.ready || projects.transitioning} value={facilityMovePolicy} onChange={event => updateDrawingConfig({ facilityMovePolicy: event.target.value as typeof facilityMovePolicy })}><option value="boundaryOnly">仅移动边界，关联点保持</option><option value="withAssociatedNodes">边界和关联节点一起移动</option></select></label>
-          <label className="field-label">区域移动策略<select aria-label="区域移动策略" disabled={!projects.ready || projects.transitioning} value={zoneMovePolicy} onChange={event => updateDrawingConfig({ zoneMovePolicy: event.target.value as typeof zoneMovePolicy })}><option value="boundaryOnly">仅移动边界，服务点保持</option><option value="withAssociatedNodes">边界和服务节点一起移动</option></select></label>
+          <label className="field-label">设施移动策略<select aria-label="设施移动策略" disabled={!projects.ready || projects.transitioning} value={facilityMovePolicy} onChange={event => updateDrawingConfig({ facilityMovePolicy: event.target.value as typeof facilityMovePolicy })}><option value="boundaryOnly">仅移动边界，关联点保持</option><option value="withAssociatedNodes">边界和关联节点一起移动</option><option value="withStaticContents">边界、槽位及内部道路联动</option></select></label>
+          <label className="field-label">区域移动策略<select aria-label="区域移动策略" disabled={!projects.ready || projects.transitioning} value={zoneMovePolicy} onChange={event => updateDrawingConfig({ zoneMovePolicy: event.target.value as typeof zoneMovePolicy })}><option value="boundaryOnly">仅移动边界，服务点保持</option><option value="withAssociatedNodes">边界和服务节点一起移动</option><option value="withStaticContents">边界、槽位及内部道路联动</option></select></label>
           <div className="property-subheading">道路显示</div>
           <label className="check-field"><input type="checkbox" aria-label="显示道路带" disabled={!projects.ready || projects.transitioning} checked={showRoadBands} onChange={event => updateDrawingConfig({ showRoadBands: event.target.checked })} />显示道路带</label>
           <label className="check-field"><input type="checkbox" aria-label="显示中心线" disabled={!projects.ready || projects.transitioning} checked={showRoadCenterlines} onChange={event => updateDrawingConfig({ showRoadCenterlines: event.target.checked })} />显示中心线</label>
           <label className="check-field"><input type="checkbox" aria-label="显示普通节点" disabled={!projects.ready || projects.transitioning} checked={showOrdinaryNodes} onChange={event => updateDrawingConfig({ showOrdinaryNodes: event.target.checked })} />显示普通节点</label>
           <p className="field-note">只改变视图；隐藏不会删除节点或改变道路连通。入口和服务点保留显示。</p>
           <button className="subtle-button full-width" disabled={!projects.ready || projects.transitioning} onClick={() => updateDrawingConfig(DEFAULT_DRAWING_CONFIG)}>恢复绘图默认配置</button>
-          {(validSelection.facilities.length > 0 || validSelection.zones.length > 0) && <p className="field-note" data-testid="move-impact">将移动 {impact.selection.nodes.length} 个节点，影响 {impact.affectedRoadIds.length} 条道路；{facilityMovePolicy === 'boundaryOnly' ? '设施入口/服务点留在原地。' : '共享节点会使相邻道路端点一起变化。'}<br/>{impact.affectedRoadIds.join('、')}<br/>区域策略：{zoneMovePolicy === 'boundaryOnly' ? '仅移动边界，服务点保持原位。' : '边界和关联服务节点一起移动。'}共享节点：{impact.sharedNodeIds.join('、') || '无'}</p>}
+          {(validSelection.facilities.length > 0 || validSelection.zones.length > 0) && <p className="field-note" data-testid="move-impact">将移动 {impact.selection.nodes.length} 个节点，影响 {impact.affectedRoadIds.length} 条道路；{facilityMovePolicy === 'boundaryOnly' ? '设施入口/服务点留在原地。' : '共享节点会使相邻道路端点一起变化。'}<br/>{impact.affectedRoadIds.join('、')}<br/>{!moveSupport.allowed && moveSupport.issues.map(issue => issue.message).join('；')}<br/>固定公共锚点：{impact.fixedAnchorNodeIds.join('、') || '无'}<br/>区域策略：{zoneMovePolicy === 'boundaryOnly' ? '仅移动边界，服务点保持原位。' : '边界和关联服务节点一起移动。'}共享节点：{impact.sharedNodeIds.join('、') || '无'}</p>}
         </div>
         <div className="panel-title">地图信息</div>
         <div className="map-name-editor"><label className="field-label">地图名称<input aria-label="地图名称" value={mapName} disabled={readonly || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty} onChange={event => setMapName(event.target.value)} /></label><button className="subtle-button full-width" disabled={readonly || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || !mapName.trim()} onClick={() => requestLeave('应用地图名称', () => apply({ type: 'renameMap', name: mapName }), propertyDirty)}>应用地图名称</button></div>
         <div className="panel-title">对象<span><span data-testid="node-count">{scene.nodes.length}</span> 节点 · <span data-testid="road-count">{scene.roads.length}</span> 道路</span></div>
-        <div className="object-list">{selectionKinds.every(kind => Object.keys(session.map[kind]).length === 0) && <p className="empty-note">地图为空。选择“节点”工具，在画布上开始绘制。</p>}
-          {scene.nodes.map(node => <button key={node.id} data-testid={'node-item-' + node.id} className={validSelection.nodes.includes(node.id) ? 'object-item selected' : 'object-item'} onClick={event => { choose('nodes', node.id, event.shiftKey); }}><i className="object-node">●</i><span>{node.name || '(未命名节点)'}<small>{node.id}</small></span></button>)}
-          {scene.roads.map(road => <button key={road.id} data-testid={'road-item-' + road.id} className={validSelection.roads.includes(road.id) ? 'object-item selected' : 'object-item'} onClick={event => { choose('roads', road.id, event.shiftKey); }}><i className="object-road">━</i><span>{road.name || '(未命名道路)'}<small>{road.id}</small></span></button>)}
-          {(['facilities', 'zones', 'accessPoints', 'servicePoints'] as const).map(kind => <div className="spatial-object-group" key={kind}><div className="object-group-label">{selectionNames[kind]} <span data-testid={kind + '-count'}>{Object.keys(session.map[kind]).length}</span></div>{Object.entries(session.map[kind]).map(([id, value]) => <button key={id} data-testid={kind + '-item-' + id} className={validSelection[kind].includes(id) ? 'object-item selected' : 'object-item'} onClick={event => { choose(kind, id, event.shiftKey); }}><i>{kind === 'facilities' ? '▣' : kind === 'zones' ? '◇' : '⊕'}</i><span>{value.name}<small>{id}</small></span></button>)}</div>)}
-        </div>
+        <ObjectDirectory domainReadonly={domainReadonly} items={scene.items} drawing={drawingConfig} disabled={!projects.ready || projects.transitioning} onDrawing={updateDrawingConfig}
+          isSelected={item => inspectionKeys.includes(item.key) || (selectionKinds.includes(item.kind as SelectionKind) && validSelection[item.kind as SelectionKind].includes(item.id))}
+          onSelect={chooseItem} onLocate={locateItem}/>
         <div className="left-footer"><b>数据独立于画布</b><p>JSON 保存全部语义几何。平移和缩放仅改变视图。</p><code>{session.map.mapId}</code></div>
       </aside>
       <section className="center-panel">
         <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => requestLeave('复制所选对象', () => { setOperationIssues([]); setCopyRetainFacility(false); setCopyDialog(true); })} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button><button onClick={() => requestLeave('旋转所选对象', () => { setOperationIssues([]); setRotateDialog(true); })} disabled={readonly || selectedCount === 0}>旋转</button><button onClick={() => requestLeave('拆分道路', () => { setOperationIssues([]); setSplitDistance(''); setSplitExistingNode(''); setSplitDialog(true); })} disabled={readonly || selectedCount !== 1 || validSelection.roads.length !== 1}>拆分道路</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
         {domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含尚未支持的行为、资源或底图等数据；保留完整 JSON，编辑已锁定。</div>}
         <div className="tool-hint">{hint}</div>
-        <MapCanvas roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} onCamera={setCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!(proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || (!pointDraft?.canvasMode && pointDraft) || deleteDialog || rotateDialog || splitDialog || leaveIntent || upgradeDialog)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => setSelection(emptySelection()))} onCursor={setCursor} draftRoad={draftRoad}
+        {Object.keys(session.map.resources).length > 0 && <div className="tool-hint" data-testid="static-edit-limits">仅静态草稿编辑；联动可能改变接入段转角。空间、转向及原外部结果未重新验证，旧结果绑定旧地图摘要。</div>}
+        <MapCanvas hiddenTypes={hiddenTypes} showLabels={showLabels} inspectKey={inspected?.key} onInspect={item => chooseItem(item)} canDrag={canDrag}
+          canEditBoundary={(kind, id) => boundaryPermissions.has(kind + '/' + id)}
+          movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} onCamera={setCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!(proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || (!pointDraft?.canvasMode && pointDraft) || deleteDialog || rotateDialog || splitDialog || leaveIntent || upgradeDialog)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => { setInspectionKeys([]); setSelection(emptySelection()); })} onCursor={setCursor} draftRoad={draftRoad}
           onAddNode={point => requestLeave('绘制节点', () => { const id = uid('node'); if (apply({ type: 'addNode', id, node: newNode(point, '节点 ' + (scene.nodes.length + 1)) })) setSelection({ nodes: [id], roads: [] }); })}
           onRoadNode={id => requestLeave('绘制道路', () => {
             if (!draftRoad) { setDraftRoad({ fromNodeId: id, points: [] }); return; }
@@ -498,8 +563,8 @@ export function App() {
         <div className="canvas-status"><span>{cursor ? `X ${cursor[0].toFixed(3)} m  ·  Y ${cursor[1].toFixed(3)} m` : '本地 XY；屏幕 Y 方向仅影响显示'}</span><span>{selectedCount} 个选中 · {session.past.length} 个撤销事务</span></div>
         <section className="issue-panel" data-testid="issue-panel"><div className="issue-heading"><strong>检查器</strong><span className={errorCount ? 'error-count' : 'warning-count'}>{errorCount} 错误 · {issues.length - errorCount} 提示</span><span>draft 校验；不代表现场安全</span></div><div className="issue-list">{issues.map((issue, index) => <button key={issue.code + index} className={'issue-item ' + issue.severity} onClick={() => locate(issue)}><span className="issue-symbol">{issue.severity === 'error' ? '!' : '△'}</span><span><strong>{issue.code}</strong> {issue.message}<small>{issue.jsonPath || '/'} · {issue.suggestedAction}</small></span></button>)}</div></section>
       </section>
-      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div><PropertyPanel mapContentHash={scene.mapContentHash} onRoadPreviewChange={onRoadPreviewChange} boundaryEditMode={boundaryEditMode} onBoundaryModeChange={changeBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={value => updateDrawingConfig({ zoneMovePolicy: value })} onMovePolicyChange={value => updateDrawingConfig({ facilityMovePolicy: value })} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={apply} />
-        {domainReadonly && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
+      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>{inspected ? <ObjectInspector item={inspected} map={session.map} onLocate={() => locateItem(inspected)}/> : <PropertyPanel mapContentHash={scene.mapContentHash} onRoadPreviewChange={onRoadPreviewChange} boundaryEditMode={boundaryEditMode} onBoundaryModeChange={changeBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={value => updateDrawingConfig({ zoneMovePolicy: value })} onMovePolicyChange={value => updateDrawingConfig({ facilityMovePolicy: value })} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || selectionKinds.some(kind => validSelection[kind].length > 0 && lockedTypes.includes(kind)) || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={apply} />}
+        {(capabilities.reasons.length > 0 || capabilities.unrendered.length > 0) && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
         <div className="capability-box"><h3>本阶段未校验</h3><p>{capabilities.unchecked.join(' · ')}</p></div>
       </aside>
     </div>

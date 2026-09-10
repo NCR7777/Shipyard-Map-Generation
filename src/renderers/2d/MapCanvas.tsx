@@ -6,10 +6,10 @@ import Konva from 'konva';
 Konva.dragButtons = [0];
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Stage as KonvaStage } from 'konva/lib/Stage';
-import type { SceneSnapshot } from '../../adapters/contracts';
+import type { SceneSnapshot, SceneItem, SceneKind } from '../../adapters/contracts';
 import type { Polygon, Vec3 } from '../../domain/model';
 import type { DrawingConfig } from '../../editor/projectController';
-import { SpatialLayer, AssociatedPointLayer, type SpatialLayerProps } from './SpatialLayer';
+import { SpatialLayer, AssociatedPointLayer, DeclaredLayer, type SpatialLayerProps } from './SpatialLayer';
 import { useSpatialDrawing, isSpatialTool, isRectangleTool, snapPosition, type SnapOptions } from './useSpatialDrawing';
 import { SELECTION_KINDS, type Selection } from '../../domain/commands';
 import { rectangleFrame } from '../../geometry/rectangles';
@@ -22,6 +22,14 @@ export interface PointPick { mode: 'existing' | 'new'; nodeId?: string; position
 export interface DraftRoad { fromNodeId: string; points: Vec3[] }
 interface Props {
   scene: SceneSnapshot;
+  hiddenTypes?: readonly SceneKind[];
+  showLabels?: boolean;
+  inspectKey?: string;
+  onInspect?: (item: SceneItem) => void;
+  canDrag?: (kind: keyof Selection, id: string) => boolean;
+  canEditBoundary?: (kind: 'facilities' | 'zones', id: string) => boolean;
+  movingJunctionIds?: readonly string[];
+  rigidRoadIds?: readonly string[];
   roadDisplay: Pick<DrawingConfig, 'showRoadBands' | 'showRoadCenterlines' | 'showOrdinaryNodes'>;
   roadShapePreview?: { roadId: string; shapePoints: Vec3[]; mapContentHash: string } | null;
   camera: Camera;
@@ -70,6 +78,10 @@ export function MapCanvas(props: Props) {
   const [boundaryActive, setBoundaryActive] = useState(false);
   const boundaryActiveRef = useRef(false);
   const [boundaryError, setBoundaryError] = useState('');
+  useEffect(() => {
+    dragStart.current = null; setPreviewDelta(null);
+    stage.current?.find((node: Konva.Node) => node.isDragging()).forEach(node => node.stopDrag());
+  }, [props.draftResetToken]);
   useEffect(() => { setPickNotice(''); }, [props.pointPick?.mode]);
   const drawing = useSpatialDrawing(props.tool, props.readonly || !!props.pointPick, props.camera, props.onPolygonCreate, props.draftResetToken);
   const drawingDirty = drawing.vertices.length > 0;
@@ -79,10 +91,10 @@ export function MapCanvas(props: Props) {
     for (const kind of ['facilities', 'zones'] as const) {
       const id = props.selection[kind]?.[0];
       const item = props.scene[kind].find(value => value.id === id);
-      if (item) return { kind, id: item.id, boundary: item.boundary };
+      if (item && !props.hiddenTypes?.includes(kind) && (props.canEditBoundary?.(kind, item.id) ?? true)) return { kind, id: item.id, boundary: item.boundary };
     }
     return null;
-  }, [props.readonly, props.hasUnappliedInput, props.pointPick, props.draftRoad, drawingDirty, previewDelta, props.tool, props.selection, props.scene]);
+  }, [props.readonly, props.hasUnappliedInput, props.pointPick, props.draftRoad, drawingDirty, previewDelta, props.tool, props.selection, props.scene, props.hiddenTypes, props.canEditBoundary]);
   const boundaryFrame = useMemo(() => boundaryTarget && props.boundaryEditMode === 'auto' ? rectangleFrame(boundaryTarget.boundary) : null, [boundaryTarget, props.boundaryEditMode]);
   const boundaryMode = boundaryTarget ? boundaryFrame ? 'rectangle' : 'polygon' : 'none';
   const boundaryHandleCount = boundaryTarget ? [boundaryTarget.boundary.outer, ...boundaryTarget.boundary.holes].reduce((count, ring) => count + ring.length - 1, 0) : 0;
@@ -125,7 +137,7 @@ export function MapCanvas(props: Props) {
       let world = point;
       if (index === 0) world = position(road.fromNodeId, point);
       else if (index === route.length - 1) world = position(road.toNodeId, point);
-      else if (previewDelta && props.selection.roads.includes(road.id)) world = [point[0] + previewDelta[0], point[1] + previewDelta[1], point[2] + previewDelta[2]];
+      else if (previewDelta && (props.rigidRoadIds?.includes(road.id) || props.selection.roads.includes(road.id))) world = [point[0] + previewDelta[0], point[1] + previewDelta[1], point[2] + previewDelta[2]];
       return worldToScreen(world, props.camera);
     });
   }
@@ -180,13 +192,13 @@ export function MapCanvas(props: Props) {
     return { ...road, screenPoints: points(road),
       bandWidthPx: pixels !== null && Number.isFinite(pixels) && pixels > 0 ? pixels : null };
   });
-  const visibleRoads = projectedRoads.filter(road => road.screenPoints.every(Number.isFinite));
+  const visibleRoads = projectedRoads.filter(road => !props.hiddenTypes?.includes('roads') && road.screenPoints.every(Number.isFinite));
   const unprojectableWidths = visibleRoads.filter(road => road.widthM.state === 'known' && road.bandWidthPx === null).length;
   const unknownWidths = props.scene.roads.filter(road => road.widthM.state !== 'known').length;
   const widthRangeIssues = props.scene.missingCapabilities.filter(issue => issue.startsWith('ROAD_WIDTH_VISUAL_RANGE:'));
-  const displayedNodes = visibleNodes.filter(node => props.roadDisplay.showOrdinaryNodes || node.kind !== 'ordinary'
+  const displayedNodes = visibleNodes.filter(() => !props.hiddenTypes?.includes('nodes')).filter(node => props.roadDisplay.showOrdinaryNodes || node.kind !== 'ordinary'
     || selectedNodeIds.has(node.id) || !!props.pointPick || props.tool === 'road');
-  const unprojectable = props.scene.nodes.length + props.scene.roads.length - visibleNodes.length - visibleRoads.length;
+  const unprojectable = props.scene.nodes.length + props.scene.roads.length - visibleNodes.length - projectedRoads.filter(road => road.screenPoints.every(Number.isFinite)).length;
   function roadClick(event: KonvaEventObject<MouseEvent>, id: string) {
     if (event.evt.button !== 0) return;
     if (props.pointPick) { event.cancelBubble = true; const screen = pointer(); if (screen) drawAt(screen); }
@@ -196,12 +208,13 @@ export function MapCanvas(props: Props) {
     }
   }
   const spatialProps: SpatialLayerProps = {
+    hiddenTypes: props.hiddenTypes, showLabels: props.showLabels, canDrag: props.canDrag,
     scene: props.scene, camera: props.camera, selection: props.selection, previewDelta, boundaryPreview,
     snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && props.tool === 'road', movingNodeIds: selectedNodeIds,
     disableDrag: props.hasUnappliedInput || boundaryActive, pickingPoint: !!props.pointPick, onPickNode: pickNode,
     onSelect: props.onSelect, onRoadNode: props.onRoadNode, onDrawClick: () => { const p = pointer(); if (p) drawAt(p); },
     onDragStart: origin => { dragStart.current = origin; }, onPreview: setPreviewDelta,
-    onDragEnd: delta => { dragStart.current = null; props.onTranslate(delta); },
+    onDragEnd: delta => { const active = dragStart.current; dragStart.current = null; if (active) props.onTranslate(delta); },
   };
   const firstVertex = drawing.vertices[0];
   const spatialPreview = isRectangleTool(props.tool) && firstVertex && rubberEnd
@@ -226,6 +239,7 @@ export function MapCanvas(props: Props) {
         {grid.filter(tick => Number.isFinite(tick.pixel)).map((tick, index) => <Text key={'label-' + index} x={tick.axis === 'x' ? tick.pixel + 4 : 5} y={tick.axis === 'x' ? 6 : tick.pixel + 4} text={roundTick(tick.value)} fill="#7b8f9d" fontSize={10} />)}
       </Layer>
       <Layer listening={!boundaryActive}>
+        <DeclaredLayer backdrop items={props.scene.items} camera={props.camera} hiddenTypes={props.hiddenTypes ?? []} showLabels={props.showLabels !== false} selectedKey={props.inspectKey} onSelect={item => props.onInspect?.(item)} selection={props.selection} previewDelta={previewDelta} movingJunctionIds={props.movingJunctionIds ?? []}/>
         <SpatialLayer {...spatialProps} />
         {/* All bands precede all auxiliary lines, then nodes/associated points and edit handles.
             Round caps/joins form a width-derived approximation, never a surveyed junction disk. */}
@@ -243,11 +257,12 @@ export function MapCanvas(props: Props) {
             strokeWidth={2} hitStrokeWidth={14} dash={auxiliary ? [7, 5] : undefined} lineCap="round" lineJoin="round"
             onClick={event => roadClick(event, road.id)} />;
         })}
+        <DeclaredLayer items={props.scene.items} camera={props.camera} hiddenTypes={props.hiddenTypes ?? []} showLabels={props.showLabels !== false} selectedKey={props.inspectKey} onSelect={item => props.onInspect?.(item)} selection={props.selection} previewDelta={previewDelta} movingJunctionIds={props.movingJunctionIds ?? []}/>
         {displayedNodes.map(node => {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
           const selected = selectedNodeIds.has(node.id) || props.pointPick?.nodeId === node.id;
           return <Circle _useStrictMode key={node.id} x={x} y={y} radius={selected ? 6.5 : 5} fill={selected ? '#e08128' : '#ffffff'} stroke={selected ? '#9a4c0d' : '#216b88'} strokeWidth={2} hitStrokeWidth={12}
-            draggable={!boundaryActive && !props.hasUnappliedInput && !props.pointPick && props.tool === 'select' && !props.readonly}
+            draggable={!boundaryActive && !props.hasUnappliedInput && !props.pointPick && props.tool === 'select' && !props.readonly && (props.canDrag?.('nodes', node.id) ?? true)}
             onMouseDown={event => {
               if (event.evt.button === 0 && !props.pointPick && props.tool === 'select' && (!selected || event.evt.shiftKey)) props.onSelect('nodes', node.id, event.evt.shiftKey);
             }}
@@ -274,7 +289,7 @@ export function MapCanvas(props: Props) {
         <AssociatedPointLayer {...spatialProps} />
       </Layer>
       <Layer listening={false}>
-        {displayedNodes.map(node => {
+        {props.showLabels !== false && displayedNodes.map(node => {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
           return <Text key={node.id} x={x + 11} y={y - 16} text={node.name || node.id} fontSize={11} fill="#355266" />;
         })}

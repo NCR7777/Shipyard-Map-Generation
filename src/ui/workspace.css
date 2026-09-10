@@ -16,3 +16,10 @@
 
 .app-header { height: auto; min-height: 76px; padding-top: 12px; padding-bottom: 12px; }
 .canvas-toolbar { height: auto; min-height: 47px; padding-top: 7px; padding-bottom: 7px; }
+.layer-controls { margin: 8px 0; font-size: 12px; }
+.layer-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+.layer-row > span { flex: 1; }
+.directory-row { display: flex; align-items: center; }
+.directory-row .object-item { flex: 1; min-width: 0; }
+.locate-object { padding: 3px 6px; font-size: 16px; }
+.object-json { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 55vh; overflow: auto; font-size: 11px; }

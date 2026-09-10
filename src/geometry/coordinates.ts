@@ -29,3 +29,12 @@ export function zoomAt(camera: Camera, screen: Vec2, scale: number): Camera {
   checkCamera(next);
   return next;
 }
+
+/** Existing fit calculation shared by whole-map and object navigation; unrepresentable cameras are refused. */
+export function fitCamera(bounds: { min: Vec3; max: Vec3 }, width: number, height: number): Camera | null {
+  const halfWidth = Math.max(5, bounds.max[0] / 2 - bounds.min[0] / 2);
+  const halfHeight = Math.max(5, bounds.max[1] / 2 - bounds.min[1] / 2);
+  const scale = Math.min(10, Math.max(1, width - 100) / 2 / halfWidth, Math.max(1, height - 100) / 2 / halfHeight);
+  const next = { scale, offsetX: width / 2 - (bounds.min[0] / 2 + bounds.max[0] / 2) * scale, offsetY: height / 2 + (bounds.min[1] / 2 + bounds.max[1] / 2) * scale };
+  return scale > 0 && Object.values(next).every(Number.isFinite) ? next : null;
+}

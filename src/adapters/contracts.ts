@@ -1,5 +1,14 @@
-import type { AccessPoint, CoordinateFrame, Facility, MapNode, PhysicalValue, ServicePoint, Vec3, YardMap, Zone } from '../domain/model';
+import type { AccessPoint, CoordinateFrame, Facility, MapNode, PhysicalValue, Polygon, ServicePoint, Vec3, YardMap, Zone } from '../domain/model';
 
+export const SCENE_KINDS = ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints', 'siteBoundary', 'junctions', 'resources', 'slots', 'movements', 'sources', 'assets', 'backgroundLayers', 'extensions'] as const;
+export type SceneKind = typeof SCENE_KINDS[number];
+/** Derived directory entries, never a second editable geometry store. */
+export interface SceneItem {
+  key: string; kind: SceneKind; id: string; name: string; jsonPath: string;
+  status: 'geometry' | 'logical' | 'unsupported'; reason: string;
+  polygons: Polygon[]; points: Vec3[]; lines: Vec3[][];
+  owner?: { kind: 'facilities' | 'zones'; id: string };
+}
 export interface SceneSnapshot {
   schemaVersion: YardMap['schemaVersion'];
   mapId: string;
@@ -13,6 +22,7 @@ export interface SceneSnapshot {
   servicePoints: ({ id: string; position: Vec3 } & Pick<ServicePoint, 'name' | 'kind' | 'facilityId' | 'accessPointId' | 'nodeId' | 'zoneId' | 'arrival'>)[];
   bounds: { min: Vec3; max: Vec3 } | null;
   missingCapabilities: string[];
+  items: SceneItem[];
 }
 
 export interface RuntimeStateMessage {

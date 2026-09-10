@@ -1,3 +1,4 @@
+import { SCENE_KINDS, type SceneKind } from '../adapters/contracts';
 import type { Facility, Issue, YardMap, Zone } from '../domain/model';
 import type { FacilityMovePolicy, ZoneMovePolicy } from '../domain/commands';
 import { loadMap } from '../domain/load';
@@ -6,6 +7,10 @@ import type { Camera } from '../geometry/coordinates';
 
 export type SaveKind = 'draft' | 'checkpoint';
 export interface DrawingConfig {
+  hiddenTypes: SceneKind[];
+  lockedTypes: SceneKind[];
+  showLabels: boolean;
+  objectSearch: string;
   snapGrid: 0 | 1 | 5 | 10;
   snapNodes: boolean;
   showRoadBands: boolean;
@@ -17,6 +22,7 @@ export interface DrawingConfig {
   zoneMovePolicy: ZoneMovePolicy;
 }
 export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
+  hiddenTypes: [], lockedTypes: [], showLabels: true, objectSearch: '',
   snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
@@ -86,15 +92,17 @@ export function validateEditorState(value: unknown): EditorState {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置必须是声明的稳定设置，不能包含空值、未知字段或临时交互。');
   }
   const drawing = { ...DEFAULT_DRAWING_CONFIG, ...('drawing' in value ? value.drawing as object : {}) } as DrawingConfig;
-  if (![0, 1, 5, 10].includes(drawing.snapGrid) || typeof drawing.snapNodes !== 'boolean'
+  if (![drawing.hiddenTypes, drawing.lockedTypes].every(values => Array.isArray(values) && values.every(value => SCENE_KINDS.includes(value)) && new Set(values).size === values.length)
+    || typeof drawing.showLabels !== 'boolean' || typeof drawing.objectSearch !== 'string' || drawing.objectSearch.length > 200
+    || ![0, 1, 5, 10].includes(drawing.snapGrid) || typeof drawing.snapNodes !== 'boolean'
     || typeof drawing.showRoadBands !== 'boolean' || typeof drawing.showRoadCenterlines !== 'boolean' || typeof drawing.showOrdinaryNodes !== 'boolean'
     || !['workshop', 'yard', 'assembly', 'dock', 'quay', 'other'].includes(drawing.facilityKind)
     || !['work', 'buffer', 'waiting', 'water', 'obstacle', 'drivable', 'forbidden'].includes(drawing.zoneKind)
-    || !['boundaryOnly', 'withAssociatedNodes'].includes(drawing.facilityMovePolicy)
-    || !['boundaryOnly', 'withAssociatedNodes'].includes(drawing.zoneMovePolicy)) {
+    || !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(drawing.facilityMovePolicy)
+    || !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(drawing.zoneMovePolicy)) {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置的吸附数值、布尔值、对象类型或移动策略无效。');
   }
-  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing };
+  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing: { ...drawing, hiddenTypes: [...drawing.hiddenTypes], lockedTypes: [...drawing.lockedTypes] } };
 }
 
 export interface ActiveProject {

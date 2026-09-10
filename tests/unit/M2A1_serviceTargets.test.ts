@@ -189,19 +189,25 @@ describe('M2A.1 explicit service ownership and atomic creation (2–8)', () => {
     const map = zoneServiceFixture(); map.servicePoints.sZone!.nodeId = 'missing';
     assertInvalid(map, '/servicePoints/sZone/nodeId', 'DANGLING_REFERENCE');
   });
-  it('keeps resources protected in the new schema instead of granting simulated capacity', () => {
+  it('P1 permits names while preserving resource capacity and protecting service geometry', () => {
     const map = zoneServiceFixture();
     map.resources.resourceA = { name: 'synthetic 未实现资源', kind: 'loading', capacityUnit: 'vehicle', capacity: { state: 'unknown' }, controlModel: 'unknown', appliesTo: [{ entityType: 'servicePoints', entityId: 'sZone' }], provenance: { category: 'synthetic' } };
     map.servicePoints.sZone!.resourceIds = ['resourceA'];
     expect(validateMap(map).ok).toBe(true);
-    expect(mapCapabilities(map).editable).toBe(false);
-    reject(map, { type: 'updateServicePoint', id: 'sZone', patch: { name: '不得绕过资源门禁' } });
+    expect(mapCapabilities(map).editable).toBe(true);
+    const renamed = execute(map, { type: 'updateServicePoint', id: 'sZone', patch: { name: '仅修改显示名称' } }).map;
+    expect(renamed.resources).toEqual(map.resources);
+    expect(renamed.servicePoints.sZone!.resourceIds).toEqual(['resourceA']);
+    expect(renamed.servicePoints.sZone!.nodeId).toBe(map.servicePoints.sZone!.nodeId);
+    reject(map, { type: 'updateServicePoint', id: 'sZone', patch: { nodeId: 'nA' } });
+    reject(map, { type: 'updateServicePoint', id: 'sZone', patch: { arrival: { mode: 'node_proxy', transferAssumption: 'excluded_from_model', note: '不得绕过资源依赖' } } });
     const loaded = loadMap(serializeMap(map));
     expect(loaded.ok).toBe(true);
     if (!loaded.ok) throw new Error(JSON.stringify(loaded.report));
     expect(loaded.map.resources).toEqual(map.resources);
     expect(loaded.map.servicePoints.sZone!.resourceIds).toEqual(['resourceA']);
-    expect(loaded.capabilities.editable).toBe(false);
+    expect(loaded.capabilities.editable).toBe(true);
+    expect(loaded.capabilities.unchecked).toContain('resource_execution');
   });
 });
 

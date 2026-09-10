@@ -4,6 +4,7 @@ import type { YardMap } from '../../src/domain/model';
 
 // Independent contract values, not imported from the implementation under test.
 type Drawing = {
+  hiddenTypes: string[]; lockedTypes: string[]; showLabels: boolean; objectSearch: string;
   snapGrid: 0 | 1 | 5 | 10; snapNodes: boolean; facilityKind: string; zoneKind: string;
   facilityMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
   zoneMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
@@ -13,11 +14,13 @@ type Camera = { offsetX: number; offsetY: number; scale: number };
 type Editor = { camera: Camera; drawing: Drawing };
 type Stored = { draft: { mapJson: string }; checkpoint: { mapJson: string } | null };
 const defaults: Drawing = {
+  hiddenTypes: [], lockedTypes: [], showLabels: true, objectSearch: '',
   snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
 };
 const custom: Drawing = {
+  hiddenTypes: [], lockedTypes: [], showLabels: true, objectSearch: '',
   snapGrid: 5, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer',
   facilityMovePolicy: 'withAssociatedNodes', zoneMovePolicy: 'withAssociatedNodes',
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
@@ -206,7 +209,8 @@ test('D03 camera and drawing writes retain each other and restoring drawing defa
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, -100);
   await expect.poll(() => camera(page)).not.toEqual(oldCamera);
-  const changed: Drawing = { ...custom, snapGrid: 10, zoneKind: 'waiting' };
+  const changed: Drawing = {
+  ...custom, snapGrid: 10, zoneKind: 'waiting' };
   await configure(page, changed);
   const movedCamera = await camera(page);
   await expect.poll(() => editor(page)).toEqual({ camera: movedCamera, drawing: changed });
@@ -229,7 +233,8 @@ test('D04 rapid A/B navigation isolates drawing snapshots during a simulated nat
   const idA = await activeId(page); const hashA = await page.getByTestId('map-hash').textContent();
   await create(page, 'Drawing 工程B'); await expectDrawing(page, defaults);
   await addNode(page, 50, 50);
-  const configB: Drawing = { ...defaults, snapGrid: 1, facilityKind: 'yard', zoneKind: 'drivable' };
+  const configB: Drawing = {
+  ...defaults, snapGrid: 1, facilityKind: 'yard', zoneKind: 'drivable' };
   await configure(page, configB); await savedDrawing(page, configB);
   const idB = await activeId(page); const hashB = await page.getByTestId('map-hash').textContent();
   await open(page, idA); await expectDrawing(page, custom);
@@ -250,7 +255,8 @@ test('D04 rapid A/B navigation isolates drawing snapshots during a simulated nat
       },
     });
   });
-  const newerA: Drawing = { ...custom, snapGrid: 10 };
+  const newerA: Drawing = {
+  ...custom, snapGrid: 10 };
   await configure(page, newerA);
   await expect.poll(() => page.evaluate(() => (window as unknown as { drawingReceiptFault: { pending: unknown[] } }).drawingReceiptFault.pending.length)).toBeGreaterThan(0);
   await expect(page.getByTestId('browser-save-status')).not.toHaveText('浏览器草稿已保存');
@@ -265,7 +271,8 @@ test('D04 rapid A/B navigation isolates drawing snapshots during a simulated nat
   await expect(page.getByRole('dialog', { name: '最近项目', exact: true })).not.toBeVisible();
   await expectDrawing(page, configB); await expect(page.getByTestId('map-hash')).toHaveText(hashB!);
   // Leave before the 600ms debounce: navigation must retain the latest B choices, with B's target ID.
-  const newerB: Drawing = { ...configB, snapNodes: true, zoneMovePolicy: 'withAssociatedNodes' };
+  const newerB: Drawing = {
+  ...configB, snapNodes: true, zoneMovePolicy: 'withAssociatedNodes' };
   await configure(page, newerB); await open(page, idA);
   await expectDrawing(page, newerA); await expect(page.getByTestId('map-hash')).toHaveText(hashA!);
   await open(page, idB); await expectDrawing(page, newerB);
@@ -399,7 +406,8 @@ test('D09 Save and Ctrl+S persist the current six choices with automatic debounc
   await expect(page.getByTestId('browser-save-status')).toContainText('绘图配置未保存');
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
   await savedDrawing(page, custom);
-  const next: Drawing = { ...defaults, snapGrid: 10, facilityKind: 'assembly', zoneKind: 'waiting', zoneMovePolicy: 'withAssociatedNodes' };
+  const next: Drawing = {
+  ...defaults, snapGrid: 10, facilityKind: 'assembly', zoneKind: 'waiting', zoneMovePolicy: 'withAssociatedNodes' };
   await configure(page, next); await page.waitForTimeout(750);
   expect((await editor(page)).drawing).toEqual(custom);
   await page.getByLabel('网格吸附', { exact: true }).focus();
