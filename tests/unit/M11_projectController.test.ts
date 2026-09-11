@@ -570,3 +570,41 @@ describe('stable drawing configuration in independent editor state', () => {
   });
 
 });
+
+
+describe('DP1 label mode migration at the existing persistence boundary', () => {
+  it.each([
+    [{}, 'auto'], [{ showLabels: true }, 'auto'], [{ showLabels: false }, 'off'],
+    [{ labelMode: 'focus', showLabels: false }, 'focus'],
+    [{ labelMode: 'off', showLabels: true }, 'off'],
+    [{ labelMode: 'debug_all', showLabels: null }, 'debug_all'],
+  ])('normalizes legacy input %j to the one authoritative mode %s', (drawing, mode) => {
+    const normalized = validateEditorState({ camera, drawing: { ...drawing, snapGrid: 0, snapNodes: false } });
+    expect(normalized.camera).toEqual(camera);
+    expect(normalized.drawing.labelMode).toBe(mode);
+    expect(normalized.drawing.snapGrid).toBe(0); expect(normalized.drawing.snapNodes).toBe(false);
+    expect(normalized.drawing).not.toHaveProperty('showLabels');
+    expect(validateEditorState(normalized)).toEqual(normalized);
+  });
+
+  it.each([
+    { labelMode: undefined, showLabels: false }, { labelMode: null }, { labelMode: true },
+    { labelMode: 'all', showLabels: true }, { showLabels: null }, { showLabels: undefined },
+    { showLabels: 'false' }, { labelMode: 'auto', cameraPending: true },
+  ])('rejects invalid modes and transient fields %j', drawing => {
+    expect(() => validateEditorState({ camera, drawing })).toThrowError(expect.objectContaining({ code: 'EDITOR_STATE_INVALID' }));
+  });
+
+  it('restores a real legacy record and stores only labelMode without editing the map record', async () => {
+    const { store, controller, map } = await started(); await controller.save(map, 'checkpoint');
+    const record = structuredClone(store.rows.get('project_A'));
+    store.views.set('project_A', { camera, drawing: { showLabels: false, snapGrid: 0, snapNodes: false } });
+    const restored = new ProjectController(store); const recovery = await restored.initialize();
+    expect(recovery!.editorState).toEqual(editorState({ labelMode: 'off' }));
+    expect(recovery!.warnings).toEqual([]);
+    await restored.saveEditorState(recovery!.editorState!);
+    expect(store.views.get('project_A')!.drawing).not.toHaveProperty('showLabels');
+    expect(store.rows.get('project_A')).toEqual(record);
+    expect(contentHash(recovery!.map)).toBe(contentHash(map));
+  });
+});

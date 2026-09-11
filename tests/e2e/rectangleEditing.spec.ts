@@ -60,20 +60,18 @@ async function storedProjects(page: Page): Promise<string> {
     };
   }));
 }
-async function labelInk(page: Page): Promise<number[]> {
-  const origin = await screen(page, 0, 0);
-  // Read rendered pixels, never Konva internals: the fixed-corner label must not scale with the boundary.
-  return page.getByTestId('map-canvas').evaluate((element, p) => {
-    const ink: number[] = [];
-    for (const canvas of element.querySelectorAll('canvas')) {
-      const box = canvas.getBoundingClientRect(); const scale = canvas.width / box.width;
-      const x = Math.round((p.x - box.x + 8) * scale); const y = Math.round((p.y - box.y - 20) * scale);
-      const width = Math.min(Math.round(300 * scale), canvas.width - x); const height = Math.round(14 * scale);
-      const pixels = canvas.getContext('2d')!.getImageData(x, y, width, height).data;
-      for (let i = 0; i < pixels.length; i += 4) if (pixels[i] === 53 && pixels[i + 1] === 82 && pixels[i + 2] === 102 && pixels[i + 3] === 255) ink.push(i / 4);
+async function labelInk(page: Page): Promise<{ width: number; height: number; count: number }> {
+  // DP1 places text inside the current polygon. Check fixed CSS glyph size, not the old corner anchor.
+  return page.getByTestId('map-canvas').evaluate(element => {
+    const points: number[][] = [];
+    // Third canvas is the non-listening overlay; handles occupy their own later canvas.
+    for (const canvas of Array.from(element.querySelectorAll('canvas')).slice(2, 3)) {
+      const dpr = canvas.width / canvas.getBoundingClientRect().width;
+      const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 0; i < pixels.length; i += 4) if (pixels[i] === 154 && pixels[i + 1] === 76 && pixels[i + 2] === 13 && pixels[i + 3] === 255) points.push([(i / 4 % canvas.width) / dpr, Math.floor(i / 4 / canvas.width) / dpr]);
     }
-    return ink;
-  }, origin);
+    return { width: Math.max(...points.map(p => p[0]!)) - Math.min(...points.map(p => p[0]!)), height: Math.max(...points.map(p => p[1]!)) - Math.min(...points.map(p => p[1]!)), count: points.length };
+  });
 }
 function expectRectangle(polygon: Polygon, width: number, height: number) {
   expect(polygon.holes).toEqual([]);
@@ -150,7 +148,8 @@ test('R02 R08 a 30-degree rectangle uses local dimensions and numeric editing pr
   await expect(page.getByLabel('外环 顶点 2 X (m)', { exact: true })).not.toBeVisible();
   const original = await download(page, info, 'rotated-original.map.json');
   const labelBefore = await labelInk(page);
-  expect(labelBefore.length).toBeGreaterThan(0);
+  expect(labelBefore.count).toBeGreaterThan(0);
+  expect(labelBefore.height).toBeLessThanOrEqual(12);
   const c = Math.cos(Math.PI / 6); const s = Math.sin(Math.PI / 6);
   const moved: Vec3 = [80 * c - 45 * s, 80 * s + 45 * c, 0];
   const nativeInput = page.evaluate(() => new Promise<{ type: string; x: number; y: number }[]>(resolve => {
@@ -183,7 +182,10 @@ test('R02 R08 a 30-degree rectangle uses local dimensions and numeric editing pr
   const actualHeight = -actualCorner[0] * s + actualCorner[1] * c;
   await localSize(page, actualWidth, actualHeight);
   const mouse = await download(page, info, 'rotated-mouse.map.json');
-  expect(await labelInk(page)).toEqual(labelBefore);
+  const labelAfter = await labelInk(page);
+  expect(labelAfter.count).toBeGreaterThan(0);
+  expect(labelAfter.height).toBeLessThanOrEqual(12);
+  expect(Math.abs(labelAfter.width - labelBefore.width)).toBeLessThanOrEqual(2);
   expectRectangle(mouse.facilities[id]!.boundary, actualWidth, actualHeight);
   const expected = [[0, 0, 0], [actualWidth * c, actualWidth * s, 0], actualCorner, [-actualHeight * s, actualHeight * c, 0], [0, 0, 0]];
   mouse.facilities[id]!.boundary.outer.forEach((p, i) => p.forEach((v, j) => expect(v).toBeCloseTo(expected[i]![j]!, 8)));

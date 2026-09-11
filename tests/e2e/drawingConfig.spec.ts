@@ -4,7 +4,7 @@ import type { YardMap } from '../../src/domain/model';
 
 // Independent contract values, not imported from the implementation under test.
 type Drawing = {
-  hiddenTypes: string[]; lockedTypes: string[]; showLabels: boolean; objectSearch: string;
+  hiddenTypes: string[]; lockedTypes: string[]; labelMode: 'auto' | 'focus' | 'off' | 'debug_all'; objectSearch: string;
   snapGrid: 0 | 1 | 5 | 10; snapNodes: boolean; facilityKind: string; zoneKind: string;
   facilityMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
   zoneMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
@@ -14,13 +14,13 @@ type Camera = { offsetX: number; offsetY: number; scale: number };
 type Editor = { camera: Camera; drawing: Drawing };
 type Stored = { draft: { mapJson: string }; checkpoint: { mapJson: string } | null };
 const defaults: Drawing = {
-  hiddenTypes: [], lockedTypes: [], showLabels: true, objectSearch: '',
+  hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
   snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
 };
 const custom: Drawing = {
-  hiddenTypes: [], lockedTypes: [], showLabels: true, objectSearch: '',
+  hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
   snapGrid: 5, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer',
   facilityMovePolicy: 'withAssociatedNodes', zoneMovePolicy: 'withAssociatedNodes',
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,

@@ -6,10 +6,11 @@ import { serializeMap } from '../domain/serialization';
 import type { Camera } from '../geometry/coordinates';
 
 export type SaveKind = 'draft' | 'checkpoint';
+export type LabelMode = 'auto' | 'focus' | 'off' | 'debug_all';
 export interface DrawingConfig {
   hiddenTypes: SceneKind[];
   lockedTypes: SceneKind[];
-  showLabels: boolean;
+  labelMode: LabelMode;
   objectSearch: string;
   snapGrid: 0 | 1 | 5 | 10;
   snapNodes: boolean;
@@ -22,14 +23,14 @@ export interface DrawingConfig {
   zoneMovePolicy: ZoneMovePolicy;
 }
 export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
-  hiddenTypes: [], lockedTypes: [], showLabels: true, objectSearch: '',
+  hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
   snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
 });
 export interface EditorState { camera: Camera; drawing: DrawingConfig }
 /** Legacy camera-only records and partial drawing settings are normalized at the storage boundary. */
-export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> }
+export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> & { showLabels?: boolean } }
 export interface ProjectSnapshot { mapJson: string; contentHash: string; savedAt: number }
 export interface StoredProject {
   formatVersion: 1;
@@ -88,12 +89,20 @@ export function validateEditorState(value: unknown): EditorState {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '视窗偏移必须有限，比例必须为正的有限值；不能混入领域数据或临时交互。');
   }
   if ('drawing' in value && (!value.drawing || typeof value.drawing !== 'object' || Array.isArray(value.drawing)
-    || Object.keys(value.drawing).some(key => !Object.hasOwn(DEFAULT_DRAWING_CONFIG, key)))) {
+    || Object.keys(value.drawing).some(key => key !== 'showLabels' && !Object.hasOwn(DEFAULT_DRAWING_CONFIG, key)))) {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置必须是声明的稳定设置，不能包含空值、未知字段或临时交互。');
   }
-  const drawing = { ...DEFAULT_DRAWING_CONFIG, ...('drawing' in value ? value.drawing as object : {}) } as DrawingConfig;
+  const supplied = { ...('drawing' in value ? value.drawing as Record<string, unknown> : {}) };
+  if (!Object.hasOwn(supplied, 'labelMode')) {
+    if (Object.hasOwn(supplied, 'showLabels') && typeof supplied.showLabels !== 'boolean') {
+      throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '旧 showLabels 必须为布尔值。');
+    }
+    supplied.labelMode = supplied.showLabels === false ? 'off' : 'auto';
+  }
+  delete supplied.showLabels; // Legacy input only; the normalized state has one label authority.
+  const drawing = { ...DEFAULT_DRAWING_CONFIG, ...supplied } as DrawingConfig;
   if (![drawing.hiddenTypes, drawing.lockedTypes].every(values => Array.isArray(values) && values.every(value => SCENE_KINDS.includes(value)) && new Set(values).size === values.length)
-    || typeof drawing.showLabels !== 'boolean' || typeof drawing.objectSearch !== 'string' || drawing.objectSearch.length > 200
+    || !['auto', 'focus', 'off', 'debug_all'].includes(drawing.labelMode) || typeof drawing.objectSearch !== 'string' || drawing.objectSearch.length > 200
     || ![0, 1, 5, 10].includes(drawing.snapGrid) || typeof drawing.snapNodes !== 'boolean'
     || typeof drawing.showRoadBands !== 'boolean' || typeof drawing.showRoadCenterlines !== 'boolean' || typeof drawing.showOrdinaryNodes !== 'boolean'
     || !['workshop', 'yard', 'assembly', 'dock', 'quay', 'other'].includes(drawing.facilityKind)

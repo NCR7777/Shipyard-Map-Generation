@@ -6,3 +6,8 @@
 .project-note{padding:6px 18px;background:#eff6f8;color:#34596a;font-size:12px;border-bottom:1px solid #cbdde5;flex-shrink:0}.project-note.pending{background:#fff8e8;color:#8d600c}.project-note.conflict{background:#fff0ec;color:#9d3d2d;display:flex;gap:10px;align-items:center}
 .recent-projects{display:grid;gap:8px;max-height:380px;overflow:auto}.recent-projects button{display:flex;flex-direction:column;align-items:flex-start;padding:12px;gap:6px}.recent-projects small{color:#557684;font-size:10px}
 .header-actions{flex-wrap:wrap}.header-actions button{white-space:nowrap}.document-bar{flex-wrap:wrap;min-height:44px;height:auto;padding-top:6px;padding-bottom:6px}.document-bar .save-status{max-width:600px;overflow-wrap:anywhere}
+
+/* View-only HUD: never intercepts edit handles or map input. */
+.canvas-cursor{position:absolute;left:12px;top:10px;pointer-events:none;font-size:10px;color:#587687;background:#fffffff0;padding:4px 6px}
+.focus-details{position:absolute;right:10px;top:34px;width:260px;max-height:125px;overflow:hidden;pointer-events:none;background:#fffffff5;border:1px solid #a7bec8;border-radius:4px;padding:8px;display:grid;gap:4px;font-size:11px;color:#355266;overflow-wrap:anywhere}
+.focus-details code,.focus-details span{font-size:10px}

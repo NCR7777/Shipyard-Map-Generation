@@ -7,6 +7,8 @@ import { DEFAULT_DRAWING_CONFIG, ProjectController, type EditorState, type Proje
 interface Inputs {
   map: YardMap;
   editorState: EditorState;
+  /** Read the effective camera before its next React frame, without changing map state. */
+  getEditorState?: () => EditorState;
   onRestore: (recovery: ProjectRecovery) => void;
   onAcknowledged: (hash: string) => void;
 }
@@ -36,6 +38,11 @@ export function useProjectWorkspace(inputs: Inputs) {
   const [editorSaving, setEditorSaving] = useState(false);
   const [editorError, setEditorError] = useState('');
   const editorSaveSequence = useRef(0);
+
+  function currentEditorState(): EditorState {
+    const current = latest.current;
+    return current.getEditorState?.() ?? current.editorState;
+  }
 
   function assertPersistenceReady() {
     if (quarantined.current) throw new Error('工程恢复回调未完成；浏览器保存和工程切换已暂停，请重试恢复或仅内存继续。');
@@ -86,7 +93,7 @@ export function useProjectWorkspace(inputs: Inputs) {
         } else throw new Error('当前工程尚未落盘且没有可重试候选；请仅内存继续并导出当前地图。');
       } else recovery = await controller.initialize(preferred);
       if (!active) return;
-      if (!recovery) recovery = await controller.create('project_' + crypto.randomUUID(), latest.current.map, latest.current.editorState);
+      if (!recovery) recovery = await controller.create('project_' + crypto.randomUUID(), latest.current.map, currentEditorState());
       if (!active) return;
       restoreUi(recovery);
     })().catch(reason => { if (active) { persistenceReady.current = false; setError(message(reason)); } });
@@ -115,7 +122,7 @@ export function useProjectWorkspace(inputs: Inputs) {
   }
   async function persist(kind: 'draft' | 'checkpoint') {
     assertPersistenceReady();
-    const current = latest.current;
+    const current = { map: latest.current.map, editorState: currentEditorState() };
     const projectId = controller.state.active!.projectId; const token = generation.current;
     // Capture the complete configuration before any await, using the existing controller queue.
     await persistEditor(current.editorState, projectId, token);
@@ -125,7 +132,7 @@ export function useProjectWorkspace(inputs: Inputs) {
       if (owns(projectId, token)) {
         latest.current.onAcknowledged(receipt.contentHash);
         if (controller.state.error) throw controller.state.error;
-        if (JSON.stringify(latest.current.editorState) === JSON.stringify(current.editorState))
+        if (JSON.stringify(currentEditorState()) === JSON.stringify(current.editorState))
           setSavedEditor({ projectId, key: JSON.stringify(current.editorState) });
         setError('');
       }
@@ -133,7 +140,7 @@ export function useProjectWorkspace(inputs: Inputs) {
     } catch (reason) { if (owns(projectId, token)) setError(message(reason)); throw reason; }
   }
   const hash = useMemo(() => contentHash(inputs.map), [inputs.map]);
-  const editorKey = JSON.stringify(inputs.editorState);
+  const editorKey = useMemo(() => JSON.stringify(inputs.editorState), [inputs.editorState]);
   const editorDirty = savedEditor?.projectId !== state.active?.projectId || savedEditor?.key !== editorKey;
   useEffect(() => {
     if (!ready || temporary || transitioning || navigating.current || quarantined.current || state.saving || state.error || !state.active || state.active.draftHash === hash) return;
@@ -146,9 +153,9 @@ export function useProjectWorkspace(inputs: Inputs) {
 
   useEffect(() => {
     if (!ready || temporary || transitioning || navigating.current || quarantined.current || !editorDirty || state.active?.storageVersion == null || state.error?.code === 'PROJECT_CONFLICT') return;
-    const projectId = state.active.projectId; const token = generation.current; const snapshot = inputs.editorState;
+    const projectId = state.active.projectId; const token = generation.current;
     const timer = setTimeout(() => {
-      if (!navigating.current && owns(projectId, token) && controller.state.error?.code !== 'PROJECT_CONFLICT') void persistEditor(snapshot, projectId, token).catch(() => { /* persistEditor reports failures for its owning project. */ });
+      if (!navigating.current && owns(projectId, token) && controller.state.error?.code !== 'PROJECT_CONFLICT') void persistEditor(currentEditorState(), projectId, token).catch(() => { /* persistEditor reports failures for its owning project. */ });
     }, 600);
     return () => clearTimeout(timer);
   }, [controller, ready, temporary, transitioning, editorKey, editorDirty, state.active?.projectId, state.active?.storageVersion, state.error?.code === 'PROJECT_CONFLICT']);
@@ -167,9 +174,9 @@ export function useProjectWorkspace(inputs: Inputs) {
 
   async function protectCurrent() {
     assertPersistenceReady();
-    const before = contentHash(latest.current.map); const editorBefore = JSON.stringify(latest.current.editorState);
+    const before = contentHash(latest.current.map); const editorBefore = JSON.stringify(currentEditorState());
     await persist('checkpoint');
-    if (contentHash(latest.current.map) !== before || JSON.stringify(latest.current.editorState) !== editorBefore) throw new Error('保存期间又产生了编辑，请再次操作；当前工程保持打开。');
+    if (contentHash(latest.current.map) !== before || JSON.stringify(currentEditorState()) !== editorBefore) throw new Error('保存期间又产生了编辑，请再次操作；当前工程保持打开。');
   }
   async function navigate(work: () => Promise<ProjectRecovery>, protect = true) {
     assertPersistenceReady();
@@ -190,7 +197,7 @@ export function useProjectWorkspace(inputs: Inputs) {
   async function open(id: string) { await navigate(() => controller.open(id)); }
   async function recoveryCopy() {
     const map = latest.current.map;
-    const id = 'project_' + crypto.randomUUID(); const editorState = latest.current.editorState;
+    const id = 'project_' + crypto.randomUUID(); const editorState = currentEditorState();
     await navigate(async () => { await controller.backup(id, map, editorState); return controller.open(id); }, false);
   }
   async function reloadStored() {
@@ -201,10 +208,10 @@ export function useProjectWorkspace(inputs: Inputs) {
   async function showRecent() { assertPersistenceReady(); const entries = await controller.list(); setRecent(entries); }
   async function save() {
     const projectId = controller.state.active?.projectId; const token = generation.current;
-    const mapBefore = contentHash(latest.current.map); const editorBefore = JSON.stringify(latest.current.editorState);
+    const mapBefore = contentHash(latest.current.map); const editorBefore = JSON.stringify(currentEditorState());
     try {
       await persist('checkpoint');
-      return !!projectId && owns(projectId, token) && contentHash(latest.current.map) === mapBefore && JSON.stringify(latest.current.editorState) === editorBefore;
+      return !!projectId && owns(projectId, token) && contentHash(latest.current.map) === mapBefore && JSON.stringify(currentEditorState()) === editorBefore;
     }
     catch (reason) { if (projectId && !owns(projectId, token)) return false; throw reason; }
   }

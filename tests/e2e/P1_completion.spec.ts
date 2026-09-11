@@ -185,11 +185,11 @@ test('P1 A05 layer configuration survives reload without map history and locked 
   const hash = await page.getByTestId('map-hash').textContent();
   await layers(page);
   await page.getByTestId('layer-visible-nodes').uncheck(); await page.getByTestId('layer-locked-nodes').check();
-  await page.getByTestId('show-labels').uncheck();
+  await page.getByTestId('label-mode').selectOption('off');
   await page.getByTestId('object-search').fill('F_001');
   await saved(page); await page.reload();
   await expect(page.getByTestId('layer-visible-nodes')).not.toBeChecked(); await expect(page.getByTestId('layer-locked-nodes')).toBeChecked();
-  await expect(page.getByTestId('show-labels')).not.toBeChecked(); await expect(page.getByTestId('object-search')).toHaveValue('F_001');
+  await expect(page.getByTestId('label-mode')).toHaveValue('off'); await expect(page.getByTestId('object-search')).toHaveValue('F_001');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!); await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
   await choose(page, 'facilities', 'F_001'); await page.getByLabel('设施移动策略', { exact: true }).selectOption('withStaticContents');
   await transforms(page);

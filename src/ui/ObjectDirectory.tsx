@@ -18,7 +18,7 @@ export function ObjectDirectory(props: Props) {
   const geometry = items.filter(i => i.status === 'geometry').length;
   return <>
     <details className="layer-controls"><summary>基础图层与标签</summary>
-      <label className="check-field"><input data-testid="show-labels" type="checkbox" checked={drawing.showLabels} disabled={props.disabled} onChange={e => props.onDrawing({ showLabels: e.target.checked })}/>显示标签</label>
+      <label className="field-label">标签模式<select data-testid="label-mode" aria-label="标签模式" value={drawing.labelMode} disabled={props.disabled} onChange={e => props.onDrawing({ labelMode: e.target.value as DrawingConfig['labelMode'] })}><option value="auto">自动分级</option><option value="focus">仅关注对象</option><option value="off">关闭标签与悬停详情</option><option value="debug_all">排查当前视口全部标签</option></select></label>{drawing.labelMode === 'debug_all' && <p role="status">排查模式允许标签重叠；不代表默认显示效果。</p>}
       {SCENE_KINDS.map(kind => <div className="layer-row" key={kind}><span>{sceneNames[kind]}</span>
         <label><input type="checkbox" aria-label={'显示' + sceneNames[kind]} data-testid={'layer-visible-' + kind} disabled={props.disabled} checked={!drawing.hiddenTypes.includes(kind)} onChange={e => props.onDrawing({ hiddenTypes: e.target.checked ? drawing.hiddenTypes.filter(k => k !== kind) : [...drawing.hiddenTypes, kind] })}/>显示</label>
         <label><input type="checkbox" aria-label={'锁定' + sceneNames[kind]} data-testid={'layer-locked-' + kind} disabled={props.disabled} checked={drawing.lockedTypes.includes(kind)} onChange={e => props.onDrawing({ lockedTypes: e.target.checked ? [...drawing.lockedTypes, kind] : drawing.lockedTypes.filter(k => k !== kind) })}/>锁定</label>

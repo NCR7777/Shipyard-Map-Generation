@@ -1,0 +1,2503 @@
+Combined command receipts; trailing line whitespace trimmed only. Original log SHA and paths are retained in metrics.json.
+
+COMMAND: npm.cmd run schema:check
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 schema:check
+> node scripts/generate-types.mjs --check
+
+
+COMMAND: npm.cmd run typecheck
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 typecheck
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.core.json
+
+
+COMMAND: npm.cmd run lint
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 lint
+> eslint . && node scripts/check-boundaries.mjs
+
+Core boundaries: PASS
+
+COMMAND: npm.cmd run test
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 test
+> vitest run tests/unit --exclude .cache/**
+
+
+ RUN  v5.0.0 E:/00.资料/00.博士课题/00..小论文/Path Planing and Scheduling/paper01/map
+
+
+ Test Files  23 passed (23)
+      Tests  478 passed (478)
+   Start at  23:35:41
+   Duration  1.96s (import 61%, tests 20%, transform 19%, worker 1%)
+
+
+COMMAND: npm.cmd run test:integration
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 test:integration
+> vitest run tests/integration --exclude .cache/**
+
+
+ RUN  v5.0.0 E:/00.资料/00.博士课题/00..小论文/Path Planing and Scheduling/paper01/map
+
+
+ Test Files  5 passed (5)
+      Tests  49 passed (49)
+   Start at  23:35:43
+   Duration  12.98s (tests 93%, import 5%, transform 2%)
+
+
+COMMAND: npm.cmd run build
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 build
+> npm run typecheck && vite build
+
+
+> yard-spatial-editor@0.1.0 typecheck
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.core.json
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 229 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.38 kB │ gzip:   0.30 kB
+dist/assets/index-BFswsqhH.css   16.46 kB │ gzip:   4.45 kB
+dist/assets/index-DlaNuCkV.js   951.44 kB │ gzip: 291.88 kB
+
+✓ built in 202ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+COMMAND: npm.cmd run map:validate -- ../../projects/SHI_Geoje_Research_Map_v03/map.json
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 map:validate
+> tsx scripts/map-validate.ts ../../projects/SHI_Geoje_Research_Map_v03/map.json
+
+{
+  "ok": true,
+  "profile": "draft",
+  "status": "valid",
+  "issues": [
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_A001",
+      "jsonPath": "/servicePoints/SP_A001/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          821.72,
+          1324.712,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_A002",
+      "jsonPath": "/servicePoints/SP_A002/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1257.496,
+          1432.958,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_A003",
+      "jsonPath": "/servicePoints/SP_A003/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1814.486,
+          1331.206,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_A004",
+      "jsonPath": "/servicePoints/SP_A004/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1871.978,
+          1124.214,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_A005",
+      "jsonPath": "/servicePoints/SP_A005/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2375.772,
+          931.485,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_A006",
+      "jsonPath": "/servicePoints/SP_A006/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2554.964,
+          1068.836,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B001",
+      "jsonPath": "/servicePoints/SP_B001/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          707.064,
+          1431.079,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B002",
+      "jsonPath": "/servicePoints/SP_B002/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          830.185,
+          1535.843,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B003",
+      "jsonPath": "/servicePoints/SP_B003/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          929,
+          1456.306,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B004",
+      "jsonPath": "/servicePoints/SP_B004/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1036.612,
+          1591.415,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B005",
+      "jsonPath": "/servicePoints/SP_B005/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1126.422,
+          1233.021,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B006",
+      "jsonPath": "/servicePoints/SP_B006/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1158.264,
+          1041.188,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B007",
+      "jsonPath": "/servicePoints/SP_B007/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1126.257,
+          994.679,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B008",
+      "jsonPath": "/servicePoints/SP_B008/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1042.155,
+          968.746,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B009",
+      "jsonPath": "/servicePoints/SP_B009/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          920.075,
+          911.786,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B010",
+      "jsonPath": "/servicePoints/SP_B010/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1191.348,
+          705.213,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B011",
+      "jsonPath": "/servicePoints/SP_B011/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1348.059,
+          1328.554,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B012",
+      "jsonPath": "/servicePoints/SP_B012/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1279.021,
+          1255.135,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B013",
+      "jsonPath": "/servicePoints/SP_B013/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1293.984,
+          1140.665,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B014",
+      "jsonPath": "/servicePoints/SP_B014/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1307.169,
+          1074.955,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B015",
+      "jsonPath": "/servicePoints/SP_B015/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1287.606,
+          950.093,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B016",
+      "jsonPath": "/servicePoints/SP_B016/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1361.848,
+          894.222,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B018",
+      "jsonPath": "/servicePoints/SP_B018/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1377.461,
+          726.516,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B019",
+      "jsonPath": "/servicePoints/SP_B019/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1671.194,
+          1416.399,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B020",
+      "jsonPath": "/servicePoints/SP_B020/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1624.237,
+          1400.252,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B021",
+      "jsonPath": "/servicePoints/SP_B021/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1575.382,
+          1338.597,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B022",
+      "jsonPath": "/servicePoints/SP_B022/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1639.264,
+          1289.947,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B023",
+      "jsonPath": "/servicePoints/SP_B023/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1568.072,
+          1236.773,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B024",
+      "jsonPath": "/servicePoints/SP_B024/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1600.322,
+          1078.227,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B025",
+      "jsonPath": "/servicePoints/SP_B025/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1647.884,
+          1060.526,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B026",
+      "jsonPath": "/servicePoints/SP_B026/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1829.017,
+          1390.036,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B027",
+      "jsonPath": "/servicePoints/SP_B027/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1792.855,
+          981.227,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B028",
+      "jsonPath": "/servicePoints/SP_B028/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1924.616,
+          997.228,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B029",
+      "jsonPath": "/servicePoints/SP_B029/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1982.39,
+          912.543,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B030",
+      "jsonPath": "/servicePoints/SP_B030/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1677.491,
+          863.769,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B031",
+      "jsonPath": "/servicePoints/SP_B031/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1822.128,
+          664.275,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B032",
+      "jsonPath": "/servicePoints/SP_B032/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2036.63,
+          921.73,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B033",
+      "jsonPath": "/servicePoints/SP_B033/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2175.154,
+          949.368,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B034",
+      "jsonPath": "/servicePoints/SP_B034/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2046.599,
+          837.892,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B035",
+      "jsonPath": "/servicePoints/SP_B035/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2051.497,
+          788.792,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B036",
+      "jsonPath": "/servicePoints/SP_B036/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2120.24,
+          853.114,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B037",
+      "jsonPath": "/servicePoints/SP_B037/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2168.027,
+          860.096,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B038",
+      "jsonPath": "/servicePoints/SP_B038/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2120.543,
+          695.686,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B039",
+      "jsonPath": "/servicePoints/SP_B039/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2262.48,
+          851.474,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B040",
+      "jsonPath": "/servicePoints/SP_B040/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1998.787,
+          595.612,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B041",
+      "jsonPath": "/servicePoints/SP_B041/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2433.625,
+          1013.521,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B042",
+      "jsonPath": "/servicePoints/SP_B042/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2446.675,
+          936.937,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B043",
+      "jsonPath": "/servicePoints/SP_B043/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2440.084,
+          737.24,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B044",
+      "jsonPath": "/servicePoints/SP_B044/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2466.869,
+          740.587,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B045",
+      "jsonPath": "/servicePoints/SP_B045/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2508.374,
+          788.464,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B046",
+      "jsonPath": "/servicePoints/SP_B046/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2395.118,
+          738.769,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B047",
+      "jsonPath": "/servicePoints/SP_B047/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2581.487,
+          752.557,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B048",
+      "jsonPath": "/servicePoints/SP_B048/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2708.504,
+          872.371,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B049",
+      "jsonPath": "/servicePoints/SP_B049/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2648.996,
+          1125.858,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B050",
+      "jsonPath": "/servicePoints/SP_B050/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2566.886,
+          840.437,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B051",
+      "jsonPath": "/servicePoints/SP_B051/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2717.642,
+          822.423,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B052",
+      "jsonPath": "/servicePoints/SP_B052/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          132.453,
+          1859.423,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B053",
+      "jsonPath": "/servicePoints/SP_B053/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          155.91,
+          1962.599,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B054",
+      "jsonPath": "/servicePoints/SP_B054/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          304.52,
+          2098.056,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B055",
+      "jsonPath": "/servicePoints/SP_B055/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          475.756,
+          2285.138,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B056",
+      "jsonPath": "/servicePoints/SP_B056/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          562.984,
+          2302.305,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B057",
+      "jsonPath": "/servicePoints/SP_B057/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          838.413,
+          2357.916,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B058",
+      "jsonPath": "/servicePoints/SP_B058/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1109.158,
+          2257.104,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B059",
+      "jsonPath": "/servicePoints/SP_B059/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          695.325,
+          2212.762,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B060",
+      "jsonPath": "/servicePoints/SP_B060/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          925.198,
+          2221.272,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B061",
+      "jsonPath": "/servicePoints/SP_B061/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          924.156,
+          2109.498,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B062",
+      "jsonPath": "/servicePoints/SP_B062/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          956.831,
+          1976.353,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B063",
+      "jsonPath": "/servicePoints/SP_B063/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1008.971,
+          1838.292,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B064",
+      "jsonPath": "/servicePoints/SP_B064/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          828.655,
+          1699.476,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B065",
+      "jsonPath": "/servicePoints/SP_B065/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          993.668,
+          1740.128,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B066",
+      "jsonPath": "/servicePoints/SP_B066/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          850.643,
+          1606.121,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B067",
+      "jsonPath": "/servicePoints/SP_B067/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1094.214,
+          2066.928,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B068",
+      "jsonPath": "/servicePoints/SP_B068/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1133.046,
+          1972.71,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B069",
+      "jsonPath": "/servicePoints/SP_B069/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1084.477,
+          1758.893,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B070",
+      "jsonPath": "/servicePoints/SP_B070/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1099.351,
+          1670.69,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B071",
+      "jsonPath": "/servicePoints/SP_B071/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          688.055,
+          1596.057,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B072",
+      "jsonPath": "/servicePoints/SP_B072/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          733.959,
+          1683.397,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B073",
+      "jsonPath": "/servicePoints/SP_B073/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1044.376,
+          1661.472,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B074",
+      "jsonPath": "/servicePoints/SP_B074/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2663.544,
+          443.926,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B075",
+      "jsonPath": "/servicePoints/SP_B075/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2417.513,
+          344.982,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B076",
+      "jsonPath": "/servicePoints/SP_B076/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2329.566,
+          580.691,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B077",
+      "jsonPath": "/servicePoints/SP_B077/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2285.107,
+          459.167,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B078",
+      "jsonPath": "/servicePoints/SP_B078/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2243.174,
+          379.155,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B079",
+      "jsonPath": "/servicePoints/SP_B079/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2160.553,
+          451.628,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B080",
+      "jsonPath": "/servicePoints/SP_B080/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2346.242,
+          345.975,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B081",
+      "jsonPath": "/servicePoints/SP_B081/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2434.921,
+          473.957,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B082",
+      "jsonPath": "/servicePoints/SP_B082/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2719.658,
+          335.736,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B083",
+      "jsonPath": "/servicePoints/SP_B083/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2746.089,
+          447.007,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B084",
+      "jsonPath": "/servicePoints/SP_B084/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2849.37,
+          359.171,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B085",
+      "jsonPath": "/servicePoints/SP_B085/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2291.154,
+          599.803,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B086",
+      "jsonPath": "/servicePoints/SP_B086/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2740.669,
+          1464.987,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B087",
+      "jsonPath": "/servicePoints/SP_B087/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2732.472,
+          1315.333,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B088",
+      "jsonPath": "/servicePoints/SP_B088/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2716.172,
+          1200.674,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B089",
+      "jsonPath": "/servicePoints/SP_B089/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3012.647,
+          673.919,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B090",
+      "jsonPath": "/servicePoints/SP_B090/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3032.398,
+          934.504,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B091",
+      "jsonPath": "/servicePoints/SP_B091/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3148.26,
+          964.72,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B092",
+      "jsonPath": "/servicePoints/SP_B092/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3269.372,
+          943.123,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B093",
+      "jsonPath": "/servicePoints/SP_B093/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3460.223,
+          604.827,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B094",
+      "jsonPath": "/servicePoints/SP_B094/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3504.098,
+          408.469,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B095",
+      "jsonPath": "/servicePoints/SP_B095/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3340.365,
+          339.88,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B096",
+      "jsonPath": "/servicePoints/SP_B096/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3268.24,
+          277.489,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B097",
+      "jsonPath": "/servicePoints/SP_B097/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3175.932,
+          307.443,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B098",
+      "jsonPath": "/servicePoints/SP_B098/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3133.887,
+          315.526,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B099",
+      "jsonPath": "/servicePoints/SP_B099/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2983.964,
+          463.968,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B100",
+      "jsonPath": "/servicePoints/SP_B100/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2340.335,
+          251.45,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B101",
+      "jsonPath": "/servicePoints/SP_B101/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2434.747,
+          142.333,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B102",
+      "jsonPath": "/servicePoints/SP_B102/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2496.964,
+          65.899,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B103",
+      "jsonPath": "/servicePoints/SP_B103/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2626.695,
+          161.403,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B104",
+      "jsonPath": "/servicePoints/SP_B104/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2660.5,
+          44.518,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B105",
+      "jsonPath": "/servicePoints/SP_B105/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2738.067,
+          100.264,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B106",
+      "jsonPath": "/servicePoints/SP_B106/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2793.443,
+          188.27,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B107",
+      "jsonPath": "/servicePoints/SP_B107/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2831.459,
+          305.923,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B108",
+      "jsonPath": "/servicePoints/SP_B108/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3134.903,
+          165.428,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B109",
+      "jsonPath": "/servicePoints/SP_B109/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3393.658,
+          164.218,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B110",
+      "jsonPath": "/servicePoints/SP_B110/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3444.58,
+          201.366,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_B111",
+      "jsonPath": "/servicePoints/SP_B111/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3552.848,
+          223.346,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_PARK_PARK_C_1",
+      "jsonPath": "/servicePoints/SP_PARK_PARK_C_1/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1779.238,
+          577.642,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_PARK_PARK_C_2",
+      "jsonPath": "/servicePoints/SP_PARK_PARK_C_2/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1780.386,
+          569.725,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_PARK_PARK_E_1",
+      "jsonPath": "/servicePoints/SP_PARK_PARK_E_1/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2860.997,
+          448.991,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_PARK_PARK_E_2",
+      "jsonPath": "/servicePoints/SP_PARK_PARK_E_2/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2863.223,
+          426.099,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_PARK_PARK_W_1",
+      "jsonPath": "/servicePoints/SP_PARK_PARK_W_1/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1097.839,
+          1591.877,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_PARK_PARK_W_2",
+      "jsonPath": "/servicePoints/SP_PARK_PARK_W_2/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1099.964,
+          1569.98,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y001",
+      "jsonPath": "/servicePoints/SP_Y001/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          438.403,
+          2221.291,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y002",
+      "jsonPath": "/servicePoints/SP_Y002/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          834.286,
+          2289.464,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y003",
+      "jsonPath": "/servicePoints/SP_Y003/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1084.866,
+          2150.796,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y004",
+      "jsonPath": "/servicePoints/SP_Y004/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1139.969,
+          1893.369,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y005",
+      "jsonPath": "/servicePoints/SP_Y005/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1530.41,
+          1426.458,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y006",
+      "jsonPath": "/servicePoints/SP_Y006/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1726.047,
+          1443.838,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y007",
+      "jsonPath": "/servicePoints/SP_Y007/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2778.547,
+          1379.494,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y008",
+      "jsonPath": "/servicePoints/SP_Y008/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2721.781,
+          1256.579,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y009",
+      "jsonPath": "/servicePoints/SP_Y009/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2772.599,
+          1102.274,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y010",
+      "jsonPath": "/servicePoints/SP_Y010/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2338.828,
+          968.384,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y011",
+      "jsonPath": "/servicePoints/SP_Y011/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          2481.666,
+          548.659,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y012",
+      "jsonPath": "/servicePoints/SP_Y012/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3042.385,
+          857.762,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y013",
+      "jsonPath": "/servicePoints/SP_Y013/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3417.236,
+          720.589,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y014",
+      "jsonPath": "/servicePoints/SP_Y014/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3466.224,
+          487.268,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y015",
+      "jsonPath": "/servicePoints/SP_Y015/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          3018.854,
+          551.016,
+          0
+        ]
+      }
+    },
+    {
+      "code": "SERVICE_ROUTE_UNCHECKED",
+      "severity": "warning",
+      "entityType": "servicePoints",
+      "entityId": "SP_Y016",
+      "jsonPath": "/servicePoints/SP_Y016/arrival/internalPath",
+      "message": "已检查显式道路序列的节点连续性；仍未发布全网可达路径、允许转向或资源/物理通行。",
+      "suggestedAction": "检查显式归属、节点、道路方向与到达声明；本阶段不发布可达路径。",
+      "location": {
+        "position": [
+          1486.483,
+          615.307,
+          0
+        ]
+      }
+    },
+    {
+      "code": "NEAR_ROAD_UNCONNECTED",
+      "severity": "warning",
+      "jsonPath": "/nodes/N0189/position",
+      "message": "节点距道路 R0191 不超过 0.5 m，但不是该道路端点；需要显式拆分/连接，几何重合不通行。",
+      "entityType": "nodes",
+      "entityId": "N0189",
+      "suggestedAction": "保留草稿标记，并在后续建模中补充依据或规则。",
+      "location": {
+        "position": [
+          2326.641,
+          239.76,
+          0
+        ]
+      }
+    },
+    {
+      "code": "NEAR_ROAD_UNCONNECTED",
+      "severity": "warning",
+      "jsonPath": "/nodes/N0178/position",
+      "message": "节点距道路 R0315 不超过 0.5 m，但不是该道路端点；需要显式拆分/连接，几何重合不通行。",
+      "entityType": "nodes",
+      "entityId": "N0178",
+      "suggestedAction": "保留草稿标记，并在后续建模中补充依据或规则。",
+      "location": {
+        "position": [
+          1975.91,
+          625.868,
+          0
+        ]
+      }
+    },
+    {
+      "code": "NEAR_ROAD_UNCONNECTED",
+      "severity": "warning",
+      "jsonPath": "/nodes/N0177/position",
+      "message": "节点距道路 R0317 不超过 0.5 m，但不是该道路端点；需要显式拆分/连接，几何重合不通行。",
+      "entityType": "nodes",
+      "entityId": "N0177",
+      "suggestedAction": "保留草稿标记，并在后续建模中补充依据或规则。",
+      "location": {
+        "position": [
+          1976.257,
+          626.252,
+          0
+        ]
+      }
+    },
+    {
+      "code": "MISSING_CHECKS",
+      "severity": "warning",
+      "jsonPath": "",
+      "message": "本次未校验：crossing_classification, turn_reachability, resource_execution, physical_clearance, asset_availability, source_authenticity。",
+      "suggestedAction": "保留草稿标记，并在后续建模中补充依据或规则。"
+    }
+  ],
+  "mapId": "SHI_GEOJE_REFERENCE_REGULARIZED_v03",
+  "mapContentHash": "0b765ed33ef3913866dc89d4a22ee49cdc62dec6c5921efb7dec4fd00bd50e47",
+  "capabilities": {
+    "editable": true,
+    "unrendered": [
+      "movements_without_display_geometry"
+    ],
+    "unchecked": [
+      "crossing_classification",
+      "turn_reachability",
+      "resource_execution",
+      "physical_clearance",
+      "asset_availability",
+      "source_authenticity"
+    ],
+    "reasons": []
+  }
+}
+
+COMMAND: npm.cmd run test:e2e
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 test:e2e
+> playwright test
+
+[WebServer] (node:45284) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:37716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 102 tests using 1 worker
+
+(node:43788) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   1 [chrome] › tests\e2e\DP1_interaction.spec.ts:79:1 › DP07 same-task wheel increments and different anchors agree with sequential camera arithmetic (2.7s)
+  ok   2 [chrome] › tests\e2e\DP1_interaction.spec.ts:89:1 › DP08 wheel followed immediately by pointer down/up hits the newly projected node (2.5s)
+  ok   3 [chrome] › tests\e2e\DP1_interaction.spec.ts:99:1 › DP08 DP10 native down-before-drag freezes wheel and commits one node movement (2.9s)
+  ok   4 [chrome] › tests\e2e\DP1_interaction.spec.ts:115:1 › DP09 native pan stops at release and Escape invalidates pending navigation (2.8s)
+  ok   5 [chrome] › tests\e2e\DP1_interaction.spec.ts:128:1 › DP12 DP17 DP18 label modes, layer hiding and locking preserve the map and meaningful selection (3.1s)
+  ok   6 [chrome] › tests\e2e\DP1_interaction.spec.ts:153:1 › DP08 immediate drawing after accumulated zoom uses effective metric coordinates (2.9s)
+  ok   7 [chrome] › tests\e2e\DP1_interaction.spec.ts:170:1 › DP16 label mode leaves unapplied numeric edits and polygon drafts intact (2.8s)
+  ok   8 [chrome] › tests\e2e\DP1_interaction.spec.ts:187:1 › DP07 middle pan and wheel compose without restoring the stale drag-start camera (2.7s)
+  ok   9 [chrome] › tests\e2e\DP1_interaction.spec.ts:207:1 › DP08 DP10 accumulated wheel then same-task rectangle handle drag uses the fresh camera once (2.8s)
+  ok  10 [chrome] › tests\e2e\DP1_interaction.spec.ts:250:1 › DP09 blur cancels a held middle-button pan before another move and keeps the map unchanged (2.7s)
+  ok  11 [chrome] › tests\e2e\DP1_persistence.spec.ts:41:1 › DP1 S01 all four label modes persist without changing map JSON or camera (3.3s)
+  ok  12 [chrome] › tests\e2e\DP1_persistence.spec.ts:54:1 › DP1 S02 real wheel inputs followed by Ctrl+S save the effective camera before the delayed native RAF (2.0s)
+  ok  13 [chrome] › tests\e2e\DP1_persistence.spec.ts:113:1 › DP1 S03 native legacy records migrate once with new-mode precedence and retain the camera (3.2s)
+  ok  14 [chrome] › tests\e2e\DP1_review.spec.ts:48:1 › DP review resource selection replaces a previous facility focus and direct resource locate paints its references (3.5s)
+  ok  15 [chrome] › tests\e2e\DP1_review.spec.ts:93:1 › DP review focus card avoids a real rectangle handle and native corner drag remains one transaction (3.2s)
+  ok  16 [chrome] › tests\e2e\DP1_review.spec.ts:140:1 › DP A04 synthetic long stable ID remains the complete selectable copy source and retains its declared provenance (2.6s)
+  ok  17 [chrome] › tests\e2e\DP1_review.spec.ts:176:1 › DP A05 frozen SHI v03 multi-select keeps one focus card and a bounded label set without changing the full map (32.9s)
+  ok  18 [chrome] › tests\e2e\DP1_review.spec.ts:218:1 › DP A12 frozen SR03 A LOD slot has no ghost hit and remains selectable after directory locate (4.6s)
+  ok  19 [chrome] › tests\e2e\drawingConfig.spec.ts:151:1 › D01 all six drawing choices survive real IDB save and refresh and drive 5m/node snapping (3.6s)
+  ok  20 [chrome] › tests\e2e\drawingConfig.spec.ts:180:1 › D02 config-only auto-save leaves map JSON, hash, revision and undo/redo history unchanged (3.2s)
+  ok  21 [chrome] › tests\e2e\drawingConfig.spec.ts:203:1 › D03 camera and drawing writes retain each other and restoring drawing defaults changes no map or camera (4.9s)
+  ok  22 [chrome] › tests\e2e\drawingConfig.spec.ts:230:1 › D04 rapid A/B navigation isolates drawing snapshots during a simulated native IDB completion delay (5.8s)
+  ok  23 [chrome] › tests\e2e\drawingConfig.spec.ts:286:1 › D05 real legacy camera-only and partial records normalize missing fields while preserving explicit false and zero (3.5s)
+  ok  24 [chrome] › tests\e2e\drawingConfig.spec.ts:305:1 › D06 invalid values, null and unknown drawing fields warn without losing the valid map (3.1s)
+  ok  25 [chrome] › tests\e2e\drawingConfig.spec.ts:323:1 › D07 a simulated editorStates quota failure reports unsaved config while preserving the durable map and current editable JSON (3.3s)
+  ok  26 [chrome] › tests\e2e\drawingConfig.spec.ts:356:1 › D08 refresh resets selection/tool/free-polygon mode and discards incomplete drawing without persisting temporary state (3.4s)
+  ok  27 [chrome] › tests\e2e\drawingConfig.spec.ts:384:1 › D09 Save and Ctrl+S persist the current six choices with automatic debounce deliberately paused (4.3s)
+  ok  28 [chrome] › tests\e2e\drawingConfig.spec.ts:421:1 › D10 a simulated editor-state read delay keeps defaults from overwriting the saved drawing configuration (3.2s)
+  ok  29 [chrome] › tests\e2e\M0_smoke.spec.ts:2:1 › React and Konva load in a real browser without runtime errors (605ms)
+  ok  30 [chrome] › tests\e2e\M1_editor.spec.ts:77:1 › draws a true polyline, edits to 100m, exports, externally edits to 120m, validates and reloads with stable IDs (2.6s)
+  ok  31 [chrome] › tests\e2e\M1_editor.spec.ts:140:1 › commits a real 100-step drag as one undo operation and rejects a zero-length drag without ghost coordinates (2.1s)
+  ok  32 [chrome] › tests\e2e\M1_editor.spec.ts:177:1 › preserves dirty edits and undo across invalid imports and cancel, then exports the current version before explicit reload (1.3s)
+  ok  33 [chrome] › tests\e2e\M1_editor.spec.ts:220:1 › copies a selected road through the UI with fresh endpoint IDs and stable redo (1.2s)
+  ok  34 [chrome] › tests\e2e\M1_editor.spec.ts:250:1 › imports facilities with unsupported behavior read-only, preserves their JSON on export and rejects future versions (916ms)
+  ok  35 [chrome] › tests\e2e\M1_editor.spec.ts:266:1 › keeps text-field undo and deletion separate from map commands (1.1s)
+  ok  36 [chrome] › tests\e2e\M11_localFileFlow.spec.ts:87:1 › simulated picker + real OPFS: UI writes, detects unchanged-revision external edits, backs up both sides and explicitly overwrites/reloads (3.9s)
+  ok  37 [chrome] › tests\e2e\M11_localFileFlow.spec.ts:150:1 › simulated picker + real OPFS: a new browser project does not inherit the old file and refresh requires reassociation (4.9s)
+  ok  38 [chrome] › tests\e2e\M11_save.spec.ts:51:1 › S01 real auto-draft survives refresh and closing/reopening a page without a download (2.6s)
+  ok  39 [chrome] › tests\e2e\M11_save.spec.ts:72:1 › S02 two named browser projects retain independent IDs, maps and subsequent edits (5.6s)
+  ok  40 [chrome] › tests\e2e\M11_save.spec.ts:109:1 › S03 delayed database restore never starts an empty-map write (3.8s)
+  ok  41 [chrome] › tests\e2e\M11_save.spec.ts:140:1 › S04 an earlier real IDB commit acknowledgement cannot mark a newer edit saved (completion-delay fault injection) (3.2s)
+  ok  42 [chrome] › tests\e2e\M11_save.spec.ts:171:1 › S05 simulated quota failure keeps the preceding durable map and does not report saved (2.2s)
+  ok  43 [chrome] › tests\e2e\M11_save.spec.ts:192:1 › S06 two real pages detect a stale storage version and preserve the losing edits as a recovery copy (4.6s)
+  ok  44 [chrome] › tests\e2e\M11_save.spec.ts:216:1 › S08 S10 save shortcut inside an unapplied field is explicit and leaves native text undo/delete intact (1.9s)
+  ok  45 [chrome] › tests\e2e\M11_save.spec.ts:251:1 › S09 exporting is a download notification and cannot acknowledge browser or local-file saves (1.8s)
+  ok  46 [chrome] › tests\e2e\M11_save.spec.ts:272:1 › S04 navigation checkpoint delay blocks undo/delete until the old project has been safely retained (3.0s)
+  ok  47 [chrome] › tests\e2e\M11_save.spec.ts:311:1 › S03 a one-shot native freeze fault during UI recovery cannot save the old map into the newly opened project (4.2s)
+  ok  48 [chrome] › tests\e2e\M2A_spatial.spec.ts:55:1 › G01 real 60m x 30m facility retains world geometry after pan, zoom, browser save and refresh (3.6s)
+  ok  49 [chrome] › tests\e2e\M2A_spatial.spec.ts:86:1 › G04 a 100-step real facility drag with associated nodes is one undo transaction and leaves remote road nodes fixed (2.0s)
+  ok  50 [chrome] › tests\e2e\M2A_spatial.spec.ts:111:1 › G05 real polygon drawing closes explicitly and invalid numeric vertices leave the previous map intact (1.2s)
+  ok  51 [chrome] › tests\e2e\M2A_spatial.spec.ts:126:1 › G08 an absent background never removes rendered facilities, areas or authoritative points (918ms)
+  ok  52 [chrome] › tests\e2e\M2A_spatial.spec.ts:137:1 › G02 true facility entrance/service creation round-trips through JSON and stays editable with stable authoritative node links (4.2s)
+  ok  53 [chrome] › tests\e2e\M2A_spatial.spec.ts:204:1 › G06 G09 grid/node snapping never creates topology; explicit split preserves physical states and design provenance (2.0s)
+  ok  54 [chrome] › tests\e2e\M2A_spatial.spec.ts:279:1 › G03 facility copy remaps member nodes without copying external roads; explicit deletion is atomic and undoable (1.8s)
+  ok  55 [chrome] › tests\e2e\M2A_spatial.spec.ts:336:1 › G01 G05 requested area kinds are drawable and a facility rotation commits radian geometry rather than a canvas transform (3.3s)
+  ok  56 [chrome] › tests\e2e\M2A_spatial.spec.ts:370:1 › S10 G02 Ctrl+S inside a pending spatial command saves only the committed map and preserves the unfinished command (1.9s)
+  ok  57 [chrome] › tests\e2e\M2A1_serviceTargets.spec.ts:35:1 › N02 an unloading target picked on an existing canvas node preserves its identity and proxy declaration after save/reload (2.8s)
+  ok  58 [chrome] › tests\e2e\M2A1_serviceTargets.spec.ts:70:1 › N03 N05 a canvas-picked dedicated service node is one transaction and belongs to only the explicitly selected overlapping zone (3.2s)
+  ok  59 [chrome] › tests\e2e\M2A1_serviceTargets.spec.ts:115:1 › N25 unapplied service properties block dragging and require explicit decisions before object, tool and history changes (2.0s)
+  ok  60 [chrome] › tests\e2e\M2A1_serviceTargets.spec.ts:157:1 › N25 an unfinished polygon survives canceling a tool switch and disappears only after explicit discard (1.4s)
+  ok  61 [chrome] › tests\e2e\M2A1_serviceTargets.spec.ts:179:1 › N09 N10 N12 a service in the middle of a road stays disconnected until explicit split; internal declarations remain unchecked (1.4s)
+  ok  62 [chrome] › tests\e2e\M2A1_serviceTargets.spec.ts:216:1 › N07 a zone drag, copy and explicit member deletion retain shared-road safety and one-transaction undo (2.4s)
+  ok  63 [chrome] › tests\e2e\M2A1_serviceTargets.spec.ts:254:1 › N06 a water-zone berth target remains a blocked draft and never changes the zone to ordinary land access (1.1s)
+  ok  64 [chrome] › tests\e2e\M2A1_upgrade.spec.ts:15:1 › N01 N26 explicit upgrade preserves the old JSON backup, cancels pending-input loss, and has stable undo/redo (4.5s)
+  ok  65 [chrome] › tests\e2e\P1_completion.spec.ts:106:3 › P1 A02 A04 SR03_A complete original shows inventory and survives real save/refresh/export/import (4.4s)
+  ok  66 [chrome] › tests\e2e\P1_completion.spec.ts:106:3 › P1 A02 A04 SR03_B complete original shows inventory and survives real save/refresh/export/import (7.6s)
+  ok  67 [chrome] › tests\e2e\P1_completion.spec.ts:106:3 › P1 A02 A04 SR03_C complete original shows inventory and survives real save/refresh/export/import (7.0s)
+  ok  68 [chrome] › tests\e2e\P1_completion.spec.ts:106:3 › P1 A02 A04 SR03_D complete original shows inventory and survives real save/refresh/export/import (14.7s)
+  ok  69 [chrome] › tests\e2e\P1_completion.spec.ts:129:1 › P1 A03 A06 real F_001 rigid contents drag and numeric rotation retain slots, anchors and declarations (14.3s)
+  ok  70 [chrome] › tests\e2e\P1_completion.spec.ts:164:1 › P1 A03 A06 real Z_005 parking slots and service nodes move together with public anchors fixed (6.3s)
+  ok  71 [chrome] › tests\e2e\P1_completion.spec.ts:183:1 › P1 A05 layer configuration survives reload without map history and locked hidden nodes cannot move indirectly (2.9s)
+  ok  72 [chrome] › tests\e2e\P1_completion.spec.ts:208:3 › P1 A03 unknown_namespace remains inspectable and globally protected with its full payload retained (1.5s)
+  ok  73 [chrome] › tests\e2e\P1_completion.spec.ts:208:3 › P1 A03 unknown_nested_slot_field remains inspectable and globally protected with its full payload retained (1.5s)
+  ok  74 [chrome] › tests\e2e\P1_completion.spec.ts:234:1 › P1 A03 A06 approved name edit preserves every geometry and pending input cannot be silently discarded by a layer action (3.3s)
+  ok  75 [chrome] › tests\e2e\P1_completion.spec.ts:255:1 › P1 A05 locked indirect resources and slots guard both history buttons and keyboard without consuming history (4.0s)
+  ok  76 [chrome] › tests\e2e\P1_completion.spec.ts:284:1 › P1 A06 searching the directory during a real polygon draft retains all earlier vertices (1.2s)
+  ok  77 [chrome] › tests\e2e\P2A_diagnostics.spec.ts:31:1 › P2A original A: locate, path, hidden/locked inclusion, unchanged JSON and stale-result protection (4.9s)
+  ok  78 [chrome] › tests\e2e\P2A_diagnostics.spec.ts:81:1 › P2A original D: complete input diagnostic remains bounded and readonly (8.5s)
+  ok  79 [chrome] › tests\e2e\P2A_diagnostics.spec.ts:95:1 › P2A fault-injected A slot outside owner: precise issue location and no repair on save/reload (2.5s)
+  ok  80 [chrome] › tests\e2e\P2A_diagnostics.spec.ts:113:3 › P2A fault-injected A unknown_direction: unknown conditions never become a confirmed route (1.7s)
+  ok  81 [chrome] › tests\e2e\P2A_diagnostics.spec.ts:113:3 › P2A fault-injected A unknown_behavior: unknown conditions never become a confirmed route (1.7s)
+  ok  82 [chrome] › tests\e2e\rectangleEditing.spec.ts:98:3 › R01 R05 R08 real facilities 60x30 to 80x45 keeps its diagonal fixed and commits 100 pointer frames once (5.1s)
+  ok  83 [chrome] › tests\e2e\rectangleEditing.spec.ts:98:3 › R01 R05 R08 real zones 60x30 to 80x45 keeps its diagonal fixed and commits 100 pointer frames once (5.1s)
+  ok  84 [chrome] › tests\e2e\rectangleEditing.spec.ts:136:1 › R02 R08 a 30-degree rectangle uses local dimensions and numeric editing produces the same authoritative corners (2.0s)
+  ok  85 [chrome] › tests\e2e\rectangleEditing.spec.ts:208:1 › R03 the same world resize is independent of view zoom and pan (1.9s)
+  ok  86 [chrome] › tests\e2e\rectangleEditing.spec.ts:226:1 › R04 irregular outer and hole vertices remain authoritative; invalid pointer edits roll back map and history (2.3s)
+  ok  87 [chrome] › tests\e2e\rectangleEditing.spec.ts:260:1 › R04 a zero-area polygon drag is rejected without adding an undo step (1.2s)
+  ok  88 [chrome] › tests\e2e\rectangleEditing.spec.ts:270:1 › R05 Escape cancels preview and a map revision change prevents a stale boundary commit (1.6s)
+  ok  89 [chrome] › tests\e2e\rectangleEditing.spec.ts:290:3 › R06 R07 0.1.0 resize retains IDs, references, nonrectangular data and the original schema through saving and reimport (3.0s)
+  ok  90 [chrome] › tests\e2e\rectangleEditing.spec.ts:290:3 › R06 R07 0.2.0 resize retains IDs, references, nonrectangular data and the original schema through saving and reimport (3.0s)
+  ok  91 [chrome] › tests\e2e\rectangleEditing.spec.ts:314:1 › R07 multi-selection keeps whole-object moves while readonly and unapplied numeric input cannot be bypassed by handles (2.1s)
+  ok  92 [chrome] › tests\e2e\rectangleEditing.spec.ts:354:1 › R01 R03 R08 crossing the fixed corner clamps positive metric sizes; invalid numeric dimensions do not commit (1.8s)
+  ok  93 [chrome] › tests\e2e\roadWidth.spec.ts:123:1 › W01 actual canvas cross-sections measure 12m as 48px and 96px; selection never changes band width (4.2s)
+  ok  94 [chrome] › tests\e2e\roadWidth.spec.ts:146:1 › W02 narrow roads retain a minimum hit area and wide edges are selectable without taking over nodes or associated points (3.7s)
+  ok  95 [chrome] › tests\e2e\roadWidth.spec.ts:166:1 › W03 width editing records a design source, undoes atomically and reimports an external width change with stable IDs (5.2s)
+  ok  96 [chrome] › tests\e2e\roadWidth.spec.ts:198:1 › W04 display choices persist per project without map/revision/hash/history changes; hiding ordinary nodes keeps junctions and explicit editing available (6.1s)
+  ok  97 [chrome] › tests\e2e\roadWidth.spec.ts:235:1 › W05 unknown, unrestricted and not_applicable widths use auxiliary lines without invented physical bands (2.8s)
+  ok  98 [chrome] › tests\e2e\roadWidth.spec.ts:254:1 › W06 crossing wide bands never create shared nodes, turning movements or implicit connectivity (2.6s)
+  ok  99 [chrome] › tests\e2e\roadWidth.spec.ts:271:1 › W07 uncommitted polyline and node-drag previews move the band without mutating the saved map; each commit is undoable (5.5s)
+  ok 100 [chrome] › tests\e2e\roadWidth.spec.ts:303:1 › W08 road creation temporarily exposes hidden endpoints and keeps its draft trajectory visible with both road layers off (3.0s)
+  ok 101 [chrome] › tests\e2e\roadWidth.spec.ts:323:1 › W09 fit includes an exceptionally wide declared band without clipping it or imposing a misleading minimum scale (2.6s)
+  ok 102 [chrome] › tests\e2e\roadWidth.spec.ts:337:1 › W10 a wide-band edge is not an existing access/service node and dedicated picks keep the clicked coordinate without splitting roads (3.7s)
+
+  102 passed (6.2m)
+
+COMMAND: npm.cmd run lint
+EXIT: 0
+
+> yard-spatial-editor@0.1.0 lint
+> eslint . && node scripts/check-boundaries.mjs
+
+Core boundaries: PASS
