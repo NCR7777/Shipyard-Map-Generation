@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { YardMap } from '../domain/model';
 import { contentHash } from '../domain/serialization';
 import { IndexedDBProjectStore } from '../adapters/projectStore';
@@ -132,7 +132,7 @@ export function useProjectWorkspace(inputs: Inputs) {
       return receipt;
     } catch (reason) { if (owns(projectId, token)) setError(message(reason)); throw reason; }
   }
-  const hash = contentHash(inputs.map);
+  const hash = useMemo(() => contentHash(inputs.map), [inputs.map]);
   const editorKey = JSON.stringify(inputs.editorState);
   const editorDirty = savedEditor?.projectId !== state.active?.projectId || savedEditor?.key !== editorKey;
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import type { YardMap } from '../../src/domain/model';
 
 // Exact user-owned originals, not reduced/recreated fixtures. Missing or changed inputs fail closed.
@@ -25,18 +26,23 @@ const originals = [
   ['SR03', 'D', '0fb0d6f565d35431d934ae2dbdfeae63c5948675b40d31ac7641af888abc7622', [207,245,62,27,28,47,188,782,412,2,0,0,1421]],
 ] as const;
 export const P1_COLLECTIONS = ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints', 'junctions', 'movements', 'resources', 'sources', 'assets', 'backgroundLayers'] as const;
+// SHIPYARD_TEST_DATA_ROOT is the directory containing projects/, never a replacement fixture.
+export function resolveP1DataRoot(dataRoot = process.env.SHIPYARD_TEST_DATA_ROOT): string {
+  if (dataRoot !== undefined && !dataRoot.trim()) throw new Error('blocked_input: SHIPYARD_TEST_DATA_ROOT must name the directory containing projects/');
+  return dataRoot === undefined ? fileURLToPath(new URL('../../../../', import.meta.url)) : resolve(dataRoot);
+}
 export const P1_TARGETS = originals.map(([family, yard, sha256, counts]) => {
   const path = family === 'SR02' || family === 'SR03'
     ? `projects/shipyard_simulation_${family}/${family}_${yard}/map.json`
     : `projects/shipyard_editor_${family}/YARD_${yard}.map.json`;
   return { family, yard, id: `${family}_${yard}`, path, sha256, counts,
-    absolutePath: fileURLToPath(new URL('../../../../' + path, import.meta.url)) };
+    absolutePath: resolve(resolveP1DataRoot(), path) };
 });
 export type P1Target = typeof P1_TARGETS[number];
 export async function readP1Target(target: P1Target): Promise<{ text: string; map: YardMap }> {
   let bytes: Buffer;
   try { bytes = await readFile(target.absolutePath); }
-  catch (error) { throw new Error(`blocked_input: required original ${target.path} cannot be read`, { cause: error }); }
+  catch (error) { throw new Error(`blocked_input: required original ${target.path} cannot be read at ${target.absolutePath}; SHIPYARD_TEST_DATA_ROOT must contain projects/`, { cause: error }); }
   const actual = createHash('sha256').update(bytes).digest('hex');
   if (actual !== target.sha256) throw new Error(`blocked_input: ${target.path} SHA256 ${actual} differs from frozen ${target.sha256}; do not substitute another map`);
   const text = bytes.toString('utf8');

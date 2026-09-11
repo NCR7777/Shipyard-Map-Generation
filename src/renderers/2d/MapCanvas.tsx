@@ -21,6 +21,8 @@ export type PointPickResult = { nodeId: string } | { position: Vec3 };
 export interface PointPick { mode: 'existing' | 'new'; nodeId?: string; position?: Vec3 }
 export interface DraftRoad { fromNodeId: string; points: Vec3[] }
 interface Props {
+  routePreview?: { mapContentHash: string; points: Vec3[]; confirmed: boolean } | null;
+  diagnosticPosition?: Vec3 | null;
   scene: SceneSnapshot;
   hiddenTypes?: readonly SceneKind[];
   showLabels?: boolean;
@@ -289,6 +291,11 @@ export function MapCanvas(props: Props) {
         <AssociatedPointLayer {...spatialProps} />
       </Layer>
       <Layer listening={false}>
+        {props.routePreview?.mapContentHash === props.scene.mapContentHash && (() => {
+          const points = props.routePreview.points.flatMap(point => worldToScreen(point, props.camera));
+          return points.every(Number.isFinite) && points.length >= 4 ? <Line points={points} stroke={props.routePreview.confirmed ? '#1876ad' : '#c47e19'} strokeWidth={5} opacity={0.85} dash={props.routePreview.confirmed ? undefined : [10,6]}/> : null;
+        })()}
+        {props.diagnosticPosition && (() => { const point = worldToScreen(props.diagnosticPosition, props.camera); return point.every(Number.isFinite) ? <Circle x={point[0]} y={point[1]} radius={14} stroke="#c05f22" strokeWidth={3} dash={[5,3]}/> : null; })()}
         {props.showLabels !== false && displayedNodes.map(node => {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
           return <Text key={node.id} x={x + 11} y={y - 16} text={node.name || node.id} fontSize={11} fill="#355266" />;
@@ -326,6 +333,8 @@ export function MapCanvas(props: Props) {
       道路带重叠不自动连通；点边缘仅取坐标，不接入中部
       {shapePreview && <span data-testid="road-shape-preview"><br/>折点预览 · 应用属性后写入地图</span>}
     </div>
+    <output className="sr-only" data-testid="path-overlay" data-map-hash={props.routePreview?.mapContentHash ?? ''} data-points={props.routePreview?.points.length ?? 0}/>
+    <output className="sr-only" data-testid="diagnostic-marker" data-position={JSON.stringify(props.diagnosticPosition ?? null)}/>
     <output className="sr-only" data-testid="camera-state" data-offset-x={props.camera.offsetX} data-offset-y={props.camera.offsetY} data-scale={props.camera.scale}>{JSON.stringify(props.camera)}</output>
   </div>;
 }

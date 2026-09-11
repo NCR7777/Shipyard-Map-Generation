@@ -1,7 +1,10 @@
 import { expect, test } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { loadMap } from '../../src/domain/load';
 import { serializeMap } from '../../src/domain/serialization';
-import { P1_COLLECTIONS, P1_TARGETS, originalSlotCount, readP1Target } from '../helpers/P1_targets';
+import { P1_COLLECTIONS, P1_TARGETS, originalSlotCount, readP1Target, resolveP1DataRoot } from '../helpers/P1_targets';
 
 for (const target of P1_TARGETS) {
   test(`P1 exact original ${target.id}: complete input, core validation and ten lossless round trips`, async () => {
@@ -39,3 +42,11 @@ for (const target of P1_TARGETS) {
     expect((await readP1Target(target)).text).toBe(text);
   }, 60000);
 }
+
+test('P1 explicit data-root resolution fails closed for blank or missing roots', async () => {
+  const target = P1_TARGETS[0]!;
+  expect(resolveP1DataRoot('.')).toBe(resolve('.'));
+  expect(() => resolveP1DataRoot('  ')).toThrow('blocked_input');
+  const missingRoot = resolve(tmpdir(), 'shipyard-missing-originals-' + randomUUID());
+  await expect(readP1Target({ ...target, absolutePath: resolve(resolveP1DataRoot(missingRoot), target.path) })).rejects.toThrow('blocked_input');
+});

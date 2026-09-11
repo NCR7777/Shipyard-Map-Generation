@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AccessPoint, Facility, Polygon, ServicePoint, Vec3, YardMap, Zone } from '../domain/model';
 import { normalizeSelection, selectionImpact, commandSupport, type FacilityMovePolicy, type ZoneMovePolicy, type MapCommand, type Selection } from '../domain/commands';
 import { polygonArea2D } from '../geometry/polygons';
@@ -46,17 +46,25 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
   const moving = delta.some(value => value !== '0'); const rotating = angle !== '0';
   const pivotPending = JSON.stringify(pivot) !== JSON.stringify(initialPivot);
   useEffect(() => { onDirtyChange?.(basePending || moving || rotating || pivotPending); return () => onDirtyChange?.(false); }, [basePending, moving, rotating, pivotPending, onDirtyChange]);
-  const selection: Selection = { ...normalizeSelection({ nodes: [], roads: [] }), [selected.kind === 'facility' ? 'facilities' : 'zones']: [selected.id] };
-  const support = commandSupport(map, { type: 'translateSelection', selection, delta: [0, 0, 0], facilityMovePolicy, zoneMovePolicy });
-  const impact = support.impact ?? selectionImpact(map, { nodes: [], roads: [] });
-  const probe = structuredClone(selected.value.boundary);
-  probe.outer[0][0] += 1; probe.outer[probe.outer.length - 1] = [...probe.outer[0]];
-  const boundaryReadonly = readonly || !commandSupport(map, selected.kind === 'facility'
-    ? { type: 'updateFacility', id: selected.id, patch: { boundary: probe } }
-    : { type: 'updateZone', id: selected.id, patch: { boundary: probe } }).allowed;
-  const classificationReadonly = readonly || !commandSupport(map, selected.kind === 'facility'
-    ? { type: 'updateFacility', id: selected.id, patch: { kind: selected.value.kind === 'workshop' ? 'yard' : 'workshop' } }
-    : { type: 'updateZone', id: selected.id, patch: { kind: selected.value.kind === 'work' ? 'buffer' : 'work' } }).allowed;
+  // P1 production CPU profile: repeated planning checks during pointer renders.
+  // Session maps are immutable; command submission still revalidates the complete transaction.
+  const selection = useMemo<Selection>(() => ({ ...normalizeSelection({ nodes: [], roads: [] }), [selected.kind === 'facility' ? 'facilities' : 'zones']: [selected.id] }), [selected.kind, selected.id]);
+  const support = useMemo(() => commandSupport(map, { type: 'translateSelection', selection, delta: [0, 0, 0], facilityMovePolicy, zoneMovePolicy }), [map, selection, facilityMovePolicy, zoneMovePolicy]);
+  const impact = useMemo(() => support.impact ?? selectionImpact(map, { nodes: [], roads: [] }), [map, support]);
+  const permissions = useMemo(() => {
+    const probe = structuredClone(selected.value.boundary);
+    probe.outer[0][0] += 1; probe.outer[probe.outer.length - 1] = [...probe.outer[0]];
+    return {
+      boundary: commandSupport(map, selected.kind === 'facility'
+        ? { type: 'updateFacility', id: selected.id, patch: { boundary: probe } }
+        : { type: 'updateZone', id: selected.id, patch: { boundary: probe } }).allowed,
+      classification: commandSupport(map, selected.kind === 'facility'
+        ? { type: 'updateFacility', id: selected.id, patch: { kind: selected.value.kind === 'workshop' ? 'yard' : 'workshop' } }
+        : { type: 'updateZone', id: selected.id, patch: { kind: selected.value.kind === 'work' ? 'buffer' : 'work' } }).allowed,
+    };
+  }, [map, selected.kind, selected.id, selected.value]);
+  const boundaryReadonly = readonly || !permissions.boundary;
+  const classificationReadonly = readonly || !permissions.classification;
   function apply() {
     if (readonly) return;
     if (moving || rotating || pivotPending) { setError('另有未执行的平移/旋转参数，请先重置变换参数，再提交边界属性。'); return; }

@@ -36,6 +36,29 @@ npm run map:validate -- examples/M2A1_synthetic_service_targets.map.json
 
 拖动中仅预览，松开提交一次已有领域事务；Esc、窗口失焦或编辑上下文变化取消预览，非法几何回退并报错。缩放和顶点调整只改边界，不移动入口、服务点或道路节点。整体平移/旋转继续使用原有的关联点策略。保存只包含已提交地图；未应用输入保护继续生效。
 
+## P1 内容支持与 P2A 只读诊断
+
+P1 保留厂界、路口、逻辑资源、已识别槽位的显示、目录定位、类型显隐/锁定和搜索；设施/区域按批准策略做静态内容刚体联动。未知行为继续受保护，完整数据可导出。当前源码、截图、原件 SHA 及实际验收对应见 [本批报告](docs/P2A_COMPLETION.md)。
+
+在右侧属性栏展开“只读地图诊断 · P2A”，点击运行。检查包含隐藏和锁定对象，清单复用检查器，可点击定位。交点、近邻、重叠和独立子网只是声明候选，不自动接路。所有者包含、槽位正面积重叠及道路带/明确禁区单列覆盖情况；没有声明的条件显示未检查。诊断不会修改地图、revision、撤销历史或资源容量。
+
+选择两个服务点/入口后预览道路方向与转向声明下的路线；视野偏离时点击现有“适应地图”。蓝实线是已声明条件下的路线，橙虚线是含未知条件的候选；各自列出假设。来源服务点沿已有显式出弧离开；到达目标服务点必须走其已声明内部路径。到达声明不自动变成唯一出口。资源占用、车辆扫掠、现实净空及作业完成均不在路径结论内。地图摘要变化后旧清单和路线失效；刷新后手动重新运行。
+
+同核命令（退出 0 仅表示报告生成，不表示无冲突或运输获准；输入无效退出 1，文件/参数错误退出 2）：
+
+    npm run map:diagnose -- path/to/map.json --from servicePoints:SP_001 --to servicePoints:SP_002
+
+真实原件测试默认读取相邻工作区的 projects；独立检出仓库时明确设置其所在根目录：
+
+    $env:SHIPYARD_TEST_DATA_ROOT = '完整数据根目录（内含 projects）'
+    npm run test
+    npm run test:integration
+    npm run test:e2e
+    npm run build
+    npm run test:production
+
+输入必须匹配冻结 SHA。缺失或被替换会报 blocked_input，不能用简化样例跳过。生产测试默认服务当前 dist；仅 P1 基线取证使用 P1_PRODUCTION_BASELINE=1 和已冻结构建。测试日志、截图和故障副本保存在本地 .cache/P2A，未写回用户原件。
+
 ## 开发与核验
 
 采用项目级 [Ponytail full](.agents/skills/ponytail/SKILL.md) 与 [冗余审查](.agents/skills/ponytail-review/SKILL.md)，固定上游提交 `356918eba965ee1eac64bd3a7f0dd02108350de5`；直接读取技能文件执行，未安装全局插件、hooks、MCP 或应用运行依赖。两份技能及 MIT 许可证 blob 已与 [来源说明](UPSTREAM.md) 中的哈希核对。矩形编辑任务 ZIP 实际只有三份说明，技能由安装工具从该固定提交补齐。

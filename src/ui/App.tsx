@@ -1,3 +1,6 @@
+import { DiagnosticsPanel } from './DiagnosticsPanel';
+import type { DiagnosticReport } from '../validation/diagnostics';
+import type { PathPreviewReport } from '../topology/pathPreview';
 import type { SceneItem, SceneKind } from '../adapters/contracts';
 import { itemPositions } from '../compiler/catalog';
 import { ObjectDirectory, ObjectInspector } from './ObjectDirectory';
@@ -7,7 +10,7 @@ import { contentHash, serializeMap } from '../domain/serialization';
 import { mapCapabilities } from '../domain/capabilities';
 import { SELECTION_KINDS as selectionKinds, closureSelection, normalizeSelection, selectionImpact, commandSupport, type CommandAffectedRef, type FullSelection, type MapCommand, type Selection } from '../domain/commands';
 import type { Facility, Zone, Polygon, Issue, Vec3 } from '../domain/model';
-import { createSession, editSession, isDirty, acknowledgeMap, prepareImport, redoSession, resolveImport, undoSession, type EditorSession, type ImportProposal } from '../editor/session';
+import { createSession, editSession, acknowledgeMap, prepareImport, redoSession, resolveImport, undoSession, type EditorSession, type ImportProposal } from '../editor/session';
 import { toSceneSnapshot } from '../compiler/scene';
 import { validateMap } from '../validation/validate';
 import { downloadMap, readJsonFile } from '../adapters/files';
@@ -30,6 +33,9 @@ function localIssue(code: string, message: string): Issue { return { code, sever
 export function App() {
   const [session, setSession] = useState(() => createSession(newMap(uid('map'), '未命名布局'), true));
   const sessionRef = useRef<EditorSession>(session);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticReport | null>(null);
+  const [pathPreview, setPathPreview] = useState<PathPreviewReport | null>(null);
+  const [issueMarker, setIssueMarker] = useState<{ hash: string; position: Vec3 } | null>(null);
   const [tool, setTool] = useState<Tool>('select');
   const [inspectionKeys, setInspectionKeys] = useState<string[]>([]);
   const [selection, setSelection] = useState<Selection>(emptySelection);
@@ -110,15 +116,15 @@ export function App() {
     },
   });
   const unapplied = propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDraft !== null || copyDialog || rotateDialog || splitDialog;
-  const saveGuard = useRef({ browserDirty: true, unapplied: false });
-  saveGuard.current = { browserDirty: projects.editorDirty || projects.state.active?.draftHash !== contentHash(session.map), unapplied: unapplied || boundaryEditing };
-  useEffect(() => setMapName(session.map.metadata.name), [session.map.metadata.name]);
   const scene = useMemo(() => toSceneSnapshot(session.map), [session.map]);
+  const saveGuard = useRef({ browserDirty: true, unapplied: false });
+  saveGuard.current = { browserDirty: projects.editorDirty || projects.state.active?.draftHash !== scene.mapContentHash, unapplied: unapplied || boundaryEditing };
+  useEffect(() => setMapName(session.map.metadata.name), [session.map.metadata.name]);
   const capabilities = useMemo(() => mapCapabilities(session.map), [session.map]);
   const report = useMemo(() => validateMap(session.map), [session.map]);
   const domainReadonly = !capabilities.editable;
   const readonly = domainReadonly || !projects.ready || projects.transitioning || localState.busy || schemaUpgrading;
-  const dirty = isDirty(session);
+  const dirty = session.acknowledgedHash !== scene.mapContentHash;
   const validSelection = useMemo(() => {
     const current = normalizeSelection(selection);
     return Object.fromEntries(selectionKinds.map(kind => [kind, current[kind].filter(id => Object.hasOwn(session.map[kind], id))])) as FullSelection;
@@ -137,7 +143,11 @@ export function App() {
       if (commandSupport(session.map, command).allowed && !lockedTypes.includes(kind)) allowed.add(kind + '/' + id);
     }
     return allowed;
-  }, [session.map, validSelection, lockedTypes]);  const issues = [...operationIssues, ...report.issues];
+  }, [session.map, validSelection, lockedTypes]);
+  const currentDiagnostics = diagnostics?.mapContentHash === scene.mapContentHash ? diagnostics : null;
+  const currentPath = pathPreview?.mapContentHash === scene.mapContentHash ? pathPreview : null;
+  const shownPath = currentPath?.confirmed ?? currentPath?.candidate;
+  const issues = [...operationIssues, ...report.issues, ...(currentDiagnostics?.issues ?? []), ...(currentPath?.issues ?? [])];
   const errorCount = issues.filter(i => i.severity === 'error').length;
 
   const onCanvasSize = useCallback((size: { width: number; height: number }) => {
@@ -449,6 +459,7 @@ export function App() {
     return validSelection[kind]?.includes(id) === true && moveSupport.allowed && !moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind));
   }
   function locate(issue: Issue) {
+    if (issue.location?.position) setIssueMarker({ hash: scene.mapContentHash, position: [...issue.location.position] });
     const kind = issue.entityType as SelectionKind | undefined;
     if (kind && selectionKinds.includes(kind) && issue.entityId && Object.hasOwn(session.map[kind], issue.entityId)) { choose(kind, issue.entityId, false); }
     const item = scene.items.find(entry => entry.jsonPath === issue.jsonPath || entry.jsonPath === '/' + issue.entityType + '/' + issue.entityId);
@@ -545,8 +556,8 @@ export function App() {
         <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => requestLeave('复制所选对象', () => { setOperationIssues([]); setCopyRetainFacility(false); setCopyDialog(true); })} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button><button onClick={() => requestLeave('旋转所选对象', () => { setOperationIssues([]); setRotateDialog(true); })} disabled={readonly || selectedCount === 0}>旋转</button><button onClick={() => requestLeave('拆分道路', () => { setOperationIssues([]); setSplitDistance(''); setSplitExistingNode(''); setSplitDialog(true); })} disabled={readonly || selectedCount !== 1 || validSelection.roads.length !== 1}>拆分道路</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
         {domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含尚未支持的行为、资源或底图等数据；保留完整 JSON，编辑已锁定。</div>}
         <div className="tool-hint">{hint}</div>
-        {Object.keys(session.map.resources).length > 0 && <div className="tool-hint" data-testid="static-edit-limits">仅静态草稿编辑；联动可能改变接入段转角。空间、转向及原外部结果未重新验证，旧结果绑定旧地图摘要。</div>}
-        <MapCanvas hiddenTypes={hiddenTypes} showLabels={showLabels} inspectKey={inspected?.key} onInspect={item => chooseItem(item)} canDrag={canDrag}
+        {Object.keys(session.map.resources).length > 0 && <div className="tool-hint" data-testid="static-edit-limits">仅静态草稿编辑；联动可能改变接入段转角。联动后请重新运行只读诊断；物理通行和原外部结果未重新验证，旧结果绑定旧地图摘要。</div>}
+        <MapCanvas routePreview={shownPath ? { mapContentHash: scene.mapContentHash, points: shownPath.points, confirmed: !!currentPath?.confirmed } : null} diagnosticPosition={issueMarker?.hash === scene.mapContentHash ? issueMarker.position : null} hiddenTypes={hiddenTypes} showLabels={showLabels} inspectKey={inspected?.key} onInspect={item => chooseItem(item)} canDrag={canDrag}
           canEditBoundary={(kind, id) => boundaryPermissions.has(kind + '/' + id)}
           movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} onCamera={setCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!(proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || (!pointDraft?.canvasMode && pointDraft) || deleteDialog || rotateDialog || splitDialog || leaveIntent || upgradeDialog)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => { setInspectionKeys([]); setSelection(emptySelection()); })} onCursor={setCursor} draftRoad={draftRoad}
           onAddNode={point => requestLeave('绘制节点', () => { const id = uid('node'); if (apply({ type: 'addNode', id, node: newNode(point, '节点 ' + (scene.nodes.length + 1)) })) setSelection({ nodes: [id], roads: [] }); })}
@@ -561,11 +572,13 @@ export function App() {
           onTranslate={delta => { requestLeave('移动所选对象', () => apply({ type: 'translateSelection', selection: validSelection, delta, facilityMovePolicy, zoneMovePolicy })); }}
         />
         <div className="canvas-status"><span>{cursor ? `X ${cursor[0].toFixed(3)} m  ·  Y ${cursor[1].toFixed(3)} m` : '本地 XY；屏幕 Y 方向仅影响显示'}</span><span>{selectedCount} 个选中 · {session.past.length} 个撤销事务</span></div>
-        <section className="issue-panel" data-testid="issue-panel"><div className="issue-heading"><strong>检查器</strong><span className={errorCount ? 'error-count' : 'warning-count'}>{errorCount} 错误 · {issues.length - errorCount} 提示</span><span>draft 校验；不代表现场安全</span></div><div className="issue-list">{issues.map((issue, index) => <button key={issue.code + index} className={'issue-item ' + issue.severity} onClick={() => locate(issue)}><span className="issue-symbol">{issue.severity === 'error' ? '!' : '△'}</span><span><strong>{issue.code}</strong> {issue.message}<small>{issue.jsonPath || '/'} · {issue.suggestedAction}</small></span></button>)}</div></section>
+        <section className="issue-panel" data-testid="issue-panel"><div className="issue-heading"><strong>检查器</strong><span className={errorCount ? 'error-count' : 'warning-count'}>{errorCount} 错误 · {issues.length - errorCount} 提示</span><span>{currentDiagnostics || currentPath ? '草稿校验 + 只读诊断' : 'draft 校验'}；不代表现场安全</span></div><div className="issue-list">{issues.map((issue, index) => <button key={issue.code + index} className={'issue-item ' + issue.severity} onClick={() => locate(issue)}><span className="issue-symbol">{issue.severity === 'error' ? '!' : '△'}</span><span><strong>{issue.code}</strong> {issue.message}<small>{issue.jsonPath || '/'} · {issue.suggestedAction}</small></span></button>)}</div></section>
       </section>
-      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>{inspected ? <ObjectInspector item={inspected} map={session.map} onLocate={() => locateItem(inspected)}/> : <PropertyPanel mapContentHash={scene.mapContentHash} onRoadPreviewChange={onRoadPreviewChange} boundaryEditMode={boundaryEditMode} onBoundaryModeChange={changeBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={value => updateDrawingConfig({ zoneMovePolicy: value })} onMovePolicyChange={value => updateDrawingConfig({ facilityMovePolicy: value })} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || selectionKinds.some(kind => validSelection[kind].length > 0 && lockedTypes.includes(kind)) || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={apply} />}
+      <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>
+        <DiagnosticsPanel map={session.map} mapContentHash={scene.mapContentHash} disabled={operationsBlocked()} diagnostics={diagnostics} route={pathPreview} onDiagnostics={setDiagnostics} onRoute={setPathPreview}/>
+{inspected ? <ObjectInspector item={inspected} map={session.map} onLocate={() => locateItem(inspected)}/> : <PropertyPanel mapContentHash={scene.mapContentHash} onRoadPreviewChange={onRoadPreviewChange} boundaryEditMode={boundaryEditMode} onBoundaryModeChange={changeBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={value => updateDrawingConfig({ zoneMovePolicy: value })} onMovePolicyChange={value => updateDrawingConfig({ facilityMovePolicy: value })} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || selectionKinds.some(kind => validSelection[kind].length > 0 && lockedTypes.includes(kind)) || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={apply} />}
         {(capabilities.reasons.length > 0 || capabilities.unrendered.length > 0) && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
-        <div className="capability-box"><h3>本阶段未校验</h3><p>{capabilities.unchecked.join(' · ')}</p></div>
+        <div className="capability-box"><h3>草稿校验未覆盖</h3><p>手动诊断仅按所列声明范围检查；具体结果见检查器。</p><p>{capabilities.unchecked.join(' · ')}</p></div>
       </aside>
     </div>
     <footer className="app-footer"><span role="status">{status}</span><code data-testid="map-hash" title={scene.mapContentHash}>{scene.mapContentHash}</code></footer>
