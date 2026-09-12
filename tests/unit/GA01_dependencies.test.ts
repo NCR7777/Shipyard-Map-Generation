@@ -171,14 +171,17 @@ describe('GA01-B bounded operation dependencies', () => {
     const plain = fixture(); plain.junctions = {}; plain.movements = {}; plain.resources = {};
     expect(run(plain, { type: 'updateNode', id: 'a', patch: { position: [1, 2, 3] } }).map.nodes.a!.position).toEqual([1, 2, 3]);
   });
-  it('does not reopen advanced creation, duplication, deletion or road splitting', () => {
+  it('retains creation/copy limits, requires explicit deletion dependencies and safely splits references', () => {
     const map = fixture();
     for (const command of [
       { type: 'addNode', id: 'new', node: newNode([30, 0, 0]) },
       { type: 'duplicateSelection', selection: { nodes: ['a'], roads: [] }, delta: [1, 0, 0], idMap: { a: 'new' } },
-      { type: 'deleteSelection', selection: { nodes: ['a'], roads: [] } },
-      { type: 'splitRoad', id: 'ab', distanceM: 5, nodeId: 'new', newRoadIds: ['new1', 'new2'] },
     ] as MapCommand[]) reject(map, command, 'OPERATION_DEPENDENCIES_UNSUPPORTED');
+    reject(map, { type: 'deleteSelection', selection: { nodes: ['a'], roads: [] } }, 'TOPOLOGY_DELETE_DEPENDENCIES');
+    const split = run(map, { type: 'splitRoad', id: 'ab', distanceM: 5, nodeId: 'new', newRoadIds: ['new1', 'new2'] }).map;
+    expect(split.movements.m!.incomingArc).toEqual({ roadId: 'new2', direction: 'forward' });
+    expect(split.movements.m!.resourceIds).toEqual(map.movements.m!.resourceIds);
+    expect(split.resources).toEqual(map.resources);
   });
   it('passes temporary warnings through the session and does not inspect a no-op', () => {
     const warning: Issue = { code: 'GA01_TEST_UNKNOWN', severity: 'warning', jsonPath: '/roads/ab', message: 'test warning', suggestedAction: 'test only' };

@@ -171,9 +171,17 @@ export function inspectSpatial(map: YardMap, options: SpatialOptions = {}): Spat
 /** Commit-only checks over changed declarations. Unknown physical conditions stay warnings.
  * No full-map issue subtraction: every changed road/forbidden pair is inspected independently.
  */
-export function inspectSpatialEdit(before: YardMap, after: YardMap, options: { maxComparisons?: number } = {}): Issue[] {
+export function inspectSpatialEdit(before: YardMap, after: YardMap, options: {
+  maxComparisons?: number;
+  /** Internal command output only: exact split/join transformations preserving the full road band.
+   * Never populated from imported lineage, an editable map field, or a caller-supplied MapCommand.
+   */
+  geometryPreservedRoadIds?: readonly string[];
+} = {}): Issue[] {
   const roads = new Set<string>(), owners = new Set<string>(), slots = new Set<string>(), services = new Set<string>();
+  const preserved = new Set(options.geometryPreservedRoadIds);
   for (const [id, road] of Object.entries(after.roads)) {
+    if (preserved.has(id)) continue;
     const old = before.roads[id];
     if (!old || !sameValue(old.shapePoints, road.shapePoints) || (old.widthM.state !== road.widthM.state || (old.widthM.state === 'known' ? old.widthM.value : undefined) !== (road.widthM.state === 'known' ? road.widthM.value : undefined))
       || !sameValue(old.corridorPolygon, road.corridorPolygon)
@@ -192,7 +200,7 @@ export function inspectSpatialEdit(before: YardMap, after: YardMap, options: { m
   for (const [id, service] of Object.entries(after.servicePoints)) {
     const old = before.servicePoints[id];
     const owner = service.facilityId ? 'facilities/' + service.facilityId : 'zones/' + service.zoneId;
-    if (!old || old.nodeId !== service.nodeId || old.facilityId !== service.facilityId || old.zoneId !== service.zoneId || !sameValue(old.arrival, service.arrival) || owners.has(owner)
+    if (!old || old.nodeId !== service.nodeId || old.facilityId !== service.facilityId || old.zoneId !== service.zoneId || old.arrival?.mode !== service.arrival?.mode || owners.has(owner)
       || !sameValue(before.nodes[old.nodeId]?.position, after.nodes[service.nodeId]?.position)) services.add(id);
   }
   if (!roads.size && !owners.size && !slots.size && !services.size) return [];

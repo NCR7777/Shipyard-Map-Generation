@@ -53,3 +53,20 @@ export function roadWidthBounds(points: readonly Vec3[], widthM: PhysicalValue):
   }
   return { bounds, limited };
 }
+
+/** Closest XY centerline point and horizontal chainage; no connectivity is inferred. */
+export function projectPolyline(point: Vec3, points: readonly Vec3[]): { position: Vec3; distanceM: number; offsetM: number } | null {
+  let best: { position: Vec3; distanceM: number; offsetM: number } | null = null;
+  let chainage = 0;
+  for (let index = 1; index < points.length; index++) {
+    const a = points[index - 1]!; const b = points[index]!;
+    const dx = b[0] - a[0]; const dy = b[1] - a[1]; const length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length === 0) continue;
+    const t = Math.max(0, Math.min(1, ((point[0] - a[0]) * (dx / length) + (point[1] - a[1]) * (dy / length)) / length));
+    const position: Vec3 = [a[0] + t * dx, a[1] + t * dy, a[2] + t * (b[2] - a[2])];
+    const offsetM = Math.hypot(point[0] - position[0], point[1] - position[1]);
+    if (Number.isFinite(offsetM) && (!best || offsetM < best.offsetM)) best = { position, distanceM: chainage + t * length, offsetM };
+    chainage += length;
+  }
+  return best;
+}

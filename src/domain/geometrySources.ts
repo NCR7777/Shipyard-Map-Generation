@@ -9,6 +9,54 @@ const SOURCE: Source = {
 };
 const FIELDS = { nodes: 'position', roads: 'shapePoints', facilities: 'boundary', zones: 'boundary', junctions: 'boundary' } as const;
 
+const TOPOLOGY_SOURCE: Source = {
+  name: '编辑器显式拓扑修改', category: 'design_assumption',
+  description: '用户确认的节点、道路细分及连接引用修改；细分几何沿用原道路来源，新增通行声明为设计假设，未经现场核验。',
+};
+const TOPOLOGY_FIELDS = {
+  nodes: ['position'], roads: ['fromNodeId', 'toNodeId', 'shapePoints'],
+  junctions: ['nodeIds', 'model', 'resourceIds'], movements: ['junctionId', 'incomingArc', 'outgoingArc', 'allowed', 'resourceIds'],
+  accessPoints: ['nodeId'], servicePoints: ['nodeId', 'arrival'], resources: ['appliesTo'],
+} as const;
+
+function sourceId(map: YardMap, preferred: string, source: Source): string {
+  const used = new Set((['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const).flatMap(kind => Object.keys(map[kind])));
+  for (const slot of inspectPlanning(map).slots) used.add(slot.id);
+  let id = preferred, suffix = 0;
+  while (used.has(id) && !sameValue(map.sources[id], source)) id = preferred + '_' + ++suffix;
+  return id;
+}
+
+/** Only called on a candidate topology transaction; callers retain the original map on failure. */
+export function recordTopologySources(before: YardMap, after: YardMap, refs: readonly CommandAffectedRef[]): CommandAffectedRef[] {
+  const changes: { provenance: Provenance; field: string }[] = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    if (!(ref.kind in TOPOLOGY_FIELDS) || seen.has(ref.kind + '/' + ref.id)) continue;
+    seen.add(ref.kind + '/' + ref.id);
+    const kind = ref.kind as keyof typeof TOPOLOGY_FIELDS;
+    const previous = before[kind][ref.id], next = after[kind][ref.id];
+    if (!next) continue;
+    for (const field of TOPOLOGY_FIELDS[kind]) {
+      const value = (next as unknown as Record<string, unknown>)[field];
+      if (value !== undefined && !sameValue(previous && (previous as unknown as Record<string, unknown>)[field], value)) {
+        changes.push({ provenance: next.provenance, field });
+      }
+    }
+  }
+  if (!changes.length) return [];
+  const id = sourceId(after, 'source_editor_topology', TOPOLOGY_SOURCE);
+  const added = !Object.hasOwn(after.sources, id);
+  if (added) after.sources[id] = { ...TOPOLOGY_SOURCE };
+  for (const { provenance, field } of changes) {
+    const previousSource = provenance.fieldSources?.[field];
+    provenance.sourceRefs = [...new Set([...(provenance.sourceRefs ?? []), ...(previousSource ? [previousSource] : []), id])];
+    provenance.fieldSources = { ...provenance.fieldSources, [field]: id };
+  }
+  return added ? [{ kind: 'sources', id }] : [];
+}
+
+
 /** Field-level attribution for changed declared geometry, never for derived road lengths. */
 export function recordGeometrySources(before: YardMap, after: YardMap, refs: readonly CommandAffectedRef[], copiedIds: Readonly<Record<string, string>> = {}): CommandAffectedRef[] {
   const changes: { provenance: Provenance; field: string }[] = [];
@@ -35,14 +83,12 @@ export function recordGeometrySources(before: YardMap, after: YardMap, refs: rea
     }
   }
   if (!changes.length) return copiedRefs;
-  const used = new Set((['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const).flatMap(kind => Object.keys(after[kind])));
-  for (const slot of inspectPlanning(after).slots) used.add(slot.id);
-  let id = 'source_editor_geometry', suffix = 0;
-  while (used.has(id) && !sameValue(after.sources[id], SOURCE)) id = 'source_editor_geometry_' + ++suffix;
+  const id = sourceId(after, 'source_editor_geometry', SOURCE);
   const added = !Object.hasOwn(after.sources, id);
   if (added) after.sources[id] = { ...SOURCE };
   for (const { provenance, field } of changes) {
-    provenance.sourceRefs = [...new Set([...(provenance.sourceRefs ?? []), id])];
+    const previousSource = provenance.fieldSources?.[field];
+    provenance.sourceRefs = [...new Set([...(provenance.sourceRefs ?? []), ...(previousSource ? [previousSource] : []), id])];
     provenance.fieldSources = { ...provenance.fieldSources, [field]: id };
   }
   if (added) copiedRefs.push({ kind: 'sources', id });

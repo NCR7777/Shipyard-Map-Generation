@@ -1,3 +1,4 @@
+import { enumerateConnectionTurns, enumerateMergeTurns, type TopologyCommand } from '../domain/topologyEditing';
 import { sameValue } from '../domain/value';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import type { DiagnosticReport } from '../validation/diagnostics';
@@ -12,12 +13,12 @@ import { newMap, newNode, newRoad, newFacility, newZone } from '../domain/factor
 import { contentHash, serializeMap } from '../domain/serialization';
 import { mapCapabilities } from '../domain/capabilities';
 import { SELECTION_KINDS as selectionKinds, closureSelection, normalizeSelection, selectionImpact, commandSupport, type CommandAffectedRef, type FullSelection, type MapCommand, type Selection } from '../domain/commands';
-import type { Facility, Zone, Polygon, Issue, Vec3 } from '../domain/model';
+import type { Facility, Zone, Polygon, Issue, Vec3, ArcRef, YardMap } from '../domain/model';
 import { createSession, editSession, acknowledgeMap, prepareImport, redoSession, resolveImport, undoSession, type EditorSession, type ImportProposal } from '../editor/session';
 import { toSceneSnapshot } from '../compiler/scene';
 import { validateMap } from '../validation/validate';
 import { downloadMap, readJsonFile } from '../adapters/files';
-import { MapCanvas, type DraftRoad, type Tool } from '../renderers/2d/MapCanvas';
+import { MapCanvas, type DraftRoad, type Tool, type TopologyTarget } from '../renderers/2d/MapCanvas';
 import { fitCamera } from '../geometry/coordinates';
 import { PropertyPanel, type RoadShapePreview } from './PropertyPanel';
 import { Modal } from './Modal';
@@ -78,6 +79,18 @@ export function App() {
   const [splitDialog, setSplitDialog] = useState(false);
   const [splitDistance, setSplitDistance] = useState('');
   const [splitExistingNode, setSplitExistingNode] = useState('');
+  const [splitPicking, setSplitPicking] = useState(false);
+  const [topologySnap, setTopologySnap] = useState(false);
+  const [deleteTopology, setDeleteTopology] = useState(false);
+  const [operationToken, setOperationToken] = useState(0);
+  const operationMap = useRef<YardMap>(session.map);
+  const [topologyDraft, setTopologyDraft] = useState<{ command: TopologyCommand; token: number; baseMap: YardMap; turns: { id: string; incomingArc: ArcRef; outgoingArc: ArcRef }[] } | null>(null);
+  useEffect(() => {
+    if (!splitPicking) return;
+    const cancelPick = () => { setSplitPicking(false); setSplitDialog(false); };
+    window.addEventListener('blur', cancelPick);
+    return () => window.removeEventListener('blur', cancelPick);
+  }, [splitPicking]);
   const [mapName, setMapName] = useState(session.map.metadata.name);
   const [fileLoading, setFileLoading] = useState(false);
   const importSequence = useRef(0);
@@ -119,7 +132,7 @@ export function App() {
       updateSession({ ...createSession(recovery.map, true), changeToken: sessionRef.current.changeToken + 1 });
       setMapName(recovery.map.metadata.name); setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); setDraftRoad(null); setTool('select');
       setBoundaryEditMode('auto'); onBoundaryInteractionChange(false);
-      setPropertyDirty(false); setPolygonDraftDirty(false); setRecentDialog(false); setStorageConflictDialog(false); setNewDialog(false); setProposal(null); setOverwriteReady(null); setPointDraft(null); setLeaveIntent(null); setUpgradeDialog(false); setDraftResetToken(value => value + 1); setCopyDialog(false); setDeleteDialog(false); setRotateDialog(false); setSplitDialog(false); setSaveDialog(false); setOperationIssues([]); initializedCanvas.current = true;
+      setPropertyDirty(false); setPolygonDraftDirty(false); setRecentDialog(false); setStorageConflictDialog(false); setNewDialog(false); setProposal(null); setOverwriteReady(null); setPointDraft(null); setLeaveIntent(null); setUpgradeDialog(false); setDraftResetToken(value => value + 1); setCopyDialog(false); setDeleteDialog(false); setRotateDialog(false); setSplitDialog(false); setSplitPicking(false); setTopologyDraft(null); setTopologySnap(false); setSaveDialog(false); setOperationIssues([]); initializedCanvas.current = true;
       setCamera(recovery.editorState?.camera ?? { offsetX: 80, offsetY: 460, scale: 4 });
       setDrawingConfig({ ...(recovery.editorState?.drawing ?? DEFAULT_DRAWING_CONFIG) });
       if (!preserveNative.current) { setLocalState(local.snapshot()); setFileConflict(null); setLocalMessage(''); }
@@ -127,7 +140,7 @@ export function App() {
       setStatus(recovery.source === 'new' ? '新工程已打开；浏览器草稿将自动保存。' : '已恢复浏览器工程，地图经共同校验与派生路径重建。');
     },
   });
-  const unapplied = propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDraft !== null || copyDialog || rotateDialog || splitDialog;
+  const unapplied = propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDraft !== null || copyDialog || rotateDialog || splitDialog || splitPicking || topologyDraft !== null;
   const scene = useMemo(() => toSceneSnapshot(session.map), [session.map]);
   const saveGuard = useRef({ browserDirty: true, unapplied: false });
   saveGuard.current = { browserDirty: projects.editorDirty || projects.state.active?.draftHash !== scene.mapContentHash, unapplied: unapplied || boundaryEditing };
@@ -145,7 +158,7 @@ export function App() {
   const inspected = useMemo(() => scene.items.find(item => inspectionKeys.includes(item.key)), [scene.items, inspectionKeys]);
   const closure = useMemo(() => closureSelection(session.map, validSelection), [session.map, validSelection]);
   const moveSupport = useMemo(() => commandSupport(session.map, { type: 'translateSelection', selection: validSelection, delta: [0, 0, 0], facilityMovePolicy, zoneMovePolicy }), [session.map, validSelection, facilityMovePolicy, zoneMovePolicy]);
-  const impact = useMemo(() => moveSupport.impact ?? selectionImpact(session.map, emptySelection()), [moveSupport, session.map]);
+  const impact = useMemo(() => moveSupport.impact ?? selectionImpact(session.map, topologySnap && selectedCount === 1 && validSelection.nodes.length === 1 ? validSelection : emptySelection()), [moveSupport, session.map, topologySnap, selectedCount, validSelection]);
   const boundaryPermissions = useMemo(() => {
     const allowed = new Set<string>();
     for (const kind of ['facilities', 'zones'] as const) for (const id of validSelection[kind]) {
@@ -223,7 +236,7 @@ export function App() {
     setLeaveIntent(null); setPropertyDirty(false); setMapName(sessionRef.current.map.metadata.name);
     setFormEpoch(value => value + 1); setDraftResetToken(value => value + 1); setRoadShapePreview(null);
     setDraftRoad(null); setPolygonDraftDirty(false); setPointDraft(null);
-    setCopyDialog(false); setRotateDialog(false); setSplitDialog(false);
+    setCopyDialog(false); setDeleteDialog(false); setRotateDialog(false); setSplitDialog(false); setSplitPicking(false); setTopologyDraft(null);
     setStatus('已明确丢弃未应用输入，继续所选操作。'); intent.action();
   }
   function choose(kind: SelectionKind, id: string, additive: boolean) {
@@ -390,7 +403,43 @@ export function App() {
     if (!rotateRadians.trim() || !Number.isFinite(Number(rotateRadians)) || rotatePivot.some(value => !value.trim() || !Number.isFinite(Number(value)))) { setOperationIssues([localIssue('INVALID_ROTATION', '旋转角度为有限弧度，旋转中心为有限 XYZ 米制坐标。')]); return; }
     if (apply({ type: 'rotateSelection', selection: validSelection, pivot: rotatePivot.map(Number) as Vec3, angleRad: Number(rotateRadians), facilityMovePolicy, zoneMovePolicy })) setRotateDialog(false);
   }
+  function currentOperation(token: number, baseMap: YardMap): boolean {
+    if (token === sessionRef.current.changeToken && baseMap === sessionRef.current.map) return true;
+    setOperationIssues([localIssue('STALE_TOPOLOGY_PREVIEW', '确认期间地图已变化，请取消并重新预览操作。')]); return false;
+  }
+  function beginSplit() {
+    requestLeave('拆分道路', () => { setOperationIssues([]); setSplitDistance(''); setSplitExistingNode(''); setOperationToken(sessionRef.current.changeToken); operationMap.current = sessionRef.current.map; setSplitDialog(true); });
+  }
+  function openTopology(command: TopologyCommand, token = sessionRef.current.changeToken, baseMap = sessionRef.current.map) {
+    if (!currentOperation(token, baseMap)) return;
+    requestLeave('预览拓扑编辑', () => {
+      if (!currentOperation(token, baseMap)) return;
+      setOperationIssues([]);
+      try {
+        const turns = (command.type === 'connectNodeToRoad' ? enumerateConnectionTurns(sessionRef.current.map, command) : command.type === 'mergeNodes' ? enumerateMergeTurns(sessionRef.current.map, command) : []).map(turn => ({ id: uid('movement'), ...turn }));
+        setTopologyDraft({ command, token, baseMap, turns });
+      } catch (error) { setOperationIssues([localIssue('TOPOLOGY_PREVIEW_FAILED', error instanceof Error ? error.message : String(error))]); }
+    });
+  }
+  function topologyDrop(nodeId: string, target: TopologyTarget, token: number) {
+    if (drawingRef.current.hiddenTypes.includes(target.kind) || drawingRef.current.lockedTypes.includes(target.kind)) {
+      setOperationIssues([localIssue('LOCKED_TOPOLOGY_TARGET', '拓扑候选已隐藏或锁定，请重新选择。')]); return;
+    }
+    openTopology(target.kind === 'nodes' ? { type: 'mergeNodes', sourceNodeId: nodeId, targetNodeId: target.id }
+      : { type: 'connectNodeToRoad', nodeId, roadId: target.id, distanceM: target.distanceM,
+        newRoadIds: [uid('road'), uid('road')], junctionId: Object.keys(sessionRef.current.map.junctions).find(id => { const nodes = sessionRef.current.map.junctions[id]!.nodeIds; return nodes.length === 1 && nodes[0] === nodeId; }) ?? uid('junction'), approvedMovements: [] }, token);
+  }
+  function confirmTopology() {
+    if (!topologyDraft || !currentOperation(topologyDraft.token, topologyDraft.baseMap)) return;
+    const command = topologyDraft.command;
+    if (apply(command)) {
+      setTopologyDraft(null); setSelection(command.type === 'mergeNodes' ? { ...emptySelection(), nodes: [command.targetNodeId] }
+        : command.type === 'connectNodeToRoad' ? { ...emptySelection(), nodes: [command.nodeId] }
+        : command.type === 'suppressDegree2Node' ? { ...emptySelection(), roads: [command.retainedRoadId] } : emptySelection());
+    }
+  }
   function splitRoad() {
+    if (!currentOperation(operationToken, operationMap.current)) return;
     const id = validSelection.roads[0];
     if (!id || !splitDistance.trim() || !Number.isFinite(Number(splitDistance))) { setOperationIssues([localIssue('INVALID_SPLIT_DISTANCE', '请明确输入自道路起点量起的内部切分距离（m）。')]); return; }
     const newRoadIds: [string, string] = [uid('road'), uid('road')];
@@ -398,13 +447,14 @@ export function App() {
     if (apply({ type: 'splitRoad', id, distanceM: Number(splitDistance), nodeId, existingNode: !!splitExistingNode, newRoadIds })) { setSelection({ ...emptySelection(), nodes: [nodeId], roads: newRoadIds }); setSplitDialog(false); }
   }
   function confirmDelete() {
-    if (apply({ type: 'deleteSelection', selection: validSelection, facilityPolicy: deleteMembers ? 'withAssociatedPoints' : 'reject', zonePolicy: deleteMembers ? 'withAssociatedPoints' : 'reject', orphanNodes: deleteUnusedNodes ? 'deleteUnused' : 'keep' })) { setSelection(emptySelection()); setDeleteDialog(false); }
+    if (!currentOperation(operationToken, operationMap.current)) return;
+    if (apply({ type: 'deleteSelection', selection: validSelection, topologyPolicy: deleteTopology ? 'cascade' : 'reject', facilityPolicy: deleteMembers ? 'withAssociatedPoints' : 'reject', zonePolicy: deleteMembers ? 'withAssociatedPoints' : 'reject', orphanNodes: deleteUnusedNodes ? 'deleteUnused' : 'keep' })) { setSelection(emptySelection()); setDeleteDialog(false); }
   }
   function remove() {
     if (selectedCount === 0 || readonly) return;
     requestLeave('删除所选对象', () => {
-      if (validSelection.facilities.length || validSelection.zones.length || validSelection.accessPoints.length || validSelection.servicePoints.length) { setDeleteMembers(false); setDeleteUnusedNodes(false); setOperationIssues([]); setDeleteDialog(true); return; }
-      if (apply({ type: 'deleteSelection', selection: validSelection })) setSelection(emptySelection());
+      setDeleteMembers(false); setDeleteUnusedNodes(false); setDeleteTopology(false);
+      setOperationIssues([]); setOperationToken(sessionRef.current.changeToken); operationMap.current = sessionRef.current.map; setDeleteDialog(true);
     });
   }
   function fit() {
@@ -473,8 +523,19 @@ export function App() {
       setStatus(hiddenTypes.includes(item.kind) ? '已定位；该类型仍隐藏，可在基础图层中显示。' : '已定位 ' + item.id);
     });
   }
+  function explainDrag(kind: keyof Selection, id: string) {
+    const selected = { ...emptySelection(), [kind]: [id] };
+    const support = commandSupport(sessionRef.current.map, { type: 'translateSelection', selection: selected, delta: [0, 0, 0], facilityMovePolicy, zoneMovePolicy });
+    if (rejectLocked(support.affectedRefs.length ? support.affectedRefs : [{ kind, id }])) return;
+    setOperationIssues(support.issues.length ? support.issues : [localIssue('DRAG_SELECTION_REQUIRED', '请先单独选择此节点；道路端点移动仍受依赖保护。')]);
+    setStatus('拖动未执行，地图和历史保持不变。');
+  }
   function canDrag(kind: keyof Selection, id: string) {
     if (lockedTypes.includes(kind as SceneKind) || inspectionKeys.length) return false;
+    if (topologySnap && kind === 'nodes' && selectedCount === 1 && validSelection.nodes[0] === id) {
+      // Preview only; release still requires either a confirmed topology command or ordinary move support.
+      return !impact.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind));
+    }
     if (!hasLinkedContents) return true;
     return validSelection[kind]?.includes(id) === true && moveSupport.allowed && !moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind));
   }
@@ -499,10 +560,11 @@ export function App() {
         else if (modifier && ['s', 'z', 'y'].includes(event.key.toLowerCase())) event.preventDefault();
         return;
       }
+      if (splitPicking && event.key === 'Escape') { event.preventDefault(); setSplitPicking(false); setSplitDialog(false); return; }
       if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); if (!leaveIntent && !upgradeDialog) saveProject(); return; }
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || pointDraft || deleteDialog || rotateDialog || splitDialog || leaveIntent || upgradeDialog) {
+      if (proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || pointDraft || deleteDialog || rotateDialog || splitDialog || topologyDraft || leaveIntent || upgradeDialog) {
         if ((modifier && ['z', 'y'].includes(event.key.toLowerCase())) || ['Delete', 'Backspace'].includes(event.key)) event.preventDefault();
         return;
       }
@@ -515,6 +577,10 @@ export function App() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [handleKey]);
+  const topologyPreview = useMemo(() => topologyDraft ? commandSupport(session.map, topologyDraft.command) : null, [session.map, topologyDraft]);
+  const deletePreview = useMemo(() => deleteDialog ? commandSupport(session.map, { type: 'deleteSelection', selection: validSelection,
+    topologyPolicy: deleteTopology ? 'cascade' : 'reject', facilityPolicy: deleteMembers ? 'withAssociatedPoints' : 'reject', zonePolicy: deleteMembers ? 'withAssociatedPoints' : 'reject', orphanNodes: deleteUnusedNodes ? 'deleteUnused' : 'keep' }) : null,
+    [session.map, validSelection, deleteDialog, deleteTopology, deleteMembers, deleteUnusedNodes]);
   const selectedNodeId = selectedCount === 1 && validSelection.nodes.length === 1 ? validSelection.nodes[0] : undefined;
   const selectedRoadId = selectedCount === 1 && validSelection.roads.length === 1 ? validSelection.roads[0] : undefined;
   const selected = useMemo(() => selectedNodeId ? { kind: 'node' as const, id: selectedNodeId, value: session.map.nodes[selectedNodeId]! }
@@ -575,6 +641,7 @@ export function App() {
           <label className="field-label">区域类型<select aria-label="新建区域类型" value={zoneKind} disabled={readonly} onChange={event => updateDrawingConfig({ zoneKind: event.target.value as Zone['kind'] })}>{Object.entries({ work: '作业', buffer: '缓冲', waiting: '等待', water: '水域', obstacle: '障碍', forbidden: '禁入', drivable: '可行驶' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
           <div className="tool-grid"><button onClick={() => openPointDialog('accessPoints')} disabled={readonly}>添加入口</button><button onClick={() => openPointDialog('servicePoints')} disabled={readonly}>添加服务点</button></div>
           <label className="field-label">网格吸附<select aria-label="网格吸附" disabled={!projects.ready || projects.transitioning} value={snapGrid} onChange={event => updateDrawingConfig({ snapGrid: Number(event.target.value) as DrawingConfig['snapGrid'] })}><option value="0">关闭</option><option value="1">1 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
+          <label className="check-field"><input type="checkbox" aria-label="拓扑吸附" checked={topologySnap} disabled={readonly} onChange={event => { const enabled = event.target.checked; requestLeave('切换拓扑吸附', () => { setTopologySnap(enabled); setDraftResetToken(value => value + 1); }); }}/>拓扑吸附（释放后明确确认）</label>
           <label className="check-field"><input type="checkbox" aria-label="节点吸附" disabled={!projects.ready || projects.transitioning} checked={snapNodes} onChange={event => updateDrawingConfig({ snapNodes: event.target.checked })} />节点吸附（坐标，不自动接路）</label>
           <label className="field-label">设施移动策略<select aria-label="设施移动策略" disabled={!projects.ready || projects.transitioning} value={facilityMovePolicy} onChange={event => updateDrawingConfig({ facilityMovePolicy: event.target.value as typeof facilityMovePolicy })}><option value="boundaryOnly">仅移动边界，关联点保持</option><option value="withAssociatedNodes">边界和关联节点一起移动</option><option value="withStaticContents">边界、槽位及内部道路联动</option></select></label>
           <label className="field-label">区域移动策略<select aria-label="区域移动策略" disabled={!projects.ready || projects.transitioning} value={zoneMovePolicy} onChange={event => updateDrawingConfig({ zoneMovePolicy: event.target.value as typeof zoneMovePolicy })}><option value="boundaryOnly">仅移动边界，服务点保持</option><option value="withAssociatedNodes">边界和服务节点一起移动</option><option value="withStaticContents">边界、槽位及内部道路联动</option></select></label>
@@ -594,14 +661,19 @@ export function App() {
         <div className="left-footer"><b>数据独立于画布</b><p>JSON 保存全部语义几何。平移和缩放仅改变视图。</p><code>{session.map.mapId}</code></div>
       </aside>
       <section className="center-panel">
-        <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => requestLeave('复制所选对象', () => { setOperationIssues([]); setCopyRetainFacility(false); setCopyDialog(true); })} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button><button onClick={() => requestLeave('旋转所选对象', () => { setOperationIssues([]); setRotateDialog(true); })} disabled={readonly || selectedCount === 0}>旋转</button><button onClick={() => requestLeave('拆分道路', () => { setOperationIssues([]); setSplitDistance(''); setSplitExistingNode(''); setSplitDialog(true); })} disabled={readonly || selectedCount !== 1 || validSelection.roads.length !== 1}>拆分道路</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
+        <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => requestLeave('复制所选对象', () => { setOperationIssues([]); setCopyRetainFacility(false); setCopyDialog(true); })} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button><button onClick={() => requestLeave('旋转所选对象', () => { setOperationIssues([]); setRotateDialog(true); })} disabled={readonly || selectedCount === 0}>旋转</button><button onClick={beginSplit} disabled={readonly || selectedCount !== 1 || validSelection.roads.length !== 1}>拆分道路</button><button disabled={readonly || selectedCount !== 2 || validSelection.nodes.length !== 2} onClick={() => openTopology({ type: 'mergeNodes', sourceNodeId: validSelection.nodes[0]!, targetNodeId: validSelection.nodes[1]! })}>合并节点</button><button disabled={readonly || selectedCount !== 1 || validSelection.nodes.length !== 1} onClick={() => {
+          const nodeId = validSelection.nodes[0]!; const roadId = Object.keys(session.map.roads).find(id => session.map.roads[id]!.fromNodeId === nodeId || session.map.roads[id]!.toNodeId === nodeId);
+          if (roadId) openTopology({ type: 'suppressDegree2Node', nodeId, retainedRoadId: roadId });
+          else { setOperationIssues([localIssue('DEGREE_TWO_REQUIRED', '此节点没有两条关联道路，不能保持道路连通删除。')]); }
+        }}>保持道路连通删除节点</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
         {session.map.coordinateFrame.geographicAnchor && <div className="tool-hint" data-testid="fixed-coordinate-frame">地理锚点已锁定；可执行受支持的本地米制编辑。整个 coordinateFrame 保持固定；地理转换、重新配准与现实准确性未核验，其他保护仍生效。</div>}
         {domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含尚未支持的行为、资源或底图等数据；保留完整 JSON，编辑已锁定。</div>}
         <div className="tool-hint">{hint}</div>
         {Object.keys(session.map.resources).length > 0 && <div className="tool-hint" data-testid="static-edit-limits">仅静态草稿编辑；联动可能改变接入段转角。联动后请重新运行只读诊断；物理通行和原外部结果未重新验证，旧结果绑定旧地图摘要。</div>}
-        <MapCanvas routePreview={shownPath ? { mapContentHash: scene.mapContentHash, points: shownPath.points, confirmed: !!currentPath?.confirmed } : null} diagnosticPosition={issueMarker?.hash === scene.mapContentHash ? issueMarker.position : null} hiddenTypes={hiddenTypes} labelMode={labelMode} focusKey={focusKey} describeItem={describeItem} inspectKey={inspected?.key} onInspect={item => chooseItem(item)} canDrag={canDrag}
+        <MapCanvas topologySnap={topologySnap} lockedTypes={lockedTypes} onTopologyDrop={topologyDrop} onDragRejected={explainDrag}
+          splitPickRoadId={splitPicking ? validSelection.roads[0] : undefined} onSplitPick={distance => { if (currentOperation(operationToken, operationMap.current)) { setSplitDistance(String(distance)); setSplitPicking(false); setSplitDialog(true); } }} routePreview={shownPath ? { mapContentHash: scene.mapContentHash, points: shownPath.points, confirmed: !!currentPath?.confirmed } : null} diagnosticPosition={issueMarker?.hash === scene.mapContentHash ? issueMarker.position : null} hiddenTypes={hiddenTypes} labelMode={labelMode} focusKey={focusKey} describeItem={describeItem} inspectKey={inspected?.key} onInspect={item => chooseItem(item)} canDrag={canDrag}
           canEditBoundary={(kind, id) => boundaryPermissions.has(kind + '/' + id)}
-          movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} frameCamera={frameCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!(frameConfirmation || proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || (!pointDraft?.canvasMode && pointDraft) || deleteDialog || rotateDialog || splitDialog || leaveIntent || upgradeDialog)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => { setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); })} draftRoad={draftRoad}
+          movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} frameCamera={frameCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!(frameConfirmation || proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || (!pointDraft?.canvasMode && pointDraft) || deleteDialog || rotateDialog || splitDialog || topologyDraft || leaveIntent || upgradeDialog)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => { setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); })} draftRoad={draftRoad}
           onAddNode={point => requestLeave('绘制节点', () => { const id = uid('node'); if (apply({ type: 'addNode', id, node: newNode(point, '节点 ' + (scene.nodes.length + 1)) })) setSelection({ nodes: [id], roads: [] }); })}
           onRoadNode={id => requestLeave('绘制道路', () => {
             if (!draftRoad) { setDraftRoad({ fromNodeId: id, points: [] }); return; }
@@ -617,6 +689,13 @@ export function App() {
         <IssuePanel issues={issues} diagnosed={!!(currentDiagnostics || currentPath)} onLocate={locateIssue}/>
       </section>
       <aside className="right-panel"><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>
+        {selectedNodeId && (!moveSupport.allowed || lockedTypes.includes('nodes') || moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind))) && <div className="field-note" data-testid="node-edit-guidance">当前节点拖动受依赖或图层锁定保护。{moveSupport.issues.map((issue, index) => <span key={index}>{issue.code} · {issue.jsonPath} · {issue.message}</span>)}{moveSupport.affectedRefs.filter(ref => lockedTypes.includes(ref.kind as SceneKind)).map(ref => <span key={ref.kind + '/' + ref.id}>LOCKED_DEPENDENCY · {ref.kind}/{ref.id}</span>)}</div>}
+        {selectedRoadId && <div className="field-note" data-testid="road-edit-guidance">道路拖动通过节点或折点完成；不会因外观相交建立连接。
+          {(['fromNodeId', 'toNodeId'] as const).map((field, index) => <button key={field} disabled={hiddenTypes.includes('nodes')} onClick={() => choose('nodes', session.map.roads[selectedRoadId]![field], false)}>选择{index === 0 ? '起点' : '终点'}节点</button>)}
+          {hiddenTypes.includes('nodes') && <span>节点类型已隐藏，请先显示节点再选择端点。</span>}
+          {moveSupport.affectedRefs.filter(ref => lockedTypes.includes(ref.kind as SceneKind)).map((ref, index) => <span key={index}>LOCKED_DEPENDENCY · {ref.kind}/{ref.id}</span>)}
+          {!moveSupport.allowed && moveSupport.issues.map((issue, index) => <span key={index}>{issue.code} · {issue.jsonPath} · {issue.message}</span>)}
+        </div>}
         <StableDiagnosticsPanel map={session.map} mapContentHash={scene.mapContentHash} disabled={operationsBlocked()} diagnostics={diagnostics} route={pathPreview} onDiagnostics={setDiagnostics} onRoute={setPathPreview}/>
 {inspected ? <StableObjectInspector item={inspected} map={session.map} onLocate={inspectLocate}/> : <StablePropertyPanel mapContentHash={scene.mapContentHash} onRoadPreviewChange={onRoadPreviewChange} boundaryEditMode={boundaryEditMode} onBoundaryModeChange={propertyBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={propertyZonePolicy} onMovePolicyChange={propertyFacilityPolicy} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || selectionKinds.some(kind => validSelection[kind].length > 0 && lockedTypes.includes(kind)) || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={propertyApply} />}
         {(capabilities.reasons.length > 0 || capabilities.unrendered.length > 0) && <div className="capability-box"><h3>保留但未支持</h3>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></div>}
@@ -637,11 +716,13 @@ export function App() {
     {leaveIntent && <Modal title="未应用输入保护" onCancel={() => setLeaveIntent(null)}><p>即将{leaveIntent.label}。当前属性或绘制输入尚未应用到地图，也未包含在自动保存或 JSON 导出中。</p><p>取消会保留当前对象、工具和输入；明确丢弃后才继续。</p><div className="dialog-actions"><button data-cancel onClick={() => setLeaveIntent(null)}>取消，保留输入</button><button className="danger-button" onClick={discardAndContinue}>丢弃未应用输入并继续</button></div></Modal>}
     {upgradeDialog && <Modal title="显式升级地图契约" onCancel={() => { if (!schemaUpgrading) setUpgradeDialog(false); }}><p>Schema 0.1.0 → 0.2.0；revision {session.map.revision} → {session.map.revision + 1}。其他声明数据、ID、来源和扩展保持原值，不自动补充到达语义。</p><p>先在浏览器中保留原版备份，再提交一个可撤销升级事务。解除原文件关联，升级版本请另存为新文件。浏览器备份可能被清理，请同时保留原 JSON 文件。</p>{operationIssues.map((issue, i) => <p key={i} className="inline-error">{issue.code}：{issue.message}</p>)}<div className="dialog-actions"><button data-cancel disabled={schemaUpgrading} onClick={() => setUpgradeDialog(false)}>取消</button><button onClick={exportCurrent} disabled={schemaUpgrading}>导出升级前原图</button><button className="primary-button" disabled={schemaUpgrading} onClick={() => void upgradeSchema()}>{schemaUpgrading ? '备份中…' : '保留原图并升级'}</button></div></Modal>}
     {deleteDialog && <Modal title="删除空间对象" onCancel={() => setDeleteDialog(false)}>
+      {(validSelection.nodes.length > 0 || validSelection.roads.length > 0) && <label className="check-field"><input type="checkbox" aria-label="允许删除关联道路和转向" checked={deleteTopology} onChange={event => setDeleteTopology(event.target.checked)}/>允许删除关联道路、转向及已空的纯引用路口；保留服务点、槽位和资源及容量，仅清理失效的资源作用引用</label>}
       <p>选中 {selectedCount} 个对象。删除有依赖对象时会拒绝整个事务，当前地图保持不变。</p>
       <label className="check-field"><input type="checkbox" checked={deleteMembers} onChange={event => setDeleteMembers(event.target.checked)} />一并删除设施或区域成员入口和服务点</label>
       <label className="check-field"><input type="checkbox" checked={deleteUnusedNodes} onChange={event => setDeleteUnusedNodes(event.target.checked)} />清理成员点不再使用的节点</label>
       <p className="field-note">共享道路仍使用的节点会保留。若显式选中的节点仍被未选对象引用，操作将被拒绝。</p>
       {operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map((issue, i) => <p key={i}>{issue.code} · {issue.jsonPath}：{issue.message}</p>)}</div>}
+      <div data-testid="delete-impact"><strong>影响对象</strong>{deletePreview?.affectedRefs.map((ref, index) => <p key={ref.kind + '/' + ref.id + '/' + index}>{ref.kind}/{ref.id}</p>)}{deletePreview?.issues.map((issue, index) => <p key={index}>{issue.code} · {issue.jsonPath} · {issue.message}</p>)}</div>
       <div className="dialog-actions"><button data-cancel onClick={() => setDeleteDialog(false)}>取消</button><button className="danger-button" onClick={confirmDelete}>确认删除</button></div>
     </Modal>}
     {rotateDialog && <Modal title="旋转选中对象" onCancel={() => setRotateDialog(false)}>
@@ -652,8 +733,29 @@ export function App() {
       {operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map((issue, i) => <p key={i}>{issue.code}：{issue.message}</p>)}</div>}
       <div className="dialog-actions"><button data-cancel onClick={() => setRotateDialog(false)}>取消</button><button className="primary-button" onClick={rotate}>确认旋转</button></div>
     </Modal>}
+    {topologyDraft && <Modal title={topologyDraft.command.type === 'mergeNodes' ? '合并节点' : topologyDraft.command.type === 'connectNodeToRoad' ? '确认连接道路' : '保持道路连通删除节点'} onCancel={() => setTopologyDraft(null)}>
+      <p>这是一次明确的拓扑编辑。取消保持原地图与历史；没有维护规则的依赖将拒绝整笔操作。</p>
+      {topologyDraft.command.type === 'mergeNodes' && <p>移除节点 {topologyDraft.command.sourceNodeId}，引用重连至保留节点 {topologyDraft.command.targetNodeId} 的原位置。不会自动移除平行道路。</p>}
+      {topologyDraft.command.type === 'suppressDegree2Node' && <p>移除节点 {topologyDraft.command.nodeId}，拼接其两条道路并保留道路 {topologyDraft.command.retainedRoadId} 的 ID；原节点位置保留为折点，不把曲线路径强行拉直。</p>}
+      {topologyDraft.command.type === 'mergeNodes' && <label className="field-label">保留节点<select aria-label="保留节点" value={topologyDraft.command.targetNodeId} onChange={event => { const command = topologyDraft.command; if (command.type === 'mergeNodes' && event.target.value !== command.targetNodeId && currentOperation(topologyDraft.token, topologyDraft.baseMap)) {
+          const next = { ...command, sourceNodeId: command.targetNodeId, targetNodeId: command.sourceNodeId, approvedMovements: [] };
+          setTopologyDraft({ ...topologyDraft, command: next, turns: enumerateMergeTurns(sessionRef.current.map, next).map(turn => ({ id: uid('movement'), ...turn })) });
+        } }}>
+        {[topologyDraft.command.sourceNodeId, topologyDraft.command.targetNodeId].map(id => <option key={id} value={id}>{session.map.nodes[id]?.name} · {id}</option>)}
+      </select></label>}
+      {topologyDraft.command.type === 'suppressDegree2Node' && <label className="field-label">保留道路<select aria-label="保留道路" value={topologyDraft.command.retainedRoadId} onChange={event => { const command = topologyDraft.command; if (command.type === 'suppressDegree2Node') setTopologyDraft({ ...topologyDraft, command: { ...command, retainedRoadId: event.target.value } }); }}>{Object.entries(session.map.roads).filter(([, road]) => topologyDraft.command.type === 'suppressDegree2Node' && (road.fromNodeId === topologyDraft.command.nodeId || road.toNodeId === topologyDraft.command.nodeId)).map(([id, road]) => <option key={id} value={id}>{road.name} · {id}</option>)}</select></label>}
+      {topologyDraft.command.type === 'connectNodeToRoad' && <p>节点 {topologyDraft.command.nodeId} → 道路 {topologyDraft.command.roadId}，里程 {topologyDraft.command.distanceM} m。未明确批准的转向不新增许可。</p>}
+      {(topologyDraft.command.type === 'connectNodeToRoad' || topologyDraft.command.type === 'mergeNodes') && topologyDraft.turns.length > 0 && <section>
+        <label className="check-field"><input type="checkbox" aria-label="允许新增方向兼容转向" checked={(topologyDraft.command.approvedMovements?.length ?? 0) > 0} onChange={event => { const command = topologyDraft.command; if (command.type === 'connectNodeToRoad' || command.type === 'mergeNodes') setTopologyDraft({ ...topologyDraft, command: { ...command, approvedMovements: event.target.checked ? topologyDraft.turns : [] } }); }}/>明确允许下列新增方向兼容转向</label>
+        <ul>{topologyDraft.turns.map(turn => <li key={turn.id}>{turn.incomingArc.roadId}/{turn.incomingArc.direction} → {turn.outgoingArc.roadId}/{turn.outgoingArc.direction}</li>)}</ul>
+      </section>}
+      <div data-testid="topology-impact"><strong>影响对象</strong>{topologyPreview?.affectedRefs.map((ref, index) => <p key={ref.kind + '/' + ref.id + '/' + index}>{ref.kind}/{ref.id}</p>)}{topologyPreview?.issues.map((issue, index) => <p key={index}>{issue.code} · {issue.jsonPath} · {issue.message}</p>)}</div>
+      {operationIssues.map((issue, index) => <p role="alert" className="inline-error" key={index}>{issue.code} · {issue.jsonPath} · {issue.message}</p>)}
+      <div className="dialog-actions"><button data-cancel onClick={() => setTopologyDraft(null)}>取消</button><button className="primary-button" onClick={confirmTopology}>确认拓扑编辑</button></div>
+    </Modal>}
     {splitDialog && <Modal title="拆分道路" onCancel={() => setSplitDialog(false)}>
       <p>明确在水平弧长位置插入节点，把原道路替换为两条新道路并记录 ID 映射。相交或节点吸附不会自动执行此操作。</p>
+      <button disabled={lockedTypes.includes('roads') || hiddenTypes.includes('roads') || (!showRoadBands && !showRoadCenterlines)} onClick={() => { setSplitDialog(false); setSplitPicking(true); }}>在画布上拾取切分点</button>
       <label className="field-label">距起点距离 (m)<input aria-label="距起点距离 (m)" type="number" step="any" value={splitDistance} onChange={event => setSplitDistance(event.target.value)} /></label>
       <label className="field-label">复用节点（可选）<select aria-label="复用节点（可选）" value={splitExistingNode} onChange={event => setSplitExistingNode(event.target.value)}><option value="">新建专用节点</option>{Object.entries(session.map.nodes).map(([id, value]) => <option key={id} value={id}>{value.name} · {id}</option>)}</select></label>
       <p className="field-note">复用节点须位于切分点 1e-6 m 内；方向、物理属性和来源保留。尚不支持安全重写的资源或扩展引用会阻止拆分。</p>

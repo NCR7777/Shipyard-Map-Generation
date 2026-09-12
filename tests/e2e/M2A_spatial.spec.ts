@@ -311,8 +311,13 @@ test('G03 facility copy remaps member nodes without copying external roads; expl
   await page.getByTestId('node-item-nA').click();
   const beforeFailedDelete = await page.getByTestId('map-hash').textContent();
   await page.getByRole('button', { name: '删除', exact: true }).click();
-  await expect(page.getByTestId('issue-panel')).toContainText('ENTITY_IN_USE');
+  const nodeDeletion = page.getByRole('dialog', { name: '删除空间对象', exact: true });
+  await expect(nodeDeletion.getByTestId('delete-impact')).toContainText('TOPOLOGY_DELETE_DEPENDENCIES');
+  await nodeDeletion.getByRole('button', { name: '确认删除', exact: true }).click();
+  await expect(nodeDeletion).toContainText('TOPOLOGY_DELETE_DEPENDENCIES');
   await expect(page.getByTestId('map-hash')).toHaveText(beforeFailedDelete!);
+  await nodeDeletion.getByRole('button', { name: '取消', exact: true }).click();
+  expect(await download(page, info, 'node-deletion-rejected.map.json')).toEqual(copied);
   await page.getByTestId('facilities-item-' + copyId).click();
   await page.getByRole('button', { name: '删除', exact: true }).click();
   const deleteModal = page.getByRole('dialog', { name: '删除空间对象', exact: true });

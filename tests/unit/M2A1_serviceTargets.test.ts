@@ -264,7 +264,7 @@ describe('M2A.1 zone membership commands and dependency closure (7)', () => {
   it('rejects undeclared cascade, preserves road-shared nodes, and cleans unused nodes only explicitly', () => {
     const map = zoneServiceFixture();
     reject(map, { type: 'deleteSelection', selection: selection({ zones: ['zA'] }) });
-    reject(map, { type: 'deleteSelection', selection: selection({ nodes: ['nZone'] }) }, 'ENTITY_IN_USE');
+    reject(map, { type: 'deleteSelection', selection: selection({ nodes: ['nZone'] }) }, 'TOPOLOGY_DELETE_DEPENDENCIES');
     const kept = execute(map, { type: 'deleteSelection', selection: selection({ zones: ['zA'] }), zonePolicy: 'withAssociatedPoints', orphanNodes: 'deleteUnused' }).map;
     expect(kept.zones.zA).toBeUndefined();
     expect(kept.servicePoints.sZone).toBeUndefined();
@@ -374,9 +374,16 @@ describe('M2A.1 declared access diagnostics, never route publication (9–12)', 
     expect(summary.status).toBe('blocked');
     expect(summary.issues.some(issue => issue.code === 'SERVICE_NO_INBOUND_ARC')).toBe(true);
   });
-  it('rejects split and delete while a service references the original internal road', () => {
+  it('splits and rewrites a complete internal path, but still rejects deleting its road', () => {
     const map = internalServiceFixture();
-    reject(map, { type: 'splitRoad', id: 'rInternal', distanceM: 10, nodeId: 'newSplit', newRoadIds: ['internalA', 'internalB'] });
+    const split = execute(map, { type: 'splitRoad', id: 'rInternal', distanceM: 10, nodeId: 'newSplit', newRoadIds: ['internalA', 'internalB'] }).map;
+    const arrival = split.servicePoints.sA!.arrival;
+    expect(arrival?.mode).toBe('explicit_internal');
+    if (arrival?.mode !== 'explicit_internal') throw new Error('Expected explicit internal path');
+    expect(arrival.internalPath).toEqual([{ roadId: 'internalA', direction: 'forward' }, { roadId: 'internalB', direction: 'forward' }]);
+    expect(inspectServiceConnection(split, 'sA').internalPathStatus).toBe('continuous');
+    expect(split.nodes.nS).toEqual(map.nodes.nS);
+    expect(split.facilities).toEqual(map.facilities);
     reject(map, { type: 'deleteSelection', selection: selection({ roads: ['rInternal'] }) });
     expect(map.roads.rInternal).toBeDefined();
     expect(map.nodes.newSplit).toBeUndefined();
@@ -422,7 +429,7 @@ describe('M2A.1 entry references and ownership edge cases', () => {
     const map = zoneServiceFixture();
     map.nodes.nEntry = testNode('仅由arrival引用的入口', 120, 50);
     map.servicePoints.sZone!.arrival = { mode: 'explicit_internal', entryNodeId: 'nEntry', internalPath: [] };
-    const issues = reject(map, { type: 'deleteSelection', selection: selection({ nodes: ['nEntry'] }) }, 'ENTITY_IN_USE');
+    const issues = reject(map, { type: 'deleteSelection', selection: selection({ nodes: ['nEntry'] }) }, 'TOPOLOGY_SERVICE_PATH_DEPENDENCY');
     expect(issues.some(issue => issue.jsonPath.endsWith('/arrival/entryNodeId'))).toBe(true);
   });
   it('retains a zone named constructor during explicit point-only copy', () => {

@@ -1,0 +1,690 @@
+{
+  "task": "TE01",
+  "date": "2026-09-12",
+  "verdict": "accepted_scope_with_blocked_historical_inputs",
+  "baseHostCommit": "82e139cacb9404a611ff2c25738ebd44d9397d23",
+  "baseMapCommit": "849981c5b05349ce4ef96d843367002d7478443a",
+  "scope": "显式道路插点、依赖删除、节点合并、二度节点去除和拖动确认接路；原件不变。",
+  "environment": {
+    "node": "22.18.0",
+    "npm": "10.9.3",
+    "chrome": "152.0.7977.83",
+    "os": "Windows",
+    "shell": "PowerShell 7.6.6",
+    "browserWorkers": 2
+  },
+  "commands": {
+    "topology-production": 0,
+    "build": 0,
+    "test": 1,
+    "sr03-production": 0,
+    "test:integration": 1,
+    "schema:check": 0,
+    "typecheck": 0,
+    "lint": 0
+  },
+  "browserFull": {
+    "exitCode": 0,
+    "passed": 130,
+    "failed": 0,
+    "log": ".cache/TE01/final-full-e2e.log",
+    "durationMinutes": 9.5
+  },
+  "unit": {
+    "exitCode": 1,
+    "passed": 550,
+    "failed": 4,
+    "reason": "SR02 A-D 原件缺失，blocked_input"
+  },
+  "integration": {
+    "exitCode": 1,
+    "passed": 86,
+    "failed": 4,
+    "TE01Passed": 23,
+    "reason": "SR02 A-D 原件缺失，blocked_input"
+  },
+  "topologyProduction": {
+    "startTime": "2026-09-12T11:00:36.358Z",
+    "duration": 53197.519,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "sr03Production": {
+    "startTime": "2026-09-12T11:01:30.519Z",
+    "duration": 32708.134000000002,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "cli": {
+    "executions": 36,
+    "exit0": 36,
+    "originals": 18,
+    "editedCopies": 18,
+    "profile": "draft",
+    "transportCertification": false
+  },
+  "originalHashes": [
+    {
+      "id": "cimc_v01",
+      "sha256": "93f4ef7c79286a2748649b4e9a901462bbf631e117931341f2b4b8b8cb8f85a1",
+      "unchanged": true
+    },
+    {
+      "id": "cimc_v02",
+      "sha256": "0eda616cf8bef738d7e099eb2870ef2698ec0c6378c4f1d2452f0845ac4fe5af",
+      "unchanged": true
+    },
+    {
+      "id": "dalian_v01",
+      "sha256": "6faf4a6e89339224204253420d757adbbfac6595399049948a3ec9bbd19ea36b",
+      "unchanged": true
+    },
+    {
+      "id": "dalian_v02",
+      "sha256": "a06fa3910079d74e3e90f1b23fd840c64640500097d7ae8a057ad82293187656",
+      "unchanged": true
+    },
+    {
+      "id": "geoje_v01",
+      "sha256": "2c921a8a4bc00302026f40e5a642ed5de7e136c25ff4d555cdb5bc0ea7399f9b",
+      "unchanged": true
+    },
+    {
+      "id": "geoje_v02",
+      "sha256": "6313e6cff2bda3fe418d3cf9b51c0fe413495f088d882892c58ac60ef827e0e9",
+      "unchanged": true
+    },
+    {
+      "id": "hanwha_v01",
+      "sha256": "095c6553c437bb9e5b6df7cafe2e2e04a8061c3aec0db4b739104a2cd0f2a3f9",
+      "unchanged": true
+    },
+    {
+      "id": "hanwha_v02",
+      "sha256": "d9b3b76bf075e3e802088231b4af0c17d48dd8751c1c89bb1a66f82feada7d1d",
+      "unchanged": true
+    },
+    {
+      "id": "hudong_v01",
+      "sha256": "4ca9e2ea2e58b9e720dac9cc3800bdaddeee3bb464cd3fec79be1b4e95f269ba",
+      "unchanged": true
+    },
+    {
+      "id": "hudong_v02",
+      "sha256": "7f0cfb8a235830c7d42e5cd807a9d5f85fd87a57063484c65568617ac5a71cd1",
+      "unchanged": true
+    },
+    {
+      "id": "newtimes_v01",
+      "sha256": "5cfc58038be77059bca888232fb72a788e7a06748b674c9105e589d9d32bbb60",
+      "unchanged": true
+    },
+    {
+      "id": "newtimes_v02",
+      "sha256": "101d6882283caa6af8c5afde0b3173f7fc47ebd8189cdb6dcea6a2a6be39fff1",
+      "unchanged": true
+    },
+    {
+      "id": "samho_v01",
+      "sha256": "283b1f88257b56bde37161f0a726fbbd766a5a166502da2a9a5c3638801dbb59",
+      "unchanged": true
+    },
+    {
+      "id": "samho_v02",
+      "sha256": "bfd98ddde9da61625e85e43b54805d146a8c8f6ceba543043b172550fea1463e",
+      "unchanged": true
+    },
+    {
+      "id": "weihai_v01",
+      "sha256": "b24b19d744552c4dd88a39a977f8f3b5a306e319c7f477b1ab0f3030cf78cefb",
+      "unchanged": true
+    },
+    {
+      "id": "weihai_v02",
+      "sha256": "420dcf275a16664a34d68bc8371ddce8012954eb5ce6a28c29a6793e7a28e545",
+      "unchanged": true
+    },
+    {
+      "id": "xinyangzi_v01",
+      "sha256": "9576f15e37ad3e680fd34f88c14d8997628d08b585f89a43190ff10d347dc6a5",
+      "unchanged": true
+    },
+    {
+      "id": "xinyangzi_v02",
+      "sha256": "8679a1b5807351f2a7d1c5e6c7ec3dbe5338a751932522df6a924104ae7a3fbd",
+      "unchanged": true
+    }
+  ],
+  "cliRows": [
+    {
+      "id": "cimc_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "93f4ef7c79286a2748649b4e9a901462bbf631e117931341f2b4b8b8cb8f85a1",
+      "mapId": "MAP_CR_REFERENCE_V01",
+      "mapContentHash": "c1a343586664a6a5ae2c4ed11520ea7064c779eb9a41c6cc300bb64417c682d0",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "cimc_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "002e38f7162a0f0b30f1433026a9511aabd9d96ce76aff76d5d40f0581c7b4b4",
+      "mapId": "MAP_CR_REFERENCE_V01",
+      "mapContentHash": "47c568d64d92c16410a24a081df49fe6df7232f15dabc1ab3449057a1bf764d1",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "cimc_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "0eda616cf8bef738d7e099eb2870ef2698ec0c6378c4f1d2452f0845ac4fe5af",
+      "mapId": "MAP_CR_REFERENCE_V02",
+      "mapContentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "cimc_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "460f334b364e12a66b2792b8aa032586e032fde9d45ddba495cc0b29dbb79800",
+      "mapId": "MAP_CR_REFERENCE_V02",
+      "mapContentHash": "85c2ce986601690c4c71817859188761aadfbfc8172e31f8fe03b0833bc23cb5",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "dalian_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "6faf4a6e89339224204253420d757adbbfac6595399049948a3ec9bbd19ea36b",
+      "mapId": "MAP_DL_REFERENCE_V01",
+      "mapContentHash": "2108d02d1f6d43a3817ea037f0fc09548d0b037f8f3875aba8bef70019f9d8ff",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "dalian_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "fd599c8360c844bd4b3bf24564bd2051c7a7ac798acebaae1d334db0f7be1eeb",
+      "mapId": "MAP_DL_REFERENCE_V01",
+      "mapContentHash": "fc9909337c1024bd3d9c5a569af8e328771da6e0195418e3d9c1833a73167273",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "dalian_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "a06fa3910079d74e3e90f1b23fd840c64640500097d7ae8a057ad82293187656",
+      "mapId": "MAP_DL_REFERENCE_V02",
+      "mapContentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "dalian_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "7fd5eff6610d8ee33e2df47704f7cdf2277ebee66bb0abb5a1b50d74197e0d94",
+      "mapId": "MAP_DL_REFERENCE_V02",
+      "mapContentHash": "2ff0acb67dd959964690c20dc1e3bca74f6cfcb7691605007e309e317298445a",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "geoje_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "2c921a8a4bc00302026f40e5a642ed5de7e136c25ff4d555cdb5bc0ea7399f9b",
+      "mapId": "MAP_GJ_REFERENCE_V01",
+      "mapContentHash": "86b4070c1e3cfbe5cce229c094b7e08c0f307d6de99f209f89187e1e4c54a514",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "geoje_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "855247687106f8acb8ab97a9d2e551667f9f9ed8a8567924c71e78bee4f650b0",
+      "mapId": "MAP_GJ_REFERENCE_V01",
+      "mapContentHash": "47b374ffd96138d6a3cdce66ee7522b80082d5ad10f200cc39a44afecd09c037",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "geoje_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "6313e6cff2bda3fe418d3cf9b51c0fe413495f088d882892c58ac60ef827e0e9",
+      "mapId": "MAP_GJ_REFERENCE_V02",
+      "mapContentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "geoje_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "510615f673773187fbfdf3bf897656c16c2a6112f47314a8329c8fa16c9b6a98",
+      "mapId": "MAP_GJ_REFERENCE_V02",
+      "mapContentHash": "500e2df28b53e0c199fdf18fbb699ae95549f85fd4370310bd58cc6a2b79a6f3",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hanwha_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "095c6553c437bb9e5b6df7cafe2e2e04a8061c3aec0db4b739104a2cd0f2a3f9",
+      "mapId": "MAP_HW_REFERENCE_V01",
+      "mapContentHash": "91e655cef4ef298b6a3617b18973210580c298ae4de3ce0a894e8ef108682143",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hanwha_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "04f570301915c75325f3010c306fda3bcb299146ab82766fdcc004257a1f78f9",
+      "mapId": "MAP_HW_REFERENCE_V01",
+      "mapContentHash": "3e82f76e663008d6740dc1e3aa513b3df6d94eb711226bdbe5950e084ddc0b18",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hanwha_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "d9b3b76bf075e3e802088231b4af0c17d48dd8751c1c89bb1a66f82feada7d1d",
+      "mapId": "MAP_HW_REFERENCE_V02",
+      "mapContentHash": "031c37f0f1a73eb09e2674d3b36ed966e7f8478cf2e6cf7514bf3adb270a9bee",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hanwha_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "5bfb5cb07fe2117acd7563a1ebfb99a57ba6d73a268a1aca5ded74073a921db4",
+      "mapId": "MAP_HW_REFERENCE_V02",
+      "mapContentHash": "ce1dbe3d3c0d16d9272abeccd1d7b0a9443766e96fdf424fdb0e29cfe31a1963",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hudong_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "4ca9e2ea2e58b9e720dac9cc3800bdaddeee3bb464cd3fec79be1b4e95f269ba",
+      "mapId": "MAP_HD_REFERENCE_V01",
+      "mapContentHash": "2592ebab804451554fea37b822fc0e2048d1a82afc80aa5e0f9f1c927c1d30a3",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hudong_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "679b81d403ba33b1b9c1c20482340b6d392ac3d661bf221c013264817185a2ea",
+      "mapId": "MAP_HD_REFERENCE_V01",
+      "mapContentHash": "5b1b0d0b543e5898994679e3fa0214fd10775a94d545cece51f370a6bdb5a465",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hudong_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "7f0cfb8a235830c7d42e5cd807a9d5f85fd87a57063484c65568617ac5a71cd1",
+      "mapId": "MAP_HD_REFERENCE_V02",
+      "mapContentHash": "4d3843bb5923467b32cf1f96772575738e4b3ab896f8b601f2f9e156196e243b",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "hudong_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "a812e994e8a68e9d63ed30a28101ab9ee74aa63abee5526e70891c2401a0fcc7",
+      "mapId": "MAP_HD_REFERENCE_V02",
+      "mapContentHash": "1942156610cfec40953ef21a7eeffff1f979108f00a541f8302d5ba5513ac466",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "newtimes_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "5cfc58038be77059bca888232fb72a788e7a06748b674c9105e589d9d32bbb60",
+      "mapId": "MAP_NT_REFERENCE_V01",
+      "mapContentHash": "f719aec9b95fb92c453b2d182ca7da53d133c9a4a7c7abaefa5359df0654c342",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "newtimes_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "fc061f87bb6d17223f0d1c9a98b72099162479277e482634a01c6be0a64850e4",
+      "mapId": "MAP_NT_REFERENCE_V01",
+      "mapContentHash": "ce5332321a530a495250f3c0aca82385aa1c8994ced602f61ddc3b504a9d97ad",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "newtimes_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "101d6882283caa6af8c5afde0b3173f7fc47ebd8189cdb6dcea6a2a6be39fff1",
+      "mapId": "MAP_NT_REFERENCE_V02",
+      "mapContentHash": "06a11a95e4f2276bc04aa09a2127e1c521d19b19c6aed3b44e31ed768af61fc0",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "newtimes_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "01fec79c559bf6629f7d0a7a3fb7abc7a6dcf11d1e0c40e6795a37f2de4d07d2",
+      "mapId": "MAP_NT_REFERENCE_V02",
+      "mapContentHash": "8da122487d6a01538f00765d6f9dc039ff534d32b94818a86490dd739b38546b",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "samho_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "283b1f88257b56bde37161f0a726fbbd766a5a166502da2a9a5c3638801dbb59",
+      "mapId": "MAP_SH_REFERENCE_V01",
+      "mapContentHash": "a5903c1d692140da8dc9435dc8a97773adc94b5890cd32a4d677019cdcabec08",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "samho_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "f24f4945dd7f8f4cce61b220fdee3103f3ecc2dff439cd10215aa9408ab30a76",
+      "mapId": "MAP_SH_REFERENCE_V01",
+      "mapContentHash": "f7a86334506c2345d199185eeeb8a0df64fd5b0479d60d786309be7978ab4de1",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "samho_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "bfd98ddde9da61625e85e43b54805d146a8c8f6ceba543043b172550fea1463e",
+      "mapId": "MAP_SH_REFERENCE_V02",
+      "mapContentHash": "e9b0c61946a7f9f0792614bf2145413dc547df8956e940e454c7883aac997d38",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "samho_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "e964944566091e1ab7d9fe6449f35bf50d48b01d9acee4f23357ecd0bbbcc0bf",
+      "mapId": "MAP_SH_REFERENCE_V02",
+      "mapContentHash": "8ef9e5317c133d1cc156528fb90c80badc448a3c9cf0ffe495dd319178b52243",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "weihai_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "b24b19d744552c4dd88a39a977f8f3b5a306e319c7f477b1ab0f3030cf78cefb",
+      "mapId": "WH_CM_REFERENCE_V01",
+      "mapContentHash": "997db6299aa1d7208f019d4fb3b0e293974959c77bd74815b7160130bd2afbfa",
+      "revision": 0,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "weihai_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "8300fb5a05538ae8a12f586f66b70d57981630843ba34e9f958c5933d2b9bc18",
+      "mapId": "WH_CM_REFERENCE_V01",
+      "mapContentHash": "cb68a33b78ef9bca3cff51102d0fe5d5939199670dad096441519f720835e720",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "weihai_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "420dcf275a16664a34d68bc8371ddce8012954eb5ce6a28c29a6793e7a28e545",
+      "mapId": "WH_CM_REFERENCE_V01",
+      "mapContentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "weihai_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "f2a79dbb7f2f311237b96af6c074bfcfe91e1f65f3a7b4b49f8de5d2f2db8a0d",
+      "mapId": "WH_CM_REFERENCE_V01",
+      "mapContentHash": "c630546346a576c46628841ee6aa9a207dd1b90b1a18ff0bfaa20882b48c39bd",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "xinyangzi_v01",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "9576f15e37ad3e680fd34f88c14d8997628d08b585f89a43190ff10d347dc6a5",
+      "mapId": "MAP_XY_REFERENCE_V01",
+      "mapContentHash": "4d219e8e2780fa8c8cd427015e239a9a832966c12a3c7472b243379982b51fa0",
+      "revision": 1,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "xinyangzi_v01",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "87ccf3cec1e13a3cbb3b05abcc4f9f54ca6f9532e1f23aa52f9020231a3fa954",
+      "mapId": "MAP_XY_REFERENCE_V01",
+      "mapContentHash": "a4d2b3944b535641be4691001e4ec318aa7416b5c8203f50e943154e84ba218a",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "xinyangzi_v02",
+      "variant": "original",
+      "exitCode": 0,
+      "inputFileSHA256": "8679a1b5807351f2a7d1c5e6c7ec3dbe5338a751932522df6a924104ae7a3fbd",
+      "mapId": "MAP_XY_REFERENCE_V02",
+      "mapContentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c",
+      "revision": 2,
+      "frameMatchesFrozen": true
+    },
+    {
+      "id": "xinyangzi_v02",
+      "variant": "connect",
+      "exitCode": 0,
+      "inputFileSHA256": "f533df81f421a45791d7308ce9e5f9868dab64ddfcdcebe21a4c262d2da2f442",
+      "mapId": "MAP_XY_REFERENCE_V02",
+      "mapContentHash": "8b1734344fc9a712110060ba9a3c68c09a4cfcf1b2b4abc84ce7e5f07eae6fc3",
+      "revision": 3,
+      "frameMatchesFrozen": true
+    }
+  ],
+  "sourceAndTestFiles": [
+    {
+      "path": "src/domain/commands.ts",
+      "sha256": "b229a96161e6d11911b0813a55511b724bbddde2e2b79f757b8b72007f224b3c",
+      "gitBlob": "fc577cf6a7d35ab18773402b5bf95ad74bdd82e8"
+    },
+    {
+      "path": "src/domain/geometrySources.ts",
+      "sha256": "ac2685bb2ffea8dbda1d054b6475f6a28eeeaafc3ff4cb72d787384e589588a1",
+      "gitBlob": "7460555a334e8cdd5696d9055c659b8a32abc95d"
+    },
+    {
+      "path": "src/domain/topologyEditing.ts",
+      "sha256": "a2c8c654ad648651d9e3b80931aef1473fa0716deb98d75f66998ab79160fbf6",
+      "gitBlob": "c08a992923669a5e8c37a421b8962cf1f27d7bb7"
+    },
+    {
+      "path": "src/geometry/roads.ts",
+      "sha256": "4b48c2c41aae3b5158fd554c8019bbdac57a98c2cf4dfa2f196863457b4982d2",
+      "gitBlob": "1bb0da89537e96081244cab0f4e878869e924c3a"
+    },
+    {
+      "path": "src/renderers/2d/MapCanvas.tsx",
+      "sha256": "60311245e95f2dcef14b353c653e911041a1b6925244f956e20f699e86fd28cf",
+      "gitBlob": "14439ed02c0935188ec1e4d31ab99515d3ca8859"
+    },
+    {
+      "path": "src/renderers/2d/SpatialLayer.tsx",
+      "sha256": "bcf9518c6179b930dd1284174457ed3cdb11e85259a50c96953575710bee073d",
+      "gitBlob": "095f1723da6b0ad35126cccbd64879b023eb3695"
+    },
+    {
+      "path": "src/ui/App.tsx",
+      "sha256": "d0811d4389a12801b3bf921d2761e84f1e71e6324a4b34d599f994579548adc8",
+      "gitBlob": "a80fd866bd92770caeb54c164d32dc55dc65ddb6"
+    },
+    {
+      "path": "src/validation/spatialDiagnostics.ts",
+      "sha256": "abb6a2718584fa8bbd33c048ada5281275ff5608ef76d87232cb997ebe2bc5b4",
+      "gitBlob": "65346ca74e776c2f7f9d2bbc7f6c4ea67c5bdf6b"
+    },
+    {
+      "path": "playwright.production.config.ts",
+      "sha256": "374fb7b347615d49410fbde8d38d93bda698d63709d6c2135445e5f9080e762c",
+      "gitBlob": "a444ffa98e7e4a5c85f592af8c866280c7592b25"
+    },
+    {
+      "path": "playwright.topology.config.ts",
+      "sha256": "d2b2f1eeb2fcedf076fb9dd2f7581dda13c62e921feabf12c6313f23d45ac5af",
+      "gitBlob": "820fe56a47fe666f5fa821e5a95ae4236bcc976e"
+    },
+    {
+      "path": "tests/unit/GA01_anchor.test.ts",
+      "sha256": "4e6917d3bd4c5be41a2def778d2da8c8e88c9b007124b1a3fa4a2649a065379f",
+      "gitBlob": "58819847015e3778b6f5ca86f84b87af831932c3"
+    },
+    {
+      "path": "tests/unit/GA01_dependencies.test.ts",
+      "sha256": "42ef9bb0e2725c64b215003b779212195e8359ae1f3bef671811aac358405c85",
+      "gitBlob": "aeea196f29c2c5fee803b3b35152f91e1f9fb9e7"
+    },
+    {
+      "path": "tests/unit/M2A1_serviceTargets.test.ts",
+      "sha256": "089b8071922e8fd5ebbb2ac76ec25ef31557e3446df2c698ec5f2332bc7b941b",
+      "gitBlob": "50f0a0f829380b2609b3f6845aaf602780a5229b"
+    },
+    {
+      "path": "tests/e2e/M2A_spatial.spec.ts",
+      "sha256": "1f7396a46d37a9c18f1f040c4f9ea3477293d30b7f16d71877dcdee2a7606e1a",
+      "gitBlob": "3e85ea8eb01c8edecd377d31fb71a40f96956725"
+    },
+    {
+      "path": "tests/e2e/TE01_topology.spec.ts",
+      "sha256": "44952f0416ec3cc1c917934a02140ac1052e3834e12fb64ac4f1fa5ea3e1e7d1",
+      "gitBlob": "724f49a2349b1d20aab2822ea4aa42257b674e2f"
+    },
+    {
+      "path": "tests/e2e/TE01_linkedDrag.spec.ts",
+      "sha256": "126b4c6b4cf6746984558f6007f11d44ab38c484101be96f74326050a7bec69b",
+      "gitBlob": "b12c8712a86cb7c682b606810f394ad47ee8e725"
+    },
+    {
+      "path": "tests/helpers/TE01_fixtures.ts",
+      "sha256": "2222e163628be591e11c7a477dbe45ce6f8f2254f86f322d39837699c5fe9658",
+      "gitBlob": "394f5ad90695f8a6da200a2b39c5b3563f78651b"
+    },
+    {
+      "path": "tests/helpers/TE01_targets.ts",
+      "sha256": "30333aac032bb538cc19913e762f495d95f52070281079f4e31934f15e3a57eb",
+      "gitBlob": "afd1536db797b4c1b1a30686f18ca5cc138464ef"
+    },
+    {
+      "path": "tests/integration/TE01_real.test.ts",
+      "sha256": "4aa29873666ca5c5d5121ae6e51c666b539ff5709f2179fdf36036b48d8d8e5d",
+      "gitBlob": "730f1390876983c35cf333109701571b99931ebe"
+    },
+    {
+      "path": "tests/unit/TE01_dependencyClosure.test.ts",
+      "sha256": "3c40795b529b52e573b5a292cf14349af52325adcb4bb54328c50ab9b6b6b643",
+      "gitBlob": "d169935fd061d9de1405cb133dec1e41284b31a0"
+    },
+    {
+      "path": "tests/unit/TE01_projection.test.ts",
+      "sha256": "0bf978fab420e21ce871d20bbec6c9d80f0931b5c7fbdc39f0964b8df1ddee3f",
+      "gitBlob": "c6ec3ed8005fad45d22c96f2bed725062be9f635"
+    },
+    {
+      "path": "tests/unit/TE01_sources.test.ts",
+      "sha256": "0ae542764b7c32e05db6405e1a44b0960225420fabd0d7230453e19ba790f1bb",
+      "gitBlob": "f58c26662af41d74e3c8ea61d435cd746b3cfca9"
+    },
+    {
+      "path": "tests/unit/TE01_spatial.test.ts",
+      "sha256": "411ea4903703e1cb549814c9d61a8082e7053218a7d95306ebfa2f05c127c31a",
+      "gitBlob": "6f544ea852312d197d6f71f12dd6575111c2c66d"
+    },
+    {
+      "path": "tests/unit/TE01_topology.test.ts",
+      "sha256": "09038fcc193df441ba250cf2b105e4f7b42084047c9e5bd0c7d61a14298227c2",
+      "gitBlob": "b6b14ae5754c069a7bf45e7c930042c74ba13ef6"
+    }
+  ],
+  "buildAssets": [
+    {
+      "path": "dist/assets/index-BFswsqhH.css",
+      "sha256": "39353e2a0098c4ba9c375ae72757f56a71b4d10459195c759889cf19598326a8"
+    },
+    {
+      "path": "dist/assets/index-edw61n5R.js",
+      "sha256": "a2550758035d49247e7ee3da4c4a325a3da0fa1c82f3f1ad24c8f4ff9c0b9b5f"
+    },
+    {
+      "path": "dist/index.html",
+      "sha256": "729b0a41e008f087a2e46c12e6a21cd2e539eb93866988448cf42a15d7c4a665"
+    }
+  ],
+  "reviews": {
+    "correctness": "独立通过；锁依赖、来源、预览和选择态布局缺口均修复并复验",
+    "ponytail": "独立通过；已删除死分支，无新增运行依赖"
+  },
+  "limits": [
+    "缺失 SR02 不构造替代输入，不声称历史全套通过",
+    "原生二度节点仅兼容且有既有直通许可时支持；18 图成功去除用例使用刚插入节点",
+    "不支持复杂独立几何、未知行为、自环和重复道路；不静默删除依赖",
+    "新转向须明确批准；本批无逐个转向编辑、全图自动合并或运输安全认证"
+  ],
+  "failureHistory": {
+    "fullBrowserFirst": {
+      "exitCode": 1,
+      "passed": 127,
+      "failed": 3,
+      "reason": "选择态提示位于画布上方造成画布尺寸/位置改变；移入已有属性区修复，旧断言不变",
+      "log": ".cache/TE01/full-e2e.log"
+    },
+    "productionFirst": {
+      "exitCode": 1,
+      "reason": "继承配置重复启动4178开发服务器；修正为只启动生产preview",
+      "log": ".cache/TE01/sr03-production.log"
+    }
+  },
+  "evidence": {
+    "cli": ".cache/TE01/TE01_cli_receipts.json",
+    "production": ".cache/TE01/production/report.json",
+    "screenshotsAndTraces": ".cache/TE01/production/results",
+    "fullBrowser": ".cache/TE01/final-full-e2e-results"
+  }
+}

@@ -97,7 +97,7 @@ export function AssociatedPointLayer(props: SpatialLayerProps) {
     const origin = point.position; const offset = props.movingNodeIds.has(point.nodeId) ? props.previewDelta : null;
     const pos = worldToScreen(move(origin, offset), props.camera); if (!pos.every(Number.isFinite)) return null;
     const selected = !!props.selection[point.entityType]?.includes(point.id);
-    return <Group _useStrictMode key={point.entityType + point.id} x={pos[0]} y={pos[1]} draggable={!props.disableDrag && props.selecting && !props.readonly && (props.canDrag?.(point.entityType, point.id) ?? true)}
+    return <Group _useStrictMode listening={!props.selecting || !props.selection.nodes.includes(point.nodeId)} key={point.entityType + point.id} x={pos[0]} y={pos[1]} draggable={!props.disableDrag && props.selecting && !props.readonly && (props.canDrag?.(point.entityType, point.id) ?? true)}
       entityKind={point.entityType} entityId={point.id} {...events}>
       <Rect x={-9} y={-9} width={18} height={18} cornerRadius={point.entityType === 'accessPoints' ? 2 : 8} fill={selected ? '#e08128' : point.entityType === 'accessPoints' ? '#5e9086' : '#816db1'} stroke="#fff" strokeWidth={2} />
       <Text x={-4} y={-5} text={point.entityType === 'accessPoints' ? '入' : '服'} fontSize={10} fill="#fff" listening={false} />

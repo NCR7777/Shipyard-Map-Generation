@@ -5,7 +5,8 @@ import base from './playwright.config';
 const baseline = process.env.P1_PRODUCTION_BASELINE === '1';
 const outDir = baseline ? '.cache/P2A/p1-evidence/dist' : 'dist';
 const evidenceDir = baseline ? '.cache/P2A/p1-evidence' : '.cache/P2A/production-current';
-export default defineConfig(base, {
+export default defineConfig({
+  ...base,
   testDir: './tests/production', testMatch: 'P1_production.spec.ts',
   timeout: 120000,
   outputDir: evidenceDir + '/browser',

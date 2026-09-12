@@ -16,6 +16,7 @@ import type { DrawingConfig } from '../../editor/projectController';
 import { SpatialLayer, AssociatedPointLayer, DeclaredLayer, type SpatialLayerProps } from './SpatialLayer';
 import { useSpatialDrawing, isSpatialTool, isRectangleTool, snapPosition, type SnapOptions } from './useSpatialDrawing';
 import { SELECTION_KINDS, type Selection } from '../../domain/commands';
+import { projectPolyline } from '../../geometry/roads';
 import { rectangleFrame } from '../../geometry/rectangles';
 import { BoundaryHandles, type BoundaryTarget, type BoundaryPreview } from './BoundaryHandles';
 import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '../../geometry/coordinates';
@@ -23,6 +24,7 @@ import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '..
 export type Tool = 'select' | 'node' | 'road' | 'pan' | 'facilityRect' | 'facilityPolygon' | 'zoneRect' | 'zonePolygon';
 export type PointPickResult = { nodeId: string } | { position: Vec3 };
 export interface PointPick { mode: 'existing' | 'new'; nodeId?: string; position?: Vec3 }
+export type TopologyTarget = { kind: 'nodes'; id: string; position: Vec3 } | { kind: 'roads'; id: string; position: Vec3; distanceM: number };
 export interface DraftRoad { fromNodeId: string; points: Vec3[] }
 interface Props {
   routePreview?: { mapContentHash: string; points: Vec3[]; confirmed: boolean } | null;
@@ -52,6 +54,12 @@ interface Props {
   onRoadNode: (id: string) => void;
   onRoadPoint: (point: Vec3) => void;
   onTranslate: (delta: Vec3) => void;
+  topologySnap?: boolean;
+  lockedTypes?: readonly SceneKind[];
+  onTopologyDrop?: (nodeId: string, target: TopologyTarget, baseChangeToken: number) => void;
+  splitPickRoadId?: string;
+  onSplitPick?: (distanceM: number) => void;
+  onDragRejected?: (kind: keyof Selection, id: string) => void;
   draftRoad: DraftRoad | null;
   onPolygonCreate?: (kind: 'facilities' | 'zones', boundary: Polygon) => boolean;
   onDraftChange?: (dirty: boolean) => void;
@@ -78,6 +86,8 @@ export function MapCanvas(props: Props) {
   const pan = useRef<{ pointer: Vec2 } | null>(null);
   const dragStart = useRef<Vec3 | null>(null);
   const pressed = useRef(false);
+  const dragToken = useRef(0);
+  const [topologyTarget, setTopologyTarget] = useState<TopologyTarget | null>(null);
   const inputCamera = useRef<Camera | null>(null);
   const cursorOutput = useRef<HTMLOutputElement>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,7 +148,7 @@ export function MapCanvas(props: Props) {
   }, [props.frameCamera.navigating, props.labelMode]);
   useEffect(() => {
     function cancel() {
-      pan.current = null; pressed.current = false; dragStart.current = null;
+      pan.current = null; pressed.current = false; dragStart.current = null; setTopologyTarget(null);
       if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
       hoverTimer.current = null; setHoverKey(null); setPreviewDelta(null);
       stage.current?.find((node: Konva.Node) => node.isDragging()).forEach(node => node.stopDrag());
@@ -160,7 +170,7 @@ export function MapCanvas(props: Props) {
   }, []);
 
   useEffect(() => {
-    dragStart.current = null; setPreviewDelta(null);
+    dragStart.current = null; setPreviewDelta(null); setTopologyTarget(null);
     stage.current?.find((node: Konva.Node) => node.isDragging()).forEach(node => node.stopDrag());
   }, [props.draftResetToken]);
   useEffect(() => { setPickNotice(''); }, [props.pointPick?.mode]);
@@ -241,6 +251,7 @@ export function MapCanvas(props: Props) {
   function handleStageClick(event: KonvaEventObject<MouseEvent>) {
     if (boundaryActiveRef.current || event.target !== event.target.getStage() || event.evt.button !== 0) return;
     const screen = pointer(); if (!screen) return;
+    if (props.splitPickRoadId) { pickSplit(screen); return; }
     drawAt(screen);
   }
   function pickNode(id: string) {
@@ -318,9 +329,38 @@ export function MapCanvas(props: Props) {
   const unknownWidths = useMemo(() => props.scene.roads.filter(road => road.widthM.state !== 'known').length, [props.scene.roads]);
   const widthRangeIssues = useMemo(() => props.scene.missingCapabilities.filter(issue => issue.startsWith('ROAD_WIDTH_VISUAL_RANGE:')), [props.scene.missingCapabilities]);
   const unprojectable = display.unprojectableCount;
+  function pickSplit(screen: Vec2) {
+    const road = props.scene.roads.find(value => value.id === props.splitPickRoadId);
+    if (!road || props.hiddenTypes?.includes('roads') || props.lockedTypes?.includes('roads') || (!props.roadDisplay.showRoadBands && !props.roadDisplay.showRoadCenterlines)) return;
+    const projected = projectPolyline(screenToWorld(screen, props.frameCamera.read()), road.points);
+    if (!projected || projected.offsetM * props.frameCamera.read().scale > 12) { setPickNotice('请在所选道路中心线 12 CSS 像素内点击。'); return; }
+    if (projected.distanceM <= 1e-6 || projected.distanceM >= road.lengthM - 1e-6) { setPickNotice('切分点必须位于道路内部；端点请使用节点合并。'); return; }
+    setPickNotice(''); props.onSplitPick?.(projected.distanceM);
+  }
+  function topologyCandidate(screen: Vec2, nodeId: string, z: number): TopologyTarget | null {
+    if (!props.topologySnap || props.selection.nodes.length !== 1 || props.selection.nodes[0] !== nodeId
+      || SELECTION_KINDS.some(kind => kind !== 'nodes' && props.selection[kind]?.length)) return null;
+    const camera = props.frameCamera.read(); const world = screenToWorld(screen, camera, z);
+    let best: TopologyTarget | null = null; let distance = 12;
+    if (!props.hiddenTypes?.includes('nodes') && !props.lockedTypes?.includes('nodes')) for (const node of props.scene.nodes) {
+      if (node.id === nodeId || !display.keys.has('nodes/' + node.id) || Math.abs(node.position[2] - z) > 1e-6) continue;
+      const [x, y] = worldToScreen(node.position, camera); const delta = Math.hypot(x - screen[0], y - screen[1]);
+      if (delta <= distance) { distance = delta; best = { kind: 'nodes', id: node.id, position: node.position }; }
+    }
+    if (!props.hiddenTypes?.includes('roads') && !props.lockedTypes?.includes('roads')
+      && (props.roadDisplay.showRoadBands || props.roadDisplay.showRoadCenterlines)) for (const road of props.scene.roads) {
+      if (!display.keys.has('roads/' + road.id) || road.fromNodeId === nodeId || road.toNodeId === nodeId) continue;
+      const projected = projectPolyline(world, road.points);
+      if (!projected || Math.abs(projected.position[2] - z) > 1e-6 || projected.distanceM <= 1e-6 || projected.distanceM >= road.lengthM - 1e-6) continue;
+      const delta = projected.offsetM * camera.scale;
+      if (delta < distance) { distance = delta; best = { kind: 'roads', id: road.id, position: projected.position, distanceM: projected.distanceM }; }
+    }
+    return best;
+  }
   function roadClick(event: KonvaEventObject<MouseEvent>, id: string) {
     if (event.evt.button !== 0) return;
-    if (props.pointPick) { event.cancelBubble = true; const screen = pointer(); if (screen) drawAt(screen); }
+    if (props.splitPickRoadId) { event.cancelBubble = true; const screen = pointer(); if (screen) pickSplit(screen); }
+    else if (props.pointPick) { event.cancelBubble = true; const screen = pointer(); if (screen) drawAt(screen); }
     else if (props.tool === 'select') { event.cancelBubble = true; props.onSelect('roads', id, event.evt.shiftKey); }
     else if (!props.readonly && (props.tool === 'node' || props.tool === 'road' || isSpatialTool(props.tool))) {
       const screen = pointer(); if (!screen) return; event.cancelBubble = true; drawAt(screen);
@@ -333,37 +373,47 @@ export function MapCanvas(props: Props) {
   const onNodeEnter = useCurrentCallback((event: KonvaEventObject<MouseEvent>) => hover('nodes/' + event.currentTarget.getAttr('nodeId')));
   const onNodeDown = useCurrentCallback((event: KonvaEventObject<MouseEvent>) => {
     const id = event.currentTarget.getAttr('nodeId') as string;
-    const selected = selectedNodeIds.has(id) || props.pointPick?.nodeId === id;
-    if (event.evt.button === 0 && !props.pointPick && props.tool === 'select' && (!selected || event.evt.shiftKey)) props.onSelect('nodes', id, event.evt.shiftKey);
+    const selected = props.selection.nodes.includes(id) || props.pointPick?.nodeId === id;
+    if (event.evt.button === 0 && !props.pointPick && !props.splitPickRoadId && props.tool === 'select') {
+      if (!selected || event.evt.shiftKey) props.onSelect('nodes', id, event.evt.shiftKey);
+      else if (props.canDrag && !props.canDrag('nodes', id)) props.onDragRejected?.('nodes', id);
+    }
   });
   const onNodeClick = useCurrentCallback((event: KonvaEventObject<MouseEvent>) => {
     if (event.evt.button !== 0) return;
     const id = event.currentTarget.getAttr('nodeId') as string;
-    if (props.pointPick) { event.cancelBubble = true; pickNode(id); }
+    if (props.splitPickRoadId) { event.cancelBubble = true; const screen = pointer(); if (screen) pickSplit(screen); }
+    else if (props.pointPick) { event.cancelBubble = true; pickNode(id); }
     else if (props.tool === 'road' && !props.readonly) { event.cancelBubble = true; props.onRoadNode(id); }
     else if (props.tool === 'select') { event.cancelBubble = true; if (!event.evt.shiftKey) props.onSelect('nodes', id, false); }
     else if (isSpatialTool(props.tool)) { const screen = pointer(); if (screen) { event.cancelBubble = true; drawAt(screen); } }
   });
   const onNodeDragStart = useCurrentCallback((event: KonvaEventObject<DragEvent>) => {
     const node = nodeById.get(event.currentTarget.getAttr('nodeId') as string);
-    if (node) dragStart.current = [...node.position];
+    if (node) { dragStart.current = [...node.position]; dragToken.current = props.boundaryChangeToken; }
   });
   const onNodeDragMove = useCurrentCallback((event: KonvaEventObject<DragEvent>) => {
     if (!dragStart.current) return;
-    const value = snapPosition([event.target.x(), event.target.y()], props.camera, props.scene.nodes, props.snap, selectedNodeIds, dragStart.current[2]).world;
+    const screen: Vec2 = [event.target.x(), event.target.y()];
+    const target = topologyCandidate(screen, event.currentTarget.getAttr('nodeId') as string, dragStart.current[2]);
+    setTopologyTarget(target);
+    const value = target?.position ?? snapPosition(screen, props.frameCamera.read(), props.scene.nodes, props.snap, selectedNodeIds, dragStart.current[2]).world;
     setPreviewDelta([value[0] - dragStart.current[0], value[1] - dragStart.current[1], 0]);
   });
   const onNodeDragEnd = useCurrentCallback((event: KonvaEventObject<DragEvent>) => {
-    const origin = dragStart.current; dragStart.current = null; setPreviewDelta(null);
+    const origin = dragStart.current; dragStart.current = null; setPreviewDelta(null); setTopologyTarget(null);
     if (!origin) return;
-    const value = snapPosition([event.target.x(), event.target.y()], props.camera, props.scene.nodes, props.snap, selectedNodeIds, origin[2]).world;
+    const nodeId = event.currentTarget.getAttr('nodeId') as string;
+    const target = topologyCandidate([event.target.x(), event.target.y()], nodeId, origin[2]);
+    if (target) { props.onTopologyDrop?.(nodeId, target, dragToken.current); return; }
+    const value = snapPosition([event.target.x(), event.target.y()], props.frameCamera.read(), props.scene.nodes, props.snap, selectedNodeIds, origin[2]).world;
     props.onTranslate([value[0] - origin[0], value[1] - origin[1], 0]);
   });
   const spatialProps: SpatialLayerProps = {
     hiddenTypes: props.hiddenTypes, visibleKeys: display.keys, onHover: hover, canDrag: props.canDrag,
     scene: props.scene, camera: props.camera, selection: props.selection, previewDelta, boundaryPreview,
     snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && props.tool === 'road', movingNodeIds: selectedNodeIds,
-    disableDrag: props.hasUnappliedInput || boundaryActive, pickingPoint: !!props.pointPick, onPickNode: pickNode,
+    disableDrag: !!props.splitPickRoadId || props.hasUnappliedInput || boundaryActive, pickingPoint: !!props.pointPick, onPickNode: pickNode,
     onSelect: props.onSelect, onRoadNode: props.onRoadNode, onDrawClick: () => { const p = pointer(); if (p) drawAt(p); },
     onDragStart: origin => { dragStart.current = origin; }, onPreview: setPreviewDelta,
     onDragEnd: delta => { const active = dragStart.current; dragStart.current = null; if (active) props.onTranslate(delta); },
@@ -425,7 +475,7 @@ export function MapCanvas(props: Props) {
           const [x, y] = worldToScreen(position(node.id, node.position), props.camera);
           const selected = selectedNodeIds.has(node.id) || props.pointPick?.nodeId === node.id;
           return <Circle _useStrictMode nodeId={node.id} onMouseEnter={onNodeEnter} onMouseLeave={onShapeLeave} key={node.id} x={x} y={y} radius={selected ? 6.5 : 5} fill={selected ? '#e08128' : '#ffffff'} stroke={selected ? '#9a4c0d' : '#216b88'} strokeWidth={2} hitStrokeWidth={12}
-            draggable={!boundaryActive && !props.hasUnappliedInput && !props.pointPick && props.tool === 'select' && !props.readonly && (props.canDrag?.('nodes', node.id) ?? true)}
+            draggable={!props.splitPickRoadId && !boundaryActive && !props.hasUnappliedInput && !props.pointPick && props.tool === 'select' && !props.readonly && (props.canDrag?.('nodes', node.id) ?? true)}
             onMouseDown={onNodeDown} onClick={onNodeClick} onDragStart={onNodeDragStart} onDragMove={onNodeDragMove} onDragEnd={onNodeDragEnd} />;
         })}
         <AssociatedPointLayer {...spatialProps} />
@@ -435,6 +485,7 @@ export function MapCanvas(props: Props) {
           const points = props.routePreview.points.flatMap(point => worldToScreen(point, props.camera));
           return points.every(Number.isFinite) && points.length >= 4 ? <Line points={points} stroke={props.routePreview.confirmed ? '#1876ad' : '#c47e19'} strokeWidth={5} opacity={0.85} dash={props.routePreview.confirmed ? undefined : [10,6]}/> : null;
         })()}
+        {topologyTarget && (() => { const [x, y] = worldToScreen(topologyTarget.position, props.camera); return <Circle x={x} y={y} radius={12} stroke="#bd4a1c" strokeWidth={3} dash={[4, 3]}/>; })()}
         {props.diagnosticPosition && (() => { const point = worldToScreen(props.diagnosticPosition, props.camera); return point.every(Number.isFinite) ? <Circle x={point[0]} y={point[1]} radius={14} stroke="#c05f22" strokeWidth={3} dash={[5,3]}/> : null; })()}
         {labels.labels.map(({ key, ...label }) => <Text key={key} name="display-label" {...label} listening={false}/>)}
         {draftPoints.length > 1 && <Line points={draftPoints.flatMap(point => worldToScreen(point, props.camera))} stroke="#e08128" strokeWidth={2} dash={[7, 5]} />}
@@ -463,6 +514,8 @@ export function MapCanvas(props: Props) {
     {details && cardRect && props.labelMode !== 'off' && !props.frameCamera.navigating && !pressed.current && <div className="focus-details" style={{ left: cardRect.x, top: cardRect.y, right: 'auto' }} role="tooltip" data-testid="focus-details"><strong>{details.name || details.id}</strong><code>{details.id}</code><span>{details.source}</span></div>}
     <output className="sr-only" data-testid="display-state" data-navigating={props.frameCamera.navigating} data-visible={display.keys.size} data-culled={display.culledCount} data-lod={display.lodCount} data-labels={labels.labels.length} data-candidates={labels.candidateCount} data-measurements={labels.measurementCount} data-cache-size={measurer.size}/>
 
+    {topologyTarget && <div className="projection-warning" data-testid="topology-candidate">候选 {topologyTarget.kind}/{topologyTarget.id} · 释放后需明确确认{topologyTarget.kind === 'nodes' ? '合并' : '连接'}；取消不移动。</div>}
+    {props.splitPickRoadId && <div className="projection-warning" data-testid="split-pick-notice">点击所选道路中心线拾取切分位置；Esc 取消。{pickNotice}</div>}
     {(unprojectable > 0 || unprojectableWidths > 0 || widthRangeIssues.length > 0) && <div className="projection-warning" data-testid="projection-warning" role="status">
       {unprojectable > 0 && <div>{unprojectable} 个对象超出屏幕数值范围，JSON 完整保留；请数值调整坐标。</div>}
       {unprojectableWidths > 0 && <div>{unprojectableWidths} 条声明宽度超出屏幕数值范围，仅显示辅助线；JSON 数值完整保留。</div>}

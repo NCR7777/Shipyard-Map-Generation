@@ -73,10 +73,14 @@ describe('GA01 fixed coordinate frame and atomic geometry provenance', () => {
     expect(mapCapabilities(assets).reasons).toEqual(expect.arrayContaining([expect.stringContaining('assets'), expect.stringContaining('backgroundLayers')]));
     expect(commandSupport(assets, { type: 'renameMap', name: 'blocked' }).allowed).toBe(false);
   });
-  it('retains advanced operation protection in A', () => {
+  it('retains unsafe movement protection while TE01 permits unreferenced road deletion', () => {
     const map = staticFixture();
     expect(commandSupport(map, { type: 'updateNode', id: 'a', patch: { position: [1, 2, 0] } }).allowed).toBe(false);
-    expect(commandSupport(map, { type: 'deleteSelection', selection: { nodes: [], roads: ['road'] } }).allowed).toBe(false);
+    const deleted = apply(map, { type: 'deleteSelection', selection: { nodes: [], roads: ['road'] } });
+    expect(deleted.map.roads.road).toBeUndefined();
+    expect(deleted.map.facilities).toEqual(map.facilities);
+    expect(deleted.map.resources).toEqual(map.resources);
+    expect(deleted.map.coordinateFrame).toEqual(map.coordinateFrame);
   });
   it('rejects field injection, invalid frames and unexpected internal frame changes without committing', () => {
     const map = fixture(), original = structuredClone(map);
