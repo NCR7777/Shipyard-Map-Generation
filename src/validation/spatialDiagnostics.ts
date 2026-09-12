@@ -4,6 +4,7 @@ import { GEOMETRY_TOLERANCE_M as EPS, validatePolygon } from '../geometry/polygo
 import { geometryBounds, roadPoints, roadWidthBounds } from '../geometry/roads';
 import { pointInPolygon, polygonHasArea, polylineWithinPolygon, roundRoadIntersectsPolygon } from '../geometry/relations';
 import type { DiagnosticCheck, DiagnosticSection } from './diagnostics';
+import { sameValue } from '../domain/value';
 
 type Bounds = NonNullable<ReturnType<typeof geometryBounds>>;
 interface Space { kind: 'facilities' | 'zones'; id: string; boundary: Polygon }
@@ -12,11 +13,17 @@ const bounds = (polygon: Polygon) => geometryBounds(polygon.outer)!;
 const overlaps = (a: Bounds, b: Bounds) => a.max[0] >= b.min[0] && b.max[0] >= a.min[0] && a.max[1] >= b.min[1] && b.max[1] >= a.min[1];
 const samePlane = (points: readonly Vec3[], polygon: Polygon) => points.every(point => Math.abs(point[2] - polygon.outer[0][2]) <= EPS);
 class BudgetExceeded extends Error {}
+interface SpatialScope {
+  roads: ReadonlySet<string>; owners: ReadonlySet<string>; slots: ReadonlySet<string>; services: ReadonlySet<string>;
+}
+interface SpatialOptions { maxComparisons?: number; scope?: SpatialScope }
+export interface SpatialInspection extends DiagnosticSection { completion: 'finished' | 'budget_exhausted' | 'truncated' }
 
 /** Declaration-level XY checks on an already schema/reference-validated map.
  * No map mutation, traffic execution, inferred building prohibition or clearance claim.
  */
-export function inspectSpatial(map: YardMap, options: { maxComparisons?: number } = {}): DiagnosticSection {
+export function inspectSpatial(map: YardMap, options: SpatialOptions = {}): SpatialInspection {
+  const scope = options.scope;
   const maximum = options.maxComparisons ?? 2_000_000;
   if (!Number.isSafeInteger(maximum) || maximum < 0) throw new RangeError('maxComparisons must be a non-negative safe integer');
   const issues: Issue[] = [], checks: DiagnosticCheck[] = [];
@@ -62,6 +69,7 @@ export function inspectSpatial(map: YardMap, options: { maxComparisons?: number 
   run('spatial.slot_containment', () => {
     let count = 0, skipped = planning.supported ? 0 : 1;
     for (const slot of slots) {
+      if (scope && !scope.owners.has(slot.ownerKind + '/' + slot.ownerId) && !scope.slots.has(slot.id)) continue;
       work(); const owner = map[slot.ownerKind][slot.ownerId]!;
       if (!usable(owner.boundary) || !samePlane(slot.boundary.outer, owner.boundary)) { skipped++; continue; }
       count++;
@@ -75,10 +83,12 @@ export function inspectSpatial(map: YardMap, options: { maxComparisons?: number 
     const groups = new Map<string, typeof slots>();
     for (const slot of slots) { const key = slot.ownerKind + '/' + slot.ownerId; const group = groups.get(key) ?? []; group.push(slot); groups.set(key, group); }
     for (const group of groups.values()) {
+      if (scope && !group.some(slot => scope.slots.has(slot.id))) continue;
       group.sort((a, b) => a.box.min[0] - b.box.min[0] || a.id.localeCompare(b.id));
       for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
         work(); const a = group[i]!, b = group[j]!;
         if (b.box.min[0] >= a.box.max[0] - EPS) break;
+        if (scope && !scope.slots.has(a.id) && !scope.slots.has(b.id)) continue;
         if (!overlaps(a.box, b.box)) continue;
         if (!samePlane(a.boundary.outer, b.boundary)) { skipped++; continue; }
         count++;
@@ -96,22 +106,28 @@ export function inspectSpatial(map: YardMap, options: { maxComparisons?: number 
   run('spatial.road_forbidden', () => {
     let count = 0, skipped = forbidden.length ? 0 : 1;
     for (const [id, road] of Object.entries(map.roads)) {
+      if (scope && !scope.roads.has(id) && !forbidden.some(space => scope.owners.has(space.kind + '/' + space.id))) continue;
       work(); const path = '/roads/' + pointer(id);
       const points = roadPoints(map, id);
+      if (scope && !scope.roads.has(id) && (road.corridorPolygon || road.widthM.state === 'known' && road.widthM.value > 0)) {
+        const box = road.corridorPolygon ? bounds(road.corridorPolygon) : roadWidthBounds(points, road.widthM).bounds;
+        if (!box || !forbidden.some(space => scope.owners.has(space.kind + '/' + space.id) && overlaps(box, bounds(space.boundary)))) continue;
+      }
       if (points.some(point => point.some(value => !Number.isFinite(value)) || Math.abs(point[0]) > 1e9 || Math.abs(point[1]) > 1e9)) {
         skipped++; issue('SPATIAL_ROAD_RANGE_UNCHECKED', 'roads', id, path, '道路超出当前几何内核的有限坐标范围，未计算通行带。', undefined, 'warning'); continue;
       }
       const corridor = road.corridorPolygon;
       const width = road.widthM.state === 'known' && road.widthM.value > 0 ? road.widthM.value : null;
       if (corridor && !usable(corridor)) { skipped++; issue('SPATIAL_CORRIDOR_UNCHECKED', 'roads', id, path + '/corridorPolygon', '声明带几何不可用，未改用其他几何替代。', points[0], 'warning'); continue; }
-      if (corridor && samePlane(points, corridor)) {
+      if (corridor && (!scope || scope.roads.has(id)) && samePlane(points, corridor)) {
         count++;
         if (!polylineWithinPolygon(points, corridor, work)) issue('SPATIAL_CORRIDOR_CENTERLINE_OUTSIDE', 'roads', id, path + '/corridorPolygon', '道路中心线部分位于人工声明通行带之外（含孔洞）。', points[0]);
-      } else if (corridor) { skipped++; issue('SPATIAL_LAYER_UNCHECKED', 'roads', id, path + '/corridorPolygon', '中心线与声明带不共平面，未验证其立体关系。', points[0], 'warning'); }
+      } else if (corridor && (!scope || scope.roads.has(id))) { skipped++; issue('SPATIAL_LAYER_UNCHECKED', 'roads', id, path + '/corridorPolygon', '中心线与声明带不共平面，未验证其立体关系。', points[0], 'warning'); }
       const hasBand = corridor !== undefined || width !== null && width / 2 > 0;
       if (!hasBand) { skipped++; issue('SPATIAL_WIDTH_UNCHECKED', 'roads', id, path + '/widthM', '没有可用的声明带或已知正宽度；仅可报告中心线候选，未补默认宽度。', points[0], 'warning'); }
       const box = corridor ? bounds(corridor) : roadWidthBounds(points, road.widthM).bounds;
       for (const space of forbidden) {
+        if (scope && !scope.roads.has(id) && !scope.owners.has(space.kind + '/' + space.id)) continue;
         work();
         if (!usable(space.boundary)) { skipped++; continue; }
         if (!box || !overlaps(box, bounds(space.boundary))) continue;
@@ -129,6 +145,7 @@ export function inspectSpatial(map: YardMap, options: { maxComparisons?: number 
   run('spatial.service_owner', () => {
     let count = 0, skipped = 0;
     for (const [id, service] of Object.entries(map.servicePoints)) {
+      if (scope && !scope.services.has(id)) continue;
       work();
       const owner = service.facilityId ? map.facilities[service.facilityId] : service.zoneId ? map.zones[service.zoneId] : undefined;
       const position = map.nodes[service.nodeId]?.position;
@@ -137,7 +154,7 @@ export function inspectSpatial(map: YardMap, options: { maxComparisons?: number 
       const outside = pointInPolygon(position, owner.boundary) === 'outside';
       if (service.arrival?.mode === 'explicit_internal') {
         count++;
-        if (outside) issue('SPATIAL_SERVICE_OUTSIDE_OWNER', 'servicePoints', id, '/servicePoints/' + pointer(id) + '/nodeId', 'explicit_internal 服务节点位于声明 owner 面外（含孔洞），需要核对端点/边界；不自动推导可通行。', position, 'warning');
+        if (outside) issue('SPATIAL_SERVICE_OUTSIDE_OWNER', 'servicePoints', id, '/servicePoints/' + pointer(id) + '/nodeId', 'explicit_internal 服务节点位于声明 owner 面外（含孔洞），需要核对端点/边界；不自动推导可通行。', position, scope ? 'error' : 'warning');
       } else {
         skipped++;
         if (outside) issue('SPATIAL_SERVICE_PROXY_UNCHECKED', 'servicePoints', id, '/servicePoints/' + pointer(id) + '/nodeId', '代理或未声明到达语义的服务节点位于 owner 面外；可能是合法抽象，未判为几何错误。', position, 'warning');
@@ -148,5 +165,41 @@ export function inspectSpatial(map: YardMap, options: { maxComparisons?: number 
   checks.push({ id: 'spatial.declaration_coverage', status: 'not_checked',
     detail: 'XY 谓词采用 ' + EPS + ' m 容差。未声明陆地归属的厂界包含、跨 owner 互斥、立体净空/车辆扫掠、来源真实性与行为执行未检查。' + (unknown ? ' 存在未知行为/几何扩展，结果只为候选。' : '') });
   if (issueLimit) checks.push({ id: 'spatial.issue_limit', status: 'partial', detail: '最多展示 200 条空间问题，其余未逐项展示；不能据此判断问题总数。' });
-  return { issues, checks };
+  return { issues, checks, completion: spent > maximum ? 'budget_exhausted' : issueLimit ? 'truncated' : 'finished' };
+}
+
+/** Commit-only checks over changed declarations. Unknown physical conditions stay warnings.
+ * No full-map issue subtraction: every changed road/forbidden pair is inspected independently.
+ */
+export function inspectSpatialEdit(before: YardMap, after: YardMap, options: { maxComparisons?: number } = {}): Issue[] {
+  const roads = new Set<string>(), owners = new Set<string>(), slots = new Set<string>(), services = new Set<string>();
+  for (const [id, road] of Object.entries(after.roads)) {
+    const old = before.roads[id];
+    if (!old || !sameValue(old.shapePoints, road.shapePoints) || (old.widthM.state !== road.widthM.state || (old.widthM.state === 'known' ? old.widthM.value : undefined) !== (road.widthM.state === 'known' ? road.widthM.value : undefined))
+      || !sameValue(old.corridorPolygon, road.corridorPolygon)
+      || !sameValue(before.nodes[old.fromNodeId]?.position, after.nodes[road.fromNodeId]?.position)
+      || !sameValue(before.nodes[old.toNodeId]?.position, after.nodes[road.toNodeId]?.position)) roads.add(id);
+  }
+  for (const kind of ['facilities', 'zones'] as const) for (const [id, owner] of Object.entries(after[kind])) {
+    const old = before[kind][id];
+    const oldFields = old?.extensions?.[PLANNING_NAMESPACE] as { slots?: { id: string; boundary: Polygon }[]; vehicleAccess?: string } | undefined;
+    const fields = owner.extensions?.[PLANNING_NAMESPACE] as typeof oldFields;
+    if (!old || !sameValue(old.boundary, owner.boundary) || oldFields?.vehicleAccess !== fields?.vehicleAccess
+      || (kind === 'zones' && before.zones[id]?.passability !== after.zones[id]?.passability)) owners.add(kind + '/' + id);
+    const previous = new Map(oldFields?.slots?.map(slot => [slot.id, slot.boundary]));
+    for (const slot of fields?.slots ?? []) if (!sameValue(previous.get(slot.id), slot.boundary)) slots.add(slot.id);
+  }
+  for (const [id, service] of Object.entries(after.servicePoints)) {
+    const old = before.servicePoints[id];
+    const owner = service.facilityId ? 'facilities/' + service.facilityId : 'zones/' + service.zoneId;
+    if (!old || old.nodeId !== service.nodeId || old.facilityId !== service.facilityId || old.zoneId !== service.zoneId || !sameValue(old.arrival, service.arrival) || owners.has(owner)
+      || !sameValue(before.nodes[old.nodeId]?.position, after.nodes[service.nodeId]?.position)) services.add(id);
+  }
+  if (!roads.size && !owners.size && !slots.size && !services.size) return [];
+  const result = inspectSpatial(after, { ...options, scope: { roads, owners, slots, services } });
+  const issues = [...result.issues];
+  if (result.completion !== 'finished') issues.push({ code: 'SPATIAL_EDIT_INCOMPLETE', severity: 'error', jsonPath: '',
+    message: '受影响空间关系检查未完成：' + result.completion + '；事务未提交。',
+    suggestedAction: '缩小编辑影响范围并重新检查；不能将预算耗尽或结果截断当作无冲突。' });
+  return issues;
 }

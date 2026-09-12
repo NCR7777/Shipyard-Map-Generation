@@ -1,0 +1,314 @@
+{
+  "stage": "GA01-B",
+  "parentStageLocalCommit": "05b0eae677e19263240057a2f84c446e66d3c061",
+  "parentStageMapCommit": "0ae0616c03dfc3a0c6d93f44bf727536db508915",
+  "environment": {
+    "shell": "PowerShell 7",
+    "node": "22.18.0",
+    "npm": "10.9.3",
+    "browser": "Chrome 152.0.7977.83"
+  },
+  "inputs": [
+    {
+      "id": "cimc_v01",
+      "path": "projects/cimc_v01/map.json",
+      "sha256": "93f4ef7c79286a2748649b4e9a901462bbf631e117931341f2b4b8b8cb8f85a1",
+      "originalUnchanged": true,
+      "semanticContentHash": "c1a343586664a6a5ae2c4ed11520ea7064c779eb9a41c6cc300bb64417c682d0"
+    },
+    {
+      "id": "cimc_v02",
+      "path": "projects/Map_Refinement_20260912/cimc_v02/map.json",
+      "sha256": "0eda616cf8bef738d7e099eb2870ef2698ec0c6378c4f1d2452f0845ac4fe5af",
+      "originalUnchanged": true,
+      "semanticContentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd"
+    },
+    {
+      "id": "dalian_v01",
+      "path": "projects/Dalian_Coastal_Shipyard_Map_v01/dalian_v01/map.json",
+      "sha256": "6faf4a6e89339224204253420d757adbbfac6595399049948a3ec9bbd19ea36b",
+      "originalUnchanged": true,
+      "semanticContentHash": "2108d02d1f6d43a3817ea037f0fc09548d0b037f8f3875aba8bef70019f9d8ff"
+    },
+    {
+      "id": "dalian_v02",
+      "path": "projects/Map_Refinement_20260912/dalian_v02/map.json",
+      "sha256": "a06fa3910079d74e3e90f1b23fd840c64640500097d7ae8a057ad82293187656",
+      "originalUnchanged": true,
+      "semanticContentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f"
+    },
+    {
+      "id": "geoje_v01",
+      "path": "projects/Geoje_Harbor_Shipyard_Map_v01/geoje_v01/map.json",
+      "sha256": "2c921a8a4bc00302026f40e5a642ed5de7e136c25ff4d555cdb5bc0ea7399f9b",
+      "originalUnchanged": true,
+      "semanticContentHash": "86b4070c1e3cfbe5cce229c094b7e08c0f307d6de99f209f89187e1e4c54a514"
+    },
+    {
+      "id": "geoje_v02",
+      "path": "projects/Map_Refinement_20260912/geoje_v02/map.json",
+      "sha256": "6313e6cff2bda3fe418d3cf9b51c0fe413495f088d882892c58ac60ef827e0e9",
+      "originalUnchanged": true,
+      "semanticContentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285"
+    },
+    {
+      "id": "hanwha_v01",
+      "path": "projects/hanwha_v01/map.json",
+      "sha256": "095c6553c437bb9e5b6df7cafe2e2e04a8061c3aec0db4b739104a2cd0f2a3f9",
+      "originalUnchanged": true,
+      "semanticContentHash": "91e655cef4ef298b6a3617b18973210580c298ae4de3ce0a894e8ef108682143"
+    },
+    {
+      "id": "hanwha_v02",
+      "path": "projects/Map_Refinement_20260912/hanwha_v02/map.json",
+      "sha256": "d9b3b76bf075e3e802088231b4af0c17d48dd8751c1c89bb1a66f82feada7d1d",
+      "originalUnchanged": true,
+      "semanticContentHash": "031c37f0f1a73eb09e2674d3b36ed966e7f8478cf2e6cf7514bf3adb270a9bee"
+    },
+    {
+      "id": "hudong_v01",
+      "path": "projects/hudong_v01/map.json",
+      "sha256": "4ca9e2ea2e58b9e720dac9cc3800bdaddeee3bb464cd3fec79be1b4e95f269ba",
+      "originalUnchanged": true,
+      "semanticContentHash": "2592ebab804451554fea37b822fc0e2048d1a82afc80aa5e0f9f1c927c1d30a3"
+    },
+    {
+      "id": "hudong_v02",
+      "path": "projects/Map_Refinement_20260912/hudong_v02/map.json",
+      "sha256": "7f0cfb8a235830c7d42e5cd807a9d5f85fd87a57063484c65568617ac5a71cd1",
+      "originalUnchanged": true,
+      "semanticContentHash": "4d3843bb5923467b32cf1f96772575738e4b3ab896f8b601f2f9e156196e243b"
+    },
+    {
+      "id": "newtimes_v01",
+      "path": "projects/newtimes_v01/map.json",
+      "sha256": "5cfc58038be77059bca888232fb72a788e7a06748b674c9105e589d9d32bbb60",
+      "originalUnchanged": true,
+      "semanticContentHash": "f719aec9b95fb92c453b2d182ca7da53d133c9a4a7c7abaefa5359df0654c342"
+    },
+    {
+      "id": "newtimes_v02",
+      "path": "projects/Map_Refinement_20260912/newtimes_v02/map.json",
+      "sha256": "101d6882283caa6af8c5afde0b3173f7fc47ebd8189cdb6dcea6a2a6be39fff1",
+      "originalUnchanged": true,
+      "semanticContentHash": "06a11a95e4f2276bc04aa09a2127e1c521d19b19c6aed3b44e31ed768af61fc0"
+    },
+    {
+      "id": "samho_v01",
+      "path": "projects/samho_v01/map.json",
+      "sha256": "283b1f88257b56bde37161f0a726fbbd766a5a166502da2a9a5c3638801dbb59",
+      "originalUnchanged": true,
+      "semanticContentHash": "a5903c1d692140da8dc9435dc8a97773adc94b5890cd32a4d677019cdcabec08"
+    },
+    {
+      "id": "samho_v02",
+      "path": "projects/Map_Refinement_20260912/samho_v02/map.json",
+      "sha256": "bfd98ddde9da61625e85e43b54805d146a8c8f6ceba543043b172550fea1463e",
+      "originalUnchanged": true,
+      "semanticContentHash": "e9b0c61946a7f9f0792614bf2145413dc547df8956e940e454c7883aac997d38"
+    },
+    {
+      "id": "weihai_v01",
+      "path": "projects/Weihai_Shipyard_Map_v01/Weihai_Shipyard_Map_v01/map.json",
+      "sha256": "b24b19d744552c4dd88a39a977f8f3b5a306e319c7f477b1ab0f3030cf78cefb",
+      "originalUnchanged": true,
+      "semanticContentHash": "997db6299aa1d7208f019d4fb3b0e293974959c77bd74815b7160130bd2afbfa"
+    },
+    {
+      "id": "weihai_v02",
+      "path": "projects/Map_Refinement_20260912/weihai_v02/map.json",
+      "sha256": "420dcf275a16664a34d68bc8371ddce8012954eb5ce6a28c29a6793e7a28e545",
+      "originalUnchanged": true,
+      "semanticContentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c"
+    },
+    {
+      "id": "xinyangzi_v01",
+      "path": "projects/xinyangzi_v01/map.json",
+      "sha256": "9576f15e37ad3e680fd34f88c14d8997628d08b585f89a43190ff10d347dc6a5",
+      "originalUnchanged": true,
+      "semanticContentHash": "4d219e8e2780fa8c8cd427015e239a9a832966c12a3c7472b243379982b51fa0"
+    },
+    {
+      "id": "xinyangzi_v02",
+      "path": "projects/Map_Refinement_20260912/xinyangzi_v02/map.json",
+      "sha256": "8679a1b5807351f2a7d1c5e6c7ec3dbe5338a751932522df6a924104ae7a3fbd",
+      "originalUnchanged": true,
+      "semanticContentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c"
+    }
+  ],
+  "realMapAcceptance": {
+    "phase": "B",
+    "production": {
+      "startTime": "2026-09-12T09:24:35.902Z",
+      "duration": 340865.314,
+      "expected": 18,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "realMapCount": 18,
+    "committedGeometryTransactions": 54,
+    "directionAttemptsRejected": 18,
+    "originalByteSHA256Verified": 18,
+    "cliCommands": 36,
+    "cliNonzero": 0,
+    "operationCSVRows": 416,
+    "coreSourceUntouchedByThisAgent": true,
+    "originalGeojeRejectedCandidateRetained": true,
+    "receipts": "GA01_B_save_receipts.json",
+    "limitations": [
+      "Parameter numbers are isolated design assumptions, not measurements or vehicle requirements.",
+      "Existing unrelated spatial conflicts and unknown geometry remain; all operations are not globally enabled.",
+      "Concurrent engineering tests mean this is functional evidence, not performance benchmarking."
+    ]
+  },
+  "checks": [
+    {
+      "command": "npm run schema:check",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "GA01_PHASE=B npm run test",
+      "exitCode": 1,
+      "passed": 522,
+      "blocked_input": 4,
+      "reason": "frozen SR02 originals missing"
+    },
+    {
+      "command": "GA01_PHASE=B npm run test:integration",
+      "exitCode": 1,
+      "passed": 63,
+      "blocked_input": 4,
+      "reason": "frozen SR02 originals missing"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "GA01_PHASE=B npm run test:e2e",
+      "exitCode": 1,
+      "passed": 123,
+      "failed": 1,
+      "reason": "old N09 test expected explicit internal target outside declared owner to commit; new deterministic containment protection rejects this"
+    },
+    {
+      "command": "npm run test:production",
+      "exitCode": 0,
+      "passed": 6
+    },
+    {
+      "command": "GA01_PHASE=B npx playwright test -c playwright.ga01.config.ts",
+      "exitCode": 0,
+      "passed": 18
+    },
+    {
+      "command": "npx playwright test -c .cache/GA01/ui.playwright.config.ts GA01_local.spec.ts",
+      "exitCode": 0,
+      "passed": 1,
+      "note": "strengthened final source preservation assertions"
+    },
+    {
+      "command": "npx playwright test -c .cache/GA01/ui.playwright.config.ts M2A1_serviceTargets.spec.ts",
+      "exitCode": 0,
+      "passed": 7,
+      "durationSeconds": 18.5,
+      "note": "test-only contract correction; full-file rerun preserves split, internal route and direction refusal"
+    }
+  ],
+  "failureHistory": [
+    "Initial GA01 production config inherited a second webServer on busy 4178; final config explicitly overrides to 4194",
+    "Initial Geoje V01 candidate rejected by deterministic forbidden-space check; original rejection retained and safe original-map candidate independently verified",
+    "Initial P1 generic dependency-code expectation updated to concrete LOCAL_OWNER_DEPENDENCY without removing atomic-failure checks"
+  ],
+  "sourceHashMode": "raw working tree bytes; LF/CRLF changes affect these file hashes",
+  "sourceFiles": {
+    "src/adapters/contracts.ts": "a0d775277bf6bc01201ccac4dba568fc823f0862012eff1c27eeef076ad208d3",
+    "src/adapters/files.ts": "841d0ae475cfb190b1c0a04a169f43cc8c2a0b9be5fc645e646c6508444bbf23",
+    "src/adapters/localFiles.ts": "e22c2021be806aa29a04e6701eff786ea1272a565b9591a7c8de3a625278f70f",
+    "src/adapters/projectStore.ts": "b1a6a7a60e9a717494d1fce6b2a450a2c4c8ddd22553fa08e0efb95967cdde1c",
+    "src/compiler/catalog.ts": "9f720776f23a78c611c8f465d926a383c837c2bdc1af7e64a337736b3fbf71fb",
+    "src/compiler/scene.ts": "5773733bf78e069d9d213b00fd4c0b0b4d3192ac41849cdcabb2a901029b6feb",
+    "src/domain/capabilities.ts": "d58bf4491f1b7d96cb81c464090879f8775f9871dadbf7ef0e3d1efef4a21a21",
+    "src/domain/commands.ts": "120d2b0fd946f988214c7eef80a6a0304d16874cb39b6b54dd9c1b006dcf05e7",
+    "src/domain/factory.ts": "6c4caafeb2e1ea7e423e214e0ad73f1b8496d670bb9629bd0b4145fa9b9a4ae6",
+    "src/domain/geometrySources.ts": "102a1643ea89f0e74a2a3d605616164584faf2516e6d1d8264f5c4bfb9adc037",
+    "src/domain/load.ts": "77e0150df6b88d23547905628d003ca31cfd2011f78e94e9c1d5b817d2375cb8",
+    "src/domain/model.generated.ts": "ab039dd8228531016076c685084a6179dbcef86e17c610995a5c9cd0293d16b8",
+    "src/domain/model.ts": "68ab4919d8eb0dcdc3349e45e209da636d3f2dbed670cd04bec54590a98b2c6e",
+    "src/domain/model.v02.generated.ts": "916812a0c9993286df676dc7f375a70b422547b461b0dee160a67a1b4fae31dd",
+    "src/domain/planning.ts": "b6849bc37b9dc39e3e02f0da595eae30152716885f68bd580bf76ba694a69307",
+    "src/domain/serialization.ts": "9e9035a2dce5b8e7f2fd70df95ce90158d8536bdedc7acf6d800d3194f71bfc2",
+    "src/domain/value.ts": "ae6f3649e8ab6aa1efe09e97938691138308f193b867c41904a9a0ec04252a54",
+    "src/editor/projectController.ts": "89dd97cf17b7c0ded727bb45bc46ad38a6de3dc5f89cc757d00c1b52d18f7c16",
+    "src/editor/session.ts": "b932fadf153e429b0fe156d5b3c4df3c4a8020f7b4079b53000cd8897c9e62c8",
+    "src/geometry/coordinates.ts": "daac51c33eecdcd5c0b14256392b4cb84b3da5bce56071ce655ff7d85d786f3b",
+    "src/geometry/polygons.ts": "34ca51504a801c7af73ae931152a9dfff3f8018d1a2d844df338a0d15e81702f",
+    "src/geometry/rectangles.ts": "3dfe7595eb4eeeb9f0edb007e0f0db13e8c840a43479b6d7764f1a1e737279bd",
+    "src/geometry/relations.ts": "b3a58fca607a634e8cacc30c1e294072b19614dcf5c81ee7ef0645b2c6f6edc7",
+    "src/geometry/roads.ts": "85c025661473618da5cb4a237d6f52a4619c15d754fafa9c8677793160bf61f8",
+    "src/main.tsx": "aac68522e46dafefdd1d7ec625c338135ef59239f026a7b100d7c0fda779f2ae",
+    "src/renderers/2d/BoundaryHandles.tsx": "99d659c22161799ddfb7d68553a65cb65104c91b5c69f85dd1a4c5b133d5aba4",
+    "src/renderers/2d/display.ts": "64dab47c08bf26ec202b5981a44a693ed9198c22f5cc6f9f902fe1bb496ada6a",
+    "src/renderers/2d/MapCanvas.tsx": "d53b4e6ccf790263830b926e7659afa52b5229ab64ba4f43c97c9c379fce8432",
+    "src/renderers/2d/SpatialLayer.tsx": "5bcd666241dd4ffe7e25aaa8821b28e305268c81ff86130b90219694edc6d4c0",
+    "src/renderers/2d/useSpatialDrawing.ts": "0d5a042529e0f7c20e9b1d90acbe55baa8dfd7ed921bede488def0a8ecaf3a77",
+    "src/styles.css": "bfe8552e7f724acb5678eb895804e4c6dac601188b66753687f29ca2f0fa140d",
+    "src/topology/networkDiagnostics.ts": "59d42be13b526d165e356714554368a9643bf6f57ca85c2767e6e4a1c5d0cbec",
+    "src/topology/pathPreview.ts": "f594b4e690c584352f8f05652f4e75be98e1bc36b16ed028539f312039d9646a",
+    "src/topology/serviceConnections.ts": "58288012f8f666a060e055a0daed6de85524bab3678963fcc2c4e84f857cd24b",
+    "src/ui/App.tsx": "697a409752f1595483cb767bf76bacdbdf1a612a8471cd796e545741d3f073a7",
+    "src/ui/DiagnosticsPanel.tsx": "25b2e061609e28f7b3a417651b6d19bac26e4d968deb0c1046a5d64e9e27d63f",
+    "src/ui/Modal.tsx": "d72a4fc00a0a6a12f2dd64e1d3fc536e55a70efeeb08f50166f6a4b05406a2f7",
+    "src/ui/ObjectDirectory.tsx": "c61e3a020957ce7607c4437d95efd2c08cf3fe113c36a407358d12f288c75b07",
+    "src/ui/PointCreationPanel.tsx": "6c55cd0a8717b049eb0eb0813e7acfd7bc0eae556bb5fc7b07d3a2bf628f7d0b",
+    "src/ui/PointPropertyPanel.tsx": "79713ab61d1bd48a50d37ef393bd92c474bb5270ee452309a851d44cb4025355",
+    "src/ui/PropertyPanel.tsx": "a30133c9823ffcf642267df183d36c3919d7de144a3ac3d8a9c728a3789d2517",
+    "src/ui/RoadPhysicalFields.tsx": "10ad35bb8040e1702d1571248597d85ada74406966352e2d7c9ce421bc08f7e6",
+    "src/ui/ServiceSemanticsFields.tsx": "5e4552dbe8d0c769aea0424980dd09fbaf86ffec7bdc5de5839eafab05aeed41",
+    "src/ui/spatial.css": "a1343f98d4f87573338b99fbc28e65b98c758c6440429d65df7e49f5504fb452",
+    "src/ui/SpatialPropertyPanel.tsx": "49c8d50e6fafafaf9bcb3be41d78a4e91d9dc4d39b1853e7990349469ce35687",
+    "src/ui/useCurrentCallback.ts": "fc2ab82411389b84635376f491439c6ec7e4c88213806730dc594f3e766fca67",
+    "src/ui/useFrameCamera.ts": "b09c44e482eddb9023f6507c2b872b4b515116dc886480e03f9409d8b760705d",
+    "src/ui/useProjectWorkspace.ts": "71318d7037fc7d488b3d5e8e5af66fca0c7a76023b9a35714074eb0d3e3fef7c",
+    "src/ui/workspace.css": "250add572c92ae6c9477ebf5b7710b6b5d8766a55140942091b143f1209ca96f",
+    "src/validation/diagnostics.ts": "5e279f1019bd546583ffa01398ac1e10285a83baf8bc633efdaa9517900377cf",
+    "src/validation/spatialDiagnostics.ts": "fcb6536022ed0cc6609618d955b42ade70fa13348b2112a9cde199b595ba85db",
+    "src/validation/validate.ts": "8011931d6b586fefb40e4f740123b366fba5dc590d36777ba3dab5c58e2ab13b",
+    "schemas/map-0.2.schema.json": "cabce214c33c23f75c6470065070cf7e0aef922cadbd3c3ba42cdb1892425dd6",
+    "schemas/map.schema.json": "e5fa536c9b24c3c7ea7d0cdc4ea3df04cafbb49620635b8b07aeb94a198cbfe2"
+  },
+  "buildFiles": {
+    "dist/assets/index-BFswsqhH.css": "39353e2a0098c4ba9c375ae72757f56a71b4d10459195c759889cf19598326a8",
+    "dist/assets/index-DHGnxWu2.js": "3d6375c5e288a8d933da744437e6b455a4bc336c7a0a68afe469260698997889",
+    "dist/index.html": "4329f6707f8faa9ff31719e94351d9990d31cf56034e2274c260d79718e46cb6"
+  },
+  "limitations": [
+    "SR02 historical inputs remain blocked_input",
+    "CLI diagnose exit 0 means report generation, not absence of conflicts",
+    "Parameter probes are isolated design assumptions, not measurements",
+    "Concurrent tests provide functional evidence, not a performance benchmark",
+    "Complex slot owners, independent geometry and unsupported semantics remain protected"
+  ],
+  "verdict": {
+    "scope": "GA01-A and GA01-B limited acceptance",
+    "status": "accepted",
+    "realInputs": 18,
+    "originalFilesUnchanged": true,
+    "historicalSR02": "blocked_input",
+    "correctnessReview": "no remaining blockers",
+    "ponytailRedundancyReview": "Lean already. Ship."
+  },
+  "finalOriginalHashRecheck": {
+    "checked": 18,
+    "mismatches": 0
+  }
+}

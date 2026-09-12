@@ -2,7 +2,8 @@ import { defineConfig } from '@playwright/test';
 import base from './playwright.config';
 
 const evidence = '.cache/GA01/' + (process.env.GA01_PHASE ?? 'A') + '-production-current';
-export default defineConfig(base, {
+export default defineConfig({
+  ...base,
   testMatch: 'GA01_maps.spec.ts', timeout: 150000,
   outputDir: evidence + '/results',
   reporter: [['list'], ['json', { outputFile: evidence + '/report.json' }]],

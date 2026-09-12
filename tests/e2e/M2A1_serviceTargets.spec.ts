@@ -196,6 +196,40 @@ test('N09 N10 N12 a service in the middle of a road stays disconnected until exp
   await page.getByTestId('servicePoints-item-sZone').click();
   await expect(summary).not.toContainText('SERVICE_NODE_UNCONNECTED');
   await expect(summary).toContainText('unchecked');
+  const splitHash = await page.getByTestId('map-hash').textContent();
+  await expect(page.locator('.canvas-status')).toContainText('1 个撤销事务');
+  await page.getByLabel('到达语义', { exact: true }).selectOption('explicit_internal');
+  await page.getByLabel('内部路径入口节点', { exact: true }).selectOption('nA');
+  await page.getByRole('button', { name: '添加内部路段', exact: true }).click();
+  await page.getByLabel('内部路段 1 道路', { exact: true }).selectOption(entryRoadId);
+  await page.getByRole('button', { name: '应用属性', exact: true }).click();
+  // GA01 checks the changed owner relationship: splitting establishes topology,
+  // but cannot make an outside node an explicit internal service point.
+  await expect(page.getByTestId('issue-panel')).toContainText('SPATIAL_SERVICE_OUTSIDE_OWNER');
+  await expect(page.getByTestId('map-hash')).toHaveText(splitHash!);
+  await expect(page.locator('.canvas-status')).toContainText('1 个撤销事务');
+  await expect(page.getByRole('button', { name: '重做', exact: true })).toBeDisabled();
+  expect(await download(page, info, 'target-outside-declaration-rejected.map.json')).toEqual(split);
+
+  await page.getByTestId('zones-item-zA').click();
+  await guard(page).getByRole('button', { name: '丢弃未应用输入并继续', exact: true }).click();
+  await page.getByLabel('边界编辑模式', { exact: true }).selectOption('polygon');
+  const ownerCorners = [[-1, -10, 0], [101, -10, 0], [101, 40, 0], [-1, 40, 0]];
+  for (const [index, point] of ownerCorners.entries()) {
+    for (const [axisIndex, axis] of ['X', 'Y'].entries()) {
+      await page.getByLabel(`外环 顶点 ${index + 1} ${axis} (m)`, { exact: true }).fill(String(point[axisIndex]));
+    }
+  }
+  await page.getByRole('button', { name: '应用属性', exact: true }).click();
+  await expect(page.locator('.canvas-status')).toContainText('2 个撤销事务');
+  const contained = await download(page, info, 'target-owner-boundary-edited.map.json');
+  expect(contained.zones.zA!.boundary.outer).toEqual([...ownerCorners, ownerCorners[0]]);
+  expect(contained.nodes).toEqual(split.nodes);
+  expect(contained.roads).toEqual(split.roads);
+  expect(contained.servicePoints).toEqual(split.servicePoints);
+  expect(contained.revision).toBe(split.revision + 1);
+
+  await page.getByTestId('servicePoints-item-sZone').click();
   await page.getByLabel('到达语义', { exact: true }).selectOption('explicit_internal');
   await page.getByLabel('内部路径入口节点', { exact: true }).selectOption('nA');
   await page.getByRole('button', { name: '添加内部路段', exact: true }).click();

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
 import type { StoredProject } from '../../src/editor/projectController';
-import { GA01_TARGETS, GA01Boundary, GA01Command, readGA01Target, assertGA01Change, assertGA01Equal } from '../helpers/GA01_targets';
+import { GA01_TARGETS, GA01Boundary, GA01Command, readGA01Target, assertGA01Change, assertGA01Equal, GA01RoadCommand, assertGA01RoadChange } from '../helpers/GA01_targets';
 
 const phase = process.env.GA01_PHASE ?? 'A';
 async function saved(page: Page) { await expect(page.getByTestId('browser-save-status')).toContainText('已保存', { timeout: 30000 }); }
@@ -18,7 +18,7 @@ async function imported(page: Page, name: string) {
   await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue(name); await saved(page);
 }
 for (const target of GA01_TARGETS) test('GA01 ' + phase + ' ' + target.id + ' actual geometry, history, autosave, refresh and JSON roundtrip', async ({ page, browser }, info) => {
-  test.setTimeout(150000);
+  test.setTimeout(phase === 'B' ? 240000 : 150000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const original = await readGA01Target(target); const bytes = await readFile(target.absolutePath);
   await page.goto('/'); await expect(page.getByRole('button', { name: '保存工程', exact: true })).toBeEnabled();
@@ -45,12 +45,53 @@ for (const target of GA01_TARGETS) test('GA01 ' + phase + ' ' + target.id + ' ac
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await expect(page.getByTestId('map-hash')).not.toHaveText(startHash!, { timeout: 30000 });
   await saved(page); // Auto-save must complete before any explicit save.
-  const changed = await exportMap(page, info, 'edited'); assertGA01Change(original, changed.map, target, phase);
+  let changed = await exportMap(page, info, 'edited'); assertGA01Change(original, changed.map, target, phase);
   if (phase !== 'B') expect(changed.map.facilities[target.facilityId]!.boundary).toEqual(GA01Boundary(original, target));
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   assertGA01Equal((await exportMap(page, info, 'undo')).map, original);
   await page.getByRole('button', { name: '重做', exact: true }).click();
   assertGA01Equal((await exportMap(page, info, 'redo')).map, changed.map);
+  const roadTransactions: object[] = [];
+  if (phase === 'B') for (const edit of ['shape', 'parameters'] as const) {
+    const before = changed.map; const command = GA01RoadCommand(before, target, edit);
+    await page.getByTestId('object-search').fill(command.id);
+    await page.getByTestId('road-item-' + command.id).click();
+    await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue(command.id);
+    if (edit === 'shape') {
+      const originalDirection = before.roads[command.id]!.direction;
+      const beforeDirectionHash = await page.getByTestId('map-hash').textContent();
+      await page.getByLabel('道路方向', { exact: true }).selectOption(originalDirection === 'both' ? 'forward' : 'both');
+      await page.getByRole('button', { name: '应用属性', exact: true }).click();
+      await expect(page.getByTestId('issue-panel')).toContainText('ARC_DIRECTION_CONFLICT');
+      await expect(page.getByTestId('map-hash')).toHaveText(beforeDirectionHash!);
+      await expect(page.locator('.canvas-status')).toContainText('1 个撤销事务');
+      await page.getByLabel('道路方向', { exact: true }).selectOption(originalDirection);
+      assertGA01Equal((await exportMap(page, info, 'direction-rejected')).map, before);
+      roadTransactions.push({ operation: 'direction', roadId: command.id, result: 'expected_blocked', code: 'ARC_DIRECTION_CONFLICT', mapAndHistoryUnchanged: true });
+      await page.getByRole('button', { name: '添加内部折点', exact: true }).click();
+      for (const [axis, value] of [['X', command.patch.shapePoints![0]![0]], ['Y', command.patch.shapePoints![0]![1]], ['Z', command.patch.shapePoints![0]![2]]] as const)
+        await page.getByLabel('折点 1 ' + axis + ' (m)', { exact: true }).fill(String(value));
+    } else {
+      const details = page.getByText('物理参数与来源', { exact: true });
+      if (await details.locator('..').getAttribute('open') === null) await details.click();
+      for (const [field, label] of [['widthM', '道路宽度 (m)'], ['speedLimitMps', '速度限制 (m/s)']] as const) {
+        const value = command.patch[field]!; if (value.state !== 'known') throw new Error('expected numeric test assumption');
+        await page.getByLabel(label + ' 状态', { exact: true }).selectOption('known');
+        await page.getByLabel(label + ' 数值', { exact: true }).fill(String(value.value));
+        await page.getByLabel(label + ' 来源', { exact: true }).selectOption('');
+      }
+    }
+    const hashBefore = await page.getByTestId('map-hash').textContent();
+    await page.getByRole('button', { name: '应用属性', exact: true }).click();
+    await expect(page.getByTestId('map-hash')).not.toHaveText(hashBefore!, { timeout: 30000 }); await saved(page);
+    changed = await exportMap(page, info, 'edited-road-' + edit);
+    assertGA01RoadChange(before, changed.map, command, edit);
+    await page.getByRole('button', { name: '撤销', exact: true }).click();
+    assertGA01Equal((await exportMap(page, info, 'road-' + edit + '-undo')).map, before);
+    await page.getByRole('button', { name: '重做', exact: true }).click();
+    assertGA01Equal((await exportMap(page, info, 'road-' + edit + '-redo')).map, changed.map);
+    roadTransactions.push({ operation: edit, roadId: command.id, requestedPatch: command.patch, revisionBefore: before.revision, revisionAfter: changed.map.revision, exactFieldsAndAttribution: true, undoRedo: true, sourceMeaning: edit === 'parameters' ? 'explicit isolated test design assumptions; not measured values or vehicle requirements' : 'manual geometry design attribution' });
+  }
   const ctrlSReceipt = await confirmedSave(page, changed.map, () => page.keyboard.press('Control+s'));
   const buttonSaveReceipt = await confirmedSave(page, changed.map, () => page.getByRole('button', { name: '保存工程', exact: true }).click());
   await page.reload(); await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue(original.metadata.name, { timeout: 30000 }); await saved(page);
@@ -62,7 +103,7 @@ for (const target of GA01_TARGETS) test('GA01 ' + phase + ' ' + target.id + ' ac
   assertGA01Equal((await exportMap(page, info, 'reimported')).map, changed.map);
   await page.screenshot({ path: info.outputPath('GA01-' + target.id + '-final.png'), fullPage: true });
   expect(errors).toEqual([]); expect(await readGA01Target(target)).toEqual(original);
-  await info.attach('GA01-receipt.json', { body: JSON.stringify({ phase, id: target.id, originalSHA256: target.sha256, entityId, realGeometryChanged: true, framePreserved: true, unmodifiedFieldsExact: true, sourceAttribution: true, undoRedo: true, automaticSave: true, ctrlS: ctrlSReceipt, explicitSave: buttonSaveReceipt, refresh: true, reimport: true, originalUnchanged: true, numericEquality: 'exact ===; existing JSON -0 to 0 only, no rounding or tolerance', browser: browser.version() }, null, 2), contentType: 'application/json' });
+  await info.attach('GA01-receipt.json', { body: JSON.stringify({ phase, id: target.id, originalSHA256: target.sha256, entityId, realGeometryChanged: true, framePreserved: true, unmodifiedFieldsExact: true, sourceAttribution: true, roadTransactions, undoRedo: true, automaticSave: true, ctrlS: ctrlSReceipt, explicitSave: buttonSaveReceipt, refresh: true, reimport: true, originalUnchanged: true, numericEquality: 'exact ===; existing JSON -0 to 0 only, no rounding or tolerance', browser: browser.version() }, null, 2), contentType: 'application/json' });
 });
 
 if (phase === 'A') test('GA01 A large Hanwha V02 map commits 100 native corner previews once', async ({ page }, info) => {

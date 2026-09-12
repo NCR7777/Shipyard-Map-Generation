@@ -4,7 +4,7 @@ import { loadMap } from '../src/domain/load';
 import { inspectPlanning } from '../src/domain/planning';
 import { applyMapCommand, commandSupport, selectionImpact, type MapCommand } from '../src/domain/commands';
 import { roadLength } from '../src/geometry/roads';
-import { GA01_TARGETS, GA01Command, readGA01Target, assertGA01Change } from '../tests/helpers/GA01_targets';
+import { GA01_TARGETS, GA01Command, readGA01Target, assertGA01Change, GA01RoadCommand, assertGA01RoadChange } from '../tests/helpers/GA01_targets';
 
 const phase = process.env.GA01_PHASE ?? 'A';
 const rows = [];
@@ -24,7 +24,7 @@ for (const target of GA01_TARGETS) {
   });
   const leaf = selectionImpact(map, { nodes: [target.nodeId], roads: [] });
   const roadId = leaf.affectedRoadIds[0]!; const road = map.roads[roadId]!;
-  const from = map.nodes[road.fromNodeId]!.position, to = map.nodes[road.toNodeId]!.position;
+  const from = map.nodes[road.fromNodeId]!.position;
   const facility = map.facilities[target.facilityId]!;
   const zoneId = Object.keys(map.zones)[0]!; const zone = map.zones[zoneId]!;
   const zoneBoundary = structuredClone(zone.boundary);
@@ -36,7 +36,7 @@ for (const target of GA01_TARGETS) {
     { operation: 'node_position', command: GA01Command(map, target, 'B') },
     { operation: 'node_translate', command: { type: 'translateSelection', selection: { nodes: [target.nodeId], roads: [] }, delta: [0.01, 0, 0] } },
     { operation: 'road_translate', command: { type: 'translateSelection', selection: { nodes: [], roads: [roadId] }, delta: [0.01, 0, 0] } },
-    { operation: 'road_shapePoints', command: { type: 'updateRoad', id: roadId, patch: { shapePoints: [[(from[0] + to[0]) / 2 + 0.01, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2]] } } },
+    { operation: 'road_shapePoints', command: GA01RoadCommand(map, target, 'shape') },
     { operation: 'node_rotate', command: { type: 'rotateSelection', selection: { nodes: [target.nodeId], roads: [] }, pivot: [from[0] + 1, from[1] + 1, from[2]], angleRad: 0.00001 } },
     { operation: 'road_rotate', command: { type: 'rotateSelection', selection: { nodes: [], roads: [roadId] }, pivot: from, angleRad: 0.00001 } },
     { operation: 'zone_boundary', command: { type: 'updateZone', id: zoneId, patch: { boundary: zoneBoundary } } },
@@ -54,6 +54,13 @@ for (const target of GA01_TARGETS) {
     const prior = road[field]; const value = prior.state === 'known' ? prior.value + 0.01 : 1;
     operations.push({ operation: 'road_' + field + '_design_assumption', command: { type: 'updateRoad', id: roadId, patch: { [field]: { state: 'known', value } }, designAssumption: { id: 'SRC_GA01_parameter_probe', name: 'GA01 isolated parameter test', description: 'Explicit test design assumption; not a vehicle requirement or field measurement.' } } });
   }
+  if (phase === 'B') operations.push({ operation: 'road_width_speed_design_assumption', command: GA01RoadCommand(map, target, 'parameters') });
+  if (phase === 'B' && target.id === 'geoje_v01') {
+    // Preserve the original representative's real rejection after selecting a safe leaf for the browser closure.
+    const original = { ...target, nodeId: 'N_GJ_98578c20a5' };
+    operations.push({ operation: 'original_leaf_node_expected_blocked', command: GA01Command(map, original, 'B') });
+    operations.push({ operation: 'original_leaf_shape_expected_blocked', command: GA01RoadCommand(map, original, 'shape') });
+  }
   const owner = owners[0];
   if (owner) { const [kind, id] = owner.split('/') as ['facilities' | 'zones', string]; operations.push({ operation: 'staticMove_expected_blocked', command: { type: 'translateSelection', selection: { nodes: [], roads: [], [kind]: [id] }, delta: [0.01, 0, 0], facilityMovePolicy: kind === 'facilities' ? 'withStaticContents' : 'boundaryOnly', zoneMovePolicy: kind === 'zones' ? 'withStaticContents' : 'boundaryOnly' } }); }
   const operationMatrix = operations.map(probe => {
@@ -62,11 +69,25 @@ for (const target of GA01_TARGETS) {
     if (result.ok) { assert.deepEqual(result.map.coordinateFrame, map.coordinateFrame); if (!result.changed) assert.deepEqual(result.map, map); }
     return { ...probe, support: permission, actualApply: result.ok ? { ok: true, changed: result.changed, frameEqual: true, revision: result.map.revision, affectedRefs: result.transaction?.affectedRefs } : result };
   });
+  const sequentialRoadEdits = [];
+  if (phase === 'B' && applied.ok && applied.changed) {
+    let current = applied.map;
+    for (const edit of ['shape', 'parameters'] as const) {
+      const requested = GA01RoadCommand(current, target, edit); const result = applyMapCommand(current, requested);
+      sequentialRoadEdits.push({ edit, requested, actualApply: result.ok ? { ok: true, changed: result.changed, revision: result.map.revision } : result });
+      if (!result.ok || !result.changed) break;
+      assertGA01RoadChange(current, result.map, requested, edit); current = result.map;
+    }
+    if (sequentialRoadEdits.length === 2 && sequentialRoadEdits.every(item => item.actualApply.ok)) {
+      await mkdir('.cache/GA01/B-native-edited', { recursive: true });
+      await writeFile('.cache/GA01/B-native-edited/' + target.id + '.map.json', JSON.stringify(current, null, 2) + '\n');
+    }
+  }
   rows.push({ id: target.id, path: target.path, sha256: target.sha256, contentHash: loaded.contentHash, mapId: map.mapId, coordinateFrame: map.coordinateFrame,
     nativeValidation: loaded.report, namespaces: map.extensionNamespaces, capabilities: loaded.ok ? loaded.capabilities : null,
     planning: { supported: planning.supported, slots: planning.slots.length, issues: planning.issues }, command, support,
     actualApply: applied.ok ? { ok: true, changed: applied.changed, revision: applied.map.revision, frameEqual: true, affectedRefs: applied.transaction?.affectedRefs } : applied,
-    operationMatrix, staticContentsStatus: owners.length ? 'present_expected_blocked' : 'not_applicable_no_slots', staticContents, leafDependencies: leaf.affectedRefs.map(ref => ({ ...ref, ...(ref.kind === 'junctions' ? { boundary: map.junctions[ref.id]?.boundary ?? null } : {}), ...(ref.kind === 'movements' ? { internalPath: map.movements[ref.id]?.internalPath ?? null } : {}) })) });
+    operationMatrix, sequentialRoadEdits, staticContentsStatus: owners.length ? 'present_expected_blocked' : 'not_applicable_no_slots', staticContents, leafDependencies: leaf.affectedRefs.map(ref => ({ ...ref, ...(ref.kind === 'junctions' ? { boundary: map.junctions[ref.id]?.boundary ?? null } : {}), ...(ref.kind === 'movements' ? { internalPath: map.movements[ref.id]?.internalPath ?? null } : {}) })) });
   await readGA01Target(target);
   console.log(target.id + ': ' + (applied.ok ? 'geometry_changed=' + applied.changed : applied.issues.map(issue => issue.code).join(',')) + '; operations=' + operationMatrix.length);
 }
@@ -76,10 +97,10 @@ if (phase !== 'baseline') {
   const table: string[][] = [['map_version', 'operation', 'entity', 'support_allowed', 'actual_result', 'reject_codes', 'json_paths', 'affected_refs']];
   for (const row of rows) for (const operation of row.operationMatrix) {
     const command = operation.command, result = operation.actualApply;
-    const issues = 'issues' in result ? result.issues : [];
+    const issues = 'issues' in result ? result.issues.filter(issue => issue.severity === 'error') : [];
     const entity = 'id' in command ? command.id : 'selection' in command ? Object.entries(command.selection).flatMap(([kind, ids]) => (ids as string[]).map(id => kind + '/' + id)).join(';') : '';
     const refs = 'affectedRefs' in result ? result.affectedRefs ?? [] : operation.support.affectedRefs;
-    table.push([row.id, operation.operation, entity, String(operation.support.allowed), 'changed' in result ? result.changed ? 'changed' : 'no_op' : 'rejected', issues.map(issue => issue.code).join(';'), issues.map(issue => issue.jsonPath ?? '').join(';'), refs.map(ref => ref.kind + '/' + ref.id).join(';')]);
+    table.push([row.id, operation.operation, entity, String(operation.support.allowed), 'changed' in result ? result.changed ? 'changed' : 'no_op' : 'rejected', [...new Set(issues.map(issue => issue.code))].join(';'), [...new Set(issues.map(issue => issue.jsonPath ?? ''))].join(';'), refs.map(ref => ref.kind + '/' + ref.id).join(';')]);
   }
   for (const row of rows) if (!row.staticContents.length) table.push([row.id, 'staticMove', '', 'not_applicable', 'not_applicable_no_slots', '', '', '']);
   await writeFile('docs/GA01_' + phase + '_operations.csv', table.map(row => row.map(cell => '"' + cell.replaceAll('"', '""') + '"').join(',')).join('\n') + '\n');

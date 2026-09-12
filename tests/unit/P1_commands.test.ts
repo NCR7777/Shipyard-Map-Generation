@@ -99,7 +99,7 @@ describe('P1 explicit operation protection and real SR03 rigid contents', () => 
   it('rejects direct geometry patches and point operations that bypass a slot owner', () => {
     const map = fixture(), boundary = structuredClone(map.facilities.F_001!.boundary); boundary.outer[0][0] += 1;
     reject(map, { type: 'updateFacility', id: 'F_001', patch: { boundary } }, 'OPERATION_DEPENDENCIES_UNSUPPORTED');
-    reject(map, { type: 'updateNode', id: 'N_0013', patch: { position: [1, 2, 0] } }, 'OPERATION_DEPENDENCIES_UNSUPPORTED');
+    reject(map, { type: 'updateNode', id: 'N_0013', patch: { position: [1, 2, 0] } }, 'LOCAL_OWNER_DEPENDENCY');
     reject(map, { type: 'translateSelection', selection: select({ servicePoints: ['SP_001'] }), delta: [1, 0, 0] }, 'OPERATION_DEPENDENCIES_UNSUPPORTED');
   });
   it('rejects unknown global behavior and unknown fields inside the known behavior', () => {

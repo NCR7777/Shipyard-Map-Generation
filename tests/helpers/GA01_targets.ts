@@ -156,7 +156,7 @@ const frozen = [
       }
     },
     "facilityId": "F_GJ002",
-    "nodeId": "N_GJ_98578c20a5",
+    "nodeId": "N_GJ_4e23f596d3",
     "contentHash": "86b4070c1e3cfbe5cce229c094b7e08c0f307d6de99f209f89187e1e4c54a514"
   },
   {
@@ -599,4 +599,50 @@ export function assertGA01Change(before: YardMap, after: YardMap, target: GA01Ta
 export function assertGA01Equal(actual: unknown, expected: unknown, message = 'exact declared value equality'): void {
   // Existing JSON serialization emits -0 as 0. Only JS numeric equality applies; no tolerance or rounding.
   if (!sameValue(actual, expected)) assert.deepEqual(actual, expected, message);
+}
+
+export type GA01RoadEdit = 'shape' | 'parameters';
+export function GA01RoadCommand(map: YardMap, target: GA01Target, edit: GA01RoadEdit): Extract<MapCommand, { type: 'updateRoad' }> {
+  const entry = Object.entries(map.roads).find(([, road]) => road.fromNodeId === target.nodeId || road.toNodeId === target.nodeId);
+  assert.ok(entry, 'frozen leaf road candidate missing');
+  const [id, road] = entry;
+  if (edit === 'parameters') {
+    const width = road.widthM.state === 'known' ? road.widthM.value * 0.999 : 1;
+    const speed = road.speedLimitMps.state === 'known' ? road.speedLimitMps.value + 0.01 : 1;
+    return { type: 'updateRoad', id, patch: { widthM: { state: 'known', value: width }, speedLimitMps: { state: 'known', value: speed } }, designAssumption: { id: 'SRC_GA01_B_parameter_test', name: 'GA01 isolated parameter test', description: 'Explicit test design assumption; not a vehicle requirement or field measurement.' } };
+  }
+  assert.equal(road.shapePoints.length, 0, 'this frozen candidate has no prior internal vertices');
+  const a = map.nodes[road.fromNodeId]!.position, b = map.nodes[road.toNodeId]!.position;
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]); assert.ok(length > 0);
+  // A perpendicular 1 cm bend changes the actual line, rather than adding a collinear vertex.
+  return { type: 'updateRoad', id, patch: { shapePoints: [[(a[0] + b[0]) / 2 - (b[1] - a[1]) / length * 0.01, (a[1] + b[1]) / 2 + (b[0] - a[0]) / length * 0.01, (a[2] + b[2]) / 2]] } };
+}
+export function assertGA01RoadChange(before: YardMap, after: YardMap, command: Extract<MapCommand, { type: 'updateRoad' }>, edit: GA01RoadEdit): void {
+  assert.equal(after.revision, before.revision + 1); assertGA01Equal(after.coordinateFrame, before.coordinateFrame);
+  const old = before.roads[command.id]!, road = after.roads[command.id]!;
+  const attributed: Record<string, string> = {};
+  if (edit === 'shape') {
+    assertGA01Equal(road.shapePoints, command.patch.shapePoints, 'exact requested noncollinear road bend');
+    assert.notDeepEqual(road.shapePoints, old.shapePoints);
+    const source = road.provenance.fieldSources?.shapePoints; assert.ok(source);
+    assert.equal(after.sources[source]!.category, 'design_assumption'); attributed.shapePoints = source;
+    assertGA01Equal(road.provenance.sourceRefs, [...new Set([...(old.provenance.sourceRefs ?? []), source])]);
+  } else {
+    for (const field of ['widthM', 'speedLimitMps'] as const) {
+      const actual = road[field], requested = command.patch[field]!;
+      assert.equal(actual.state, 'known'); assert.equal(requested.state, 'known');
+      if (actual.state !== 'known' || requested.state !== 'known') throw new Error('expected explicit parameter value');
+      assert.equal(actual.value, requested.value); assert.notDeepEqual(actual, old[field]); assert.ok(actual.sourceRef);
+      assert.equal(after.sources[actual.sourceRef]!.category, 'design_assumption'); attributed[field] = actual.sourceRef;
+    }
+    assert.equal(attributed.widthM, attributed.speedLimitMps, 'one explicit design source per parameter transaction');
+    assertGA01Equal(road.provenance.sourceRefs, old.provenance.sourceRefs);
+  }
+  assertGA01Equal(road.provenance, { ...old.provenance, ...(edit === 'shape' ? { sourceRefs: road.provenance.sourceRefs } : {}), fieldSources: { ...old.provenance.fieldSources, ...attributed } }, 'only edited road fields gain attribution');
+  for (const [id, source] of Object.entries(before.sources)) assertGA01Equal(after.sources[id], source);
+  const added = Object.keys(after.sources).filter(id => !Object.hasOwn(before.sources, id));
+  assertGA01Equal(added.sort(), [...new Set(Object.values(attributed))].filter(id => !Object.hasOwn(before.sources, id)).sort());
+  const normalized = structuredClone(after); normalized.revision = before.revision; normalized.sources = structuredClone(before.sources);
+  normalized.roads[command.id] = { ...road, provenance: structuredClone(old.provenance), ...(edit === 'shape' ? { shapePoints: structuredClone(old.shapePoints) } : { widthM: structuredClone(old.widthM), speedLimitMps: structuredClone(old.speedLimitMps) }) };
+  assertGA01Equal(normalized, before, 'unrelated fields, endpoints, IDs, slots and resources remain exact');
 }

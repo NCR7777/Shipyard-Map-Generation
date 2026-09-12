@@ -33,9 +33,9 @@ export function isDirty(session: EditorSession): boolean {
 export function editSession(session: EditorSession, command: MapCommand): SessionResult {
   const result = applyMapCommand(session.map, command);
   if (!result.ok) return { ok: false, session, issues: result.issues };
-  if (!result.changed || !result.transaction) return { ok: true, session, issues: [] };
+  if (!result.changed || !result.transaction) return { ok: true, session, issues: result.issues ?? [] };
   return {
-    ok: true, issues: [],
+    ok: true, issues: result.issues ?? [],
     session: { ...session, map: result.map, past: [...session.past, result.transaction].slice(-HISTORY_LIMIT), future: [], changeToken: session.changeToken + 1 },
   };
 }
