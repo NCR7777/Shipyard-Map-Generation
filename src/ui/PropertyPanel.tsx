@@ -31,8 +31,14 @@ function vec(values: string[]): Vec3 | null {
 
 export function PropertyPanel(props: Props) {
   const { selected } = props;
-  if (selected && selected.kind !== 'node' && selected.kind !== 'road') return <SpatialPropertyPanel {...props} selected={selected} />;
-  return <NetworkPropertyPanel {...props} selected={selected} />;
+  return <>{selected && selected.kind !== 'node' && selected.kind !== 'road'
+    ? <SpatialPropertyPanel {...props} selected={selected} />
+    : <NetworkPropertyPanel {...props} selected={selected} />}
+    {selected?.value.provenance.fieldSources && <div className="provenance-note" data-testid="field-sources"><strong>字段来源（总体来源类别保持原声明）</strong>
+      {Object.entries(selected.value.provenance.fieldSources).map(([field, id]) => <div key={field}>{field}：{id} · {props.map.sources[id]?.name ?? '来源缺失'} · {props.map.sources[id]?.category}</div>)}
+      人工几何修改不表示已实测或重新核验。
+    </div>}</>;
+
 }
 
 function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChange, map, mapContentHash, onRoadPreviewChange }: Omit<Props, 'selected'> & { selected: NetworkSelection | null }) {

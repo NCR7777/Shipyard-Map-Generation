@@ -5,6 +5,8 @@ import { contentHash, serializeMap } from './serialization';
 import { transformPolygon } from '../geometry/polygons';
 import { polylineLength2D, roadPoints } from '../geometry/roads';
 import { newNode } from './factory';
+import { sameValue } from './value';
+import { recordGeometrySources } from './geometrySources';
 import { zoneServicePointIds } from '../topology/serviceConnections';
 import { inspectPlanning, PLANNING_NAMESPACE as PLANNING, type PlanningSlot } from './planning';
 
@@ -208,12 +210,6 @@ export function selectionImpact(map: YardMap, selection: Selection, facilityMove
   for (const slot of slots) refs.push({ kind: 'extensions', id: '/' + slot.ownerKind + '/' + slot.ownerId + '/extensions/' + PLANNING });
   const affectedRefs = [...new Map(refs.map(ref => [ref.kind + '/' + ref.id, ref])).values()];
   return { affectedRefs, selection: complete, affectedRoadIds: affectedRoadIds.sort(), sharedNodeIds: [...shared].sort(), fixedAnchorNodeIds: [...fixed].sort(), rigidRoadIds: [...rigid].sort(), connectorRoadIds: [...connectors].sort(), junctionIds: [...junctionIds].sort(), slots };
-}
-function sameValue(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
-  const aa = a as Record<string, unknown>, bb = b as Record<string, unknown>;
-  return Object.keys(aa).length === Object.keys(bb).length && Object.keys(aa).every(key => Object.hasOwn(bb, key) && sameValue(aa[key], bb[key]));
 }
 function canChangeBoundary(map: YardMap, kind: 'facilities' | 'zones', id: string): boolean {
   const entity = map[kind][id]!; const fields = planningFields(entity);
@@ -570,6 +566,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       default: return { ok: false, issues: [problem('UNKNOWN_COMMAND', '未支持的领域命令。')] };
     }
   } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError ? error.path : '')] }; }
+  if (!sameValue(input.coordinateFrame, next.coordinateFrame)) return { ok: false, issues: [problem('COORDINATE_FRAME_LOCKED', '普通本地编辑不得改变坐标框架；请通过显式文档替换操作打开另一框架。', '/coordinateFrame')] };
   const report = validateMap(next);
   if (!report.ok) return { ok: false, issues: report.issues };
   if (support.impact?.slots.length) {
@@ -577,9 +574,11 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
     if (!planning.supported) return { ok: false, issues: [problem('STATIC_CONTENTS_INVALID', '变换后静态槽位契约不再有效，整个事务已拒绝。'), ...planning.issues] };
   }
   if (contentHash(input) === contentHash(next)) return { ok: true, map: input, changed: false, ...(command.type === 'upgradeSchema' ? { migrationChanges: [] } : {}) };
+  const sourceRefs = recordGeometrySources(input, next, support.affectedRefs, command.type === 'duplicateSelection' ? command.idMap : undefined);
+  const affectedRefs = [...support.affectedRefs, ...sourceRefs];
   next.revision = input.revision + 1;
   const finalReport = validateMap(next); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };
   try { serializeMap(next); } catch (error) { return { ok: false, issues: [problem('JSON_SIZE_LIMIT', error instanceof Error ? error.message : '规范化 JSON 超过限制。')] }; }
   const before = freezeMap(structuredClone(input)); const after = freezeMap(next);
-  return { ok: true, map: after, changed: true, transaction: { before, after, label: command.type, affectedRefs: Object.freeze(support.affectedRefs.map(ref => Object.freeze({ ...ref }))) }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input) } : {}) };
+  return { ok: true, map: after, changed: true, transaction: { before, after, label: command.type, affectedRefs: Object.freeze(affectedRefs.map(ref => Object.freeze({ ...ref }))) }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input) } : {}) };
 }

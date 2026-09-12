@@ -100,7 +100,17 @@ function translated(original: YardMap, kind: 'facilities' | 'zones', id: string,
   const slots = (after[kind][id]!.extensions!['sr02.planning'] as { slots: { boundary: Polygon }[] }).slots;
   for (const slot of slots) slot.boundary = polygon(slot.boundary);
   for (const node of nodes) after.nodes[node]!.position = move(after.nodes[node]!.position);
-  for (const junction of Object.values(after.junctions)) if (junction.boundary && junction.nodeIds.every(node => nodes.includes(node))) junction.boundary = polygon(junction.boundary);
+  const sourceId = 'source_editor_geometry';
+  after.sources[sourceId] = { name: '编辑器人工几何设计假设', category: 'design_assumption', description: '用户在本地米制编辑器中修改的几何字段；保留原始来源，未经现场测量或地理配准核验。' };
+  const attribute = (entity: { provenance: YardMap['nodes'][string]['provenance'] }, fields: string[]) => {
+    entity.provenance.sourceRefs = [...new Set([...(entity.provenance.sourceRefs ?? []), sourceId])];
+    entity.provenance.fieldSources = { ...entity.provenance.fieldSources, ...Object.fromEntries(fields.map(field => [field, sourceId])) };
+  };
+  attribute(after[kind][id]!, ['boundary', ...slots.map((_, index) => 'extensions/sr02.planning/slots/' + index + '/boundary')]);
+  for (const node of nodes) attribute(after.nodes[node]!, ['position']);
+  for (const junction of Object.values(after.junctions)) if (junction.boundary && junction.nodeIds.every(node => nodes.includes(node))) {
+    junction.boundary = polygon(junction.boundary); attribute(junction, ['boundary']);
+  }
   return after;
 }
 async function writeEvidence(info: TestInfo, data: object) {

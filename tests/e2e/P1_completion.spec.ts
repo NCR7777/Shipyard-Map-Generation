@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { cpus, platform, release } from 'node:os';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
-import type { Polygon, Vec3, YardMap } from '../../src/domain/model';
+import type { Polygon, Provenance, Vec3, YardMap } from '../../src/domain/model';
 import { P1_TARGETS, P1_COLLECTIONS, readP1Target, type P1Target } from '../helpers/P1_targets';
 
 // Real user originals enter via the file input. No application-state or Konva injection.
@@ -77,11 +77,31 @@ function mapPolygon(polygon: Polygon, transform: (point: Vec3) => Vec3): Polygon
 }
 function expectedOwnerTransform(before: YardMap, kind: 'facilities' | 'zones', id: string, nodeIds: string[], transform: (point: Vec3) => Vec3) {
   const after = structuredClone(before); after.revision++;
+  const sourceId = 'source_editor_geometry';
+  const source = { name: '编辑器人工几何设计假设', category: 'design_assumption' as const,
+    description: '用户在本地米制编辑器中修改的几何字段；保留原始来源，未经现场测量或地理配准核验。' };
+  if (before.sources[sourceId]) expect(before.sources[sourceId]).toEqual(source);
+  after.sources[sourceId] = source;
+  // Independent expectation for these frozen, nonzero transforms; no command/source implementation calls.
+  const attribute = (provenance: Provenance, field: string) => {
+    if (!provenance.sourceRefs?.includes(sourceId)) provenance.sourceRefs = [...(provenance.sourceRefs ?? []), sourceId];
+    provenance.fieldSources = { ...provenance.fieldSources, [field]: sourceId };
+  };
   after[kind][id]!.boundary = mapPolygon(before[kind][id]!.boundary, transform);
-  slots(after, kind, id).forEach(slot => { slot.boundary = mapPolygon(slot.boundary, transform); });
-  for (const node of nodeIds) after.nodes[node]!.position = transform(before.nodes[node]!.position);
+  attribute(after[kind][id]!.provenance, 'boundary');
+  slots(after, kind, id).forEach((slot, index) => {
+    slot.boundary = mapPolygon(slot.boundary, transform);
+    attribute(after[kind][id]!.provenance, 'extensions/sr02.planning/slots/' + index + '/boundary');
+  });
+  for (const node of nodeIds) {
+    after.nodes[node]!.position = transform(before.nodes[node]!.position);
+    if (after.nodes[node]!.position.some((value, axis) => value !== before.nodes[node]!.position[axis])) attribute(after.nodes[node]!.provenance, 'position');
+  }
   for (const junction of Object.values(after.junctions)) {
-    if (junction.boundary && junction.nodeIds.every(node => nodeIds.includes(node))) junction.boundary = mapPolygon(junction.boundary, transform);
+    if (junction.boundary && junction.nodeIds.every(node => nodeIds.includes(node))) {
+      junction.boundary = mapPolygon(junction.boundary, transform);
+      attribute(junction.provenance, 'boundary');
+    }
   }
   return after;
 }

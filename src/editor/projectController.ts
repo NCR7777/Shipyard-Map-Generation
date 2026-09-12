@@ -1,3 +1,4 @@
+import { sameValue } from '../domain/value';
 import { SCENE_KINDS, type SceneKind } from '../adapters/contracts';
 import type { Facility, Issue, YardMap, Zone } from '../domain/model';
 import type { FacilityMovePolicy, ZoneMovePolicy } from '../domain/commands';
@@ -51,6 +52,7 @@ export interface ProjectRecovery {
   projectId: string; map: YardMap; editorState: EditorState | null;
   source: 'draft' | 'checkpoint' | 'previousCheckpoint' | 'new'; warnings: Issue[];
 }
+export interface ProjectOpenCandidate { readonly recovery: ProjectRecovery }
 export interface SaveReceipt {
   projectId: string; storageVersion: number; contentHash: string; kind: SaveKind; savedAt: number;
 }
@@ -162,6 +164,7 @@ export class ProjectController {
   private listeners = new Set<() => void>();
   private navigation = 0;
   private startupWarnings: Issue[] = [];
+  private pendingOpen: { candidate: ProjectOpenCandidate; recovered: { context: Context; recovery: ProjectRecovery }; navigation: number; active: Context | null; activeVersion: number | null } | null = null;
 
   constructor(private readonly store: ProjectStorePort, private readonly now: () => number = Date.now) {}
 
@@ -246,17 +249,48 @@ export class ProjectController {
     };
   }
 
-  async open(projectId: string): Promise<ProjectRecovery> {
+  /** Prepare once; accepting never silently loads a different snapshot after confirmation. */
+  async prepareOpen(projectId: string): Promise<ProjectOpenCandidate> {
     await this.initialize();
     const navigation = ++this.navigation;
+    const active = this.active;
+    const activeVersion = active?.record?.storageVersion ?? null;
+    this.pendingOpen = null;
     try {
       const recovered = await this.recover(projectId);
-      if (navigation !== this.navigation) throw new ProjectPersistenceError('PROJECT_CHANGED', '已启动另一项工程打开操作，请保留最新选择。');
-      await this.store.setLastProject(projectId);
-      if (navigation !== this.navigation) throw new ProjectPersistenceError('PROJECT_CHANGED', '工程已切换，忽略过期的打开结果。');
-      this.active = recovered.context; this.error = null; this.emit();
-      return recovered.recovery;
+      if (navigation !== this.navigation || this.active !== active || (active?.record?.storageVersion ?? null) !== activeVersion)
+        throw new ProjectPersistenceError('PROJECT_CHANGED', '候选读取期间工程已改变，请重新载入。');
+      const candidate = { recovery: structuredClone(recovered.recovery) };
+      this.pendingOpen = { candidate, recovered, navigation, active, activeVersion };
+      return candidate;
     } catch (error) { throw navigation === this.navigation ? this.fail(error) : persistenceError(error); }
+  }
+
+  cancelOpen(candidate: ProjectOpenCandidate): void {
+    if (this.pendingOpen?.candidate === candidate) this.pendingOpen = null;
+  }
+
+  async acceptOpen(candidate: ProjectOpenCandidate): Promise<ProjectRecovery> {
+    const pending = this.pendingOpen;
+    const valid = () => this.pendingOpen === pending && !!pending && pending.candidate === candidate
+      && pending.navigation === this.navigation && this.active === pending.active
+      && (this.active?.record?.storageVersion ?? null) === pending.activeVersion
+      && sameValue(candidate.recovery, pending.recovered.recovery);
+    if (!valid() || !pending) throw new ProjectPersistenceError('PROJECT_CHANGED', '工程候选已过期，请重新载入。');
+    try {
+      const record = await this.store.get(pending.recovered.context.projectId);
+      if (!valid() || !record || !sameValue(record, pending.recovered.context.record))
+        throw new ProjectPersistenceError('PROJECT_CHANGED', '确认期间浏览器版本已改变，请重新载入并确认新候选。');
+      await this.store.setLastProject(record.projectId);
+      if (!valid()) throw new ProjectPersistenceError('PROJECT_CHANGED', '工程已切换，忽略过期的打开结果。');
+      this.pendingOpen = null;
+      this.active = pending.recovered.context; this.error = null; this.emit();
+      return pending.recovered.recovery;
+    } catch (error) { throw pending.navigation === this.navigation ? this.fail(error) : persistenceError(error); }
+  }
+
+  async open(projectId: string): Promise<ProjectRecovery> {
+    return this.acceptOpen(await this.prepareOpen(projectId));
   }
 
   async create(projectId: string, map: YardMap, editorState?: EditorStateInput): Promise<ProjectRecovery> {

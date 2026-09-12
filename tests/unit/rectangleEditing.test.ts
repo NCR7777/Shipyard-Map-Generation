@@ -137,7 +137,12 @@ describe('existing domain transactions own resized boundaries', () => {
     expect(changed.roads).toEqual(map.roads);
     expect(changed.accessPoints).toEqual(map.accessPoints);
     expect(changed.servicePoints).toEqual(map.servicePoints);
-    expect(changed.facilities.fA).toEqual({ ...map.facilities.fA, boundary });
+    expect(changed.facilities.fA).toEqual({ ...map.facilities.fA, boundary, provenance: {
+      ...map.facilities.fA!.provenance,
+      sourceRefs: [...(map.facilities.fA!.provenance.sourceRefs ?? []), 'source_editor_geometry'],
+      fieldSources: { ...map.facilities.fA!.provenance.fieldSources, boundary: 'source_editor_geometry' },
+    } });
+    expect(changed.sources.source_editor_geometry?.category).toBe('design_assumption');
     expectRightAngles(boundary, 80, 45);
     expect(serializeMap(undoSession(result.session).map)).toBe(before);
     expect(redoSession(undoSession(result.session)).map).toEqual(changed);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sameValue as valueEqual } from '../domain/value';
 import type { YardMap } from '../domain/model';
 import { contentHash } from '../domain/serialization';
 import { IndexedDBProjectStore } from '../adapters/projectStore';
@@ -6,11 +7,13 @@ import { DEFAULT_DRAWING_CONFIG, ProjectController, type EditorState, type Proje
 
 interface Inputs {
   map: YardMap;
+  changeToken?: number;
   editorState: EditorState;
   /** Read the effective camera before its next React frame, without changing map state. */
   getEditorState?: () => EditorState;
   onRestore: (recovery: ProjectRecovery) => void;
   onAcknowledged: (hash: string) => void;
+  confirmCoordinateFrame?: () => Promise<boolean>;
 }
 
 function freshEditorState(): EditorState { return { camera: { offsetX: 80, offsetY: 460, scale: 4 }, drawing: { ...DEFAULT_DRAWING_CONFIG } }; }
@@ -86,7 +89,16 @@ export function useProjectWorkspace(inputs: Inputs) {
       const current = controller.state.active;
       if (retry > 0 && current) {
         // initialize() intentionally caches its first success. A retry must recover the *current* target.
-        if (current.storageVersion !== null) recovery = await controller.open(current.projectId);
+        if (current.storageVersion !== null) {
+          const candidate = await controller.prepareOpen(current.projectId);
+          const expected = pendingRecovery.current?.projectId === current.projectId ? pendingRecovery.current.map : latest.current.map;
+          if (!valueEqual(expected.coordinateFrame, candidate.recovery.map.coordinateFrame)
+            && !await latest.current.confirmCoordinateFrame?.()) {
+            controller.cancelOpen(candidate); throw new Error('已取消替换坐标框架；仍保留原恢复状态。');
+          }
+          if (!active) { controller.cancelOpen(candidate); return; }
+          recovery = await controller.acceptOpen(candidate);
+        }
         else if (pendingRecovery.current?.projectId === current.projectId) {
           const candidate = pendingRecovery.current;
           recovery = await controller.create(current.projectId, candidate.map, candidate.editorState ?? undefined);
@@ -178,7 +190,7 @@ export function useProjectWorkspace(inputs: Inputs) {
     await persist('checkpoint');
     if (contentHash(latest.current.map) !== before || JSON.stringify(currentEditorState()) !== editorBefore) throw new Error('保存期间又产生了编辑，请再次操作；当前工程保持打开。');
   }
-  async function navigate(work: () => Promise<ProjectRecovery>, protect = true) {
+  async function navigate(work: () => Promise<ProjectRecovery | null>, protect = true) {
     assertPersistenceReady();
     if (navigating.current) throw new Error('工程正在切换，请稍候。');
     navigating.current = true; setTransitioning(true);
@@ -187,23 +199,36 @@ export function useProjectWorkspace(inputs: Inputs) {
       if (protect) await protectCurrent();
       const recovery = await work();
       if (token !== generation.current) throw new Error('工程切换结果已过期。');
-      restoreUi(recovery);
+      if (recovery) restoreUi(recovery);
     } catch (reason) { setError(message(reason)); throw reason; }
     finally { navigating.current = false; setTransitioning(false); }
   }
   async function create(map: YardMap) {
     await navigate(() => controller.create('project_' + crypto.randomUUID(), map, freshEditorState()));
   }
-  async function open(id: string) { await navigate(() => controller.open(id)); }
+  async function open(id: string) {
+    if (id === controller.state.active?.projectId) return; // Explicit reload alone may discard the current document.
+    await navigate(() => controller.open(id));
+  }
   async function recoveryCopy() {
     const map = latest.current.map;
     const id = 'project_' + crypto.randomUUID(); const editorState = currentEditorState();
     await navigate(async () => { await controller.backup(id, map, editorState); return controller.open(id); }, false);
   }
-  async function reloadStored() {
-    const id = state.active?.projectId;
+  async function reloadStored(confirmFrame?: () => Promise<boolean>) {
+    const id = controller.state.active?.projectId;
     if (!id) throw new Error('尚无可重新载入的工程。');
-    await navigate(() => controller.open(id), false);
+    await navigate(async () => {
+      const before = latest.current.map;
+      const beforeToken = latest.current.changeToken;
+      const candidate = await controller.prepareOpen(id);
+      try {
+        if (!valueEqual(before.coordinateFrame, candidate.recovery.map.coordinateFrame)
+          && !(await confirmFrame?.())) { controller.cancelOpen(candidate); return null; }
+        if (latest.current.map !== before || latest.current.changeToken !== beforeToken) throw new Error('候选确认期间地图已改变，请重新载入。');
+        return await controller.acceptOpen(candidate);
+      } catch (reason) { controller.cancelOpen(candidate); throw reason; }
+    }, false);
   }
   async function showRecent() { assertPersistenceReady(); const entries = await controller.list(); setRecent(entries); }
   async function save() {

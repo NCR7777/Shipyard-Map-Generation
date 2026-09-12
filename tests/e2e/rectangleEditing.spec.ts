@@ -122,7 +122,7 @@ for (const kind of ['facilities', 'zones'] as const) {
     expect(resized.revision).toBe(before.revision + 1);
     expect(resized.nodes).toEqual(before.nodes);
     expect(Object.keys(resized[kind][id]!)).toEqual(Object.keys(before[kind][id]!));
-    expect(resized[kind][id]).toEqual({ ...before[kind][id]!, boundary: rectangle(0, 0, 80, 45) });
+    expect(resized[kind][id]).toEqual({ ...before[kind][id]!, boundary: rectangle(0, 0, 80, 45), provenance: { ...before[kind][id]!.provenance, sourceRefs: [...(before[kind][id]!.provenance.sourceRefs ?? []), 'source_editor_geometry'], fieldSources: { ...before[kind][id]!.provenance.fieldSources, boundary: 'source_editor_geometry' } } });
     await page.getByRole('button', { name: '撤销', exact: true }).click();
     expect(await download(page, info, 'undone.map.json')).toEqual(before);
     await page.getByRole('button', { name: '重做', exact: true }).click();
@@ -296,7 +296,7 @@ for (const version of ['0.1.0', '0.2.0'] as const) {
     await drag(page, [60, 30, 0], [80, 45, 0]);
     const resized = await download(page, info, 'legacy-resized.map.json');
     expect(resized.schemaVersion).toBe(version); expect(resized.mapId).toBe(original.mapId);
-    expect(resized.facilities.fA).toEqual({ ...original.facilities.fA!, boundary: rectangle(0, 0, 80, 45) });
+    expect(resized.facilities.fA).toEqual({ ...original.facilities.fA!, boundary: rectangle(0, 0, 80, 45), provenance: { ...original.facilities.fA!.provenance, sourceRefs: [...(original.facilities.fA!.provenance.sourceRefs ?? []), 'source_editor_geometry'], fieldSources: { ...original.facilities.fA!.provenance.fieldSources, boundary: 'source_editor_geometry' } } });
     expect(resized.nodes).toEqual(original.nodes); expect(resized.roads).toEqual(original.roads);
     expect(resized.accessPoints).toEqual(original.accessPoints); expect(resized.servicePoints).toEqual(original.servicePoints);
     expect(resized.zones).toEqual(original.zones);

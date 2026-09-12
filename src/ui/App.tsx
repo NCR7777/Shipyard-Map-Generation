@@ -1,3 +1,4 @@
+import { sameValue } from '../domain/value';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import type { DiagnosticReport } from '../validation/diagnostics';
 import type { PathPreviewReport } from '../topology/pathPreview';
@@ -94,6 +95,13 @@ export function App() {
   const [saveDialog, setSaveDialog] = useState(false);
   const [recentDialog, setRecentDialog] = useState(false);
   const [storageConflictDialog, setStorageConflictDialog] = useState(false);
+  const [frameConfirmation, setFrameConfirmation] = useState<{ resolve: (accepted: boolean) => void } | null>(null);
+  function confirmCoordinateFrame(): Promise<boolean> {
+    return new Promise(resolve => setFrameConfirmation({ resolve }));
+  }
+  function finishFrameConfirmation(accepted: boolean) {
+    frameConfirmation?.resolve(accepted); setFrameConfirmation(null);
+  }
   const [local] = useState(() => new LocalFileController());
   const [localState, setLocalState] = useState(local.snapshot());
   const [localMessage, setLocalMessage] = useState('');
@@ -103,7 +111,7 @@ export function App() {
   const nativeTransition = useRef(false);
   const [exportMessage, setExportMessage] = useState('尚未导出 JSON');
   const projects = useProjectWorkspace({
-    map: session.map, editorState, getEditorState,
+    map: session.map, changeToken: session.changeToken, editorState, getEditorState, confirmCoordinateFrame,
     onAcknowledged: hash => updateSession(acknowledgeMap(sessionRef.current, hash)),
     onRestore: recovery => {
       importSequence.current++; setFileLoading(false);
@@ -277,7 +285,7 @@ export function App() {
   async function reloadStoredProject() {
     cancelBoundaryInteraction();
     if (operationsBlocked()) return;
-    try { await projects.reloadStored(); setStorageConflictDialog(false); } catch (error) { setStatus(String(error)); }
+    try { await projects.reloadStored(confirmCoordinateFrame); setStorageConflictDialog(false); } catch (error) { setStatus(String(error)); }
   }
   async function copyProject() {
     cancelBoundaryInteraction();
@@ -298,12 +306,18 @@ export function App() {
     cancelBoundaryInteraction();
     if (operationsBlocked()) return;
     nativeTransition.current = true;
+    const before = sessionRef.current;
+    const projectId = projects.state.active?.projectId;
     const pending = reload ? local.readCurrent() : local.open(); refreshLocal();
     const result = await pending; refreshLocal();
     if (result.status !== 'opened') { nativeTransition.current = false; setLocalMessage(result.message); if (result.issues) setOperationIssues(result.issues); return; }
     if (saveGuard.current.unapplied) { nativeTransition.current = false; local.cancelOpen(result.token); setLocalMessage('有未应用输入；先应用或撤销输入，再关联文件。'); return; }
-    preserveNative.current = true;
     try {
+      if (reload && !sameValue(before.map.coordinateFrame, result.loaded.map.coordinateFrame)
+        && !await confirmCoordinateFrame()) { local.cancelOpen(result.token); return; }
+      if (sessionRef.current.changeToken !== before.changeToken || projects.state.active?.projectId !== projectId)
+        throw new Error('文件候选准备后当前工程已改变，请重新载入候选。');
+      preserveNative.current = true;
       await projects.create(result.loaded.map);
       const accepted = local.acceptOpen(result.token);
       setLocalMessage(accepted.status === 'linked' ? '文件已关联；写回需要单独操作。' : accepted.message);
@@ -480,6 +494,11 @@ export function App() {
   }, []);
   const handleKey = useCurrentCallback((event: KeyboardEvent) => {
       const modifier = event.ctrlKey || event.metaKey;
+      if (frameConfirmation) {
+        if (event.key === 'Escape') { event.preventDefault(); finishFrameConfirmation(false); }
+        else if (modifier && ['s', 'z', 'y'].includes(event.key.toLowerCase())) event.preventDefault();
+        return;
+      }
       if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); if (!leaveIntent && !upgradeDialog) saveProject(); return; }
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
@@ -576,12 +595,13 @@ export function App() {
       </aside>
       <section className="center-panel">
         <div className="canvas-toolbar"><div className="history-actions"><button onClick={undo} disabled={!session.past.length || projects.transitioning || localState.busy} title="Ctrl+Z">撤销</button><button onClick={redo} disabled={!session.future.length || projects.transitioning || localState.busy} title="Ctrl+Shift+Z">重做</button><span className="toolbar-separator" /><button onClick={() => requestLeave('复制所选对象', () => { setOperationIssues([]); setCopyRetainFacility(false); setCopyDialog(true); })} disabled={readonly || selectedCount === 0}>复制</button><button onClick={remove} disabled={readonly || selectedCount === 0}>删除</button><button onClick={() => requestLeave('旋转所选对象', () => { setOperationIssues([]); setRotateDialog(true); })} disabled={readonly || selectedCount === 0}>旋转</button><button onClick={() => requestLeave('拆分道路', () => { setOperationIssues([]); setSplitDistance(''); setSplitExistingNode(''); setSplitDialog(true); })} disabled={readonly || selectedCount !== 1 || validSelection.roads.length !== 1}>拆分道路</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div>
+        {session.map.coordinateFrame.geographicAnchor && <div className="tool-hint" data-testid="fixed-coordinate-frame">地理锚点已锁定；可执行受支持的本地米制编辑。整个 coordinateFrame 保持固定；地理转换、重新配准与现实准确性未核验，其他保护仍生效。</div>}
         {domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 含尚未支持的行为、资源或底图等数据；保留完整 JSON，编辑已锁定。</div>}
         <div className="tool-hint">{hint}</div>
         {Object.keys(session.map.resources).length > 0 && <div className="tool-hint" data-testid="static-edit-limits">仅静态草稿编辑；联动可能改变接入段转角。联动后请重新运行只读诊断；物理通行和原外部结果未重新验证，旧结果绑定旧地图摘要。</div>}
         <MapCanvas routePreview={shownPath ? { mapContentHash: scene.mapContentHash, points: shownPath.points, confirmed: !!currentPath?.confirmed } : null} diagnosticPosition={issueMarker?.hash === scene.mapContentHash ? issueMarker.position : null} hiddenTypes={hiddenTypes} labelMode={labelMode} focusKey={focusKey} describeItem={describeItem} inspectKey={inspected?.key} onInspect={item => chooseItem(item)} canDrag={canDrag}
           canEditBoundary={(kind, id) => boundaryPermissions.has(kind + '/' + id)}
-          movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} frameCamera={frameCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!(proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || (!pointDraft?.canvasMode && pointDraft) || deleteDialog || rotateDialog || splitDialog || leaveIntent || upgradeDialog)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => { setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); })} draftRoad={draftRoad}
+          movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} frameCamera={frameCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!(frameConfirmation || proposal || newDialog || copyDialog || saveDialog || recentDialog || storageConflictDialog || fileConflict || (!pointDraft?.canvasMode && pointDraft) || deleteDialog || rotateDialog || splitDialog || leaveIntent || upgradeDialog)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => { setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); })} draftRoad={draftRoad}
           onAddNode={point => requestLeave('绘制节点', () => { const id = uid('node'); if (apply({ type: 'addNode', id, node: newNode(point, '节点 ' + (scene.nodes.length + 1)) })) setSelection({ nodes: [id], roads: [] }); })}
           onRoadNode={id => requestLeave('绘制道路', () => {
             if (!draftRoad) { setDraftRoad({ fromNodeId: id, points: [] }); return; }
@@ -607,8 +627,9 @@ export function App() {
 
 
     {recentDialog && <Modal title="最近项目" onCancel={() => setRecentDialog(false)}><p>浏览器数据按站点保存，可能被清理；请保留导出备份。切换前将确认保存当前已提交版本。</p><div className="recent-projects">{projects.recent.map(item => <button key={item.projectId} data-testid={'project-item-' + item.projectId} onClick={() => void openProject(item.projectId)}><strong>{item.name}</strong><small>{item.projectId} · 存储版本 {item.storageVersion} · {new Date(item.updatedAt).toLocaleString()}</small></button>)}</div><div className="dialog-actions"><button data-cancel onClick={() => setRecentDialog(false)}>关闭</button></div></Modal>}
-    {storageConflictDialog && <Modal title="重新载入浏览器版本" onCancel={() => setStorageConflictDialog(false)}><p>重新载入会放弃当前未保存输入。建议先“保留当前恢复副本”；其他标签页已保存版本不会被覆盖。</p><div className="dialog-actions"><button data-cancel onClick={() => setStorageConflictDialog(false)}>取消</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button className="danger-button" onClick={() => void reloadStoredProject()}>明确放弃并重新载入</button></div></Modal>}
-    {fileConflict && <Modal title="外部文件内容已变化" onCancel={() => setFileConflict(null)}><p>文件 {fileConflict.name} 与已确认基线不同。当前地图保持不变，写回前会再次读取外部内容。</p><p>{localMessage}</p>{fileConflict.issues.map((issue, index) => <p key={index} className="inline-error">{issue.code} · {issue.jsonPath || "/"} · {issue.message}</p>)}<div className="dialog-actions"><button data-cancel onClick={() => setFileConflict(null)}>取消</button><button onClick={() => void openNative(true)}>重新载入文件</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => void writeNative(true)}>文件另存为</button>{overwriteReady?.token === fileConflict.token ? <button className="danger-button" onClick={() => void writeNative(false, fileConflict.token)}>明确覆盖外部版本</button> : <button onClick={() => void prepareOverwrite()} disabled={!fileConflict.loaded?.ok}>先保存双方恢复副本</button>}</div><p className="field-note">写前比对不能锁定其他应用；不保证跨应用原子写入。非法外部文件保留原件，不能直接覆盖。</p></Modal>}
+    {frameConfirmation && <Modal title="确认替换坐标框架" onCancel={() => finishFrameConfirmation(false)}><p>候选文件的整个 coordinateFrame 与当前工程不同。这是导入新的坐标框架，并非本地几何编辑；未重新配准或核验现实位置。取消会保留当前地图、历史和文件关联基线。</p><div className="dialog-actions"><button data-cancel onClick={() => finishFrameConfirmation(false)}>取消</button><button className="danger-button" onClick={() => finishFrameConfirmation(true)}>明确接受候选坐标框架</button></div></Modal>}
+    {storageConflictDialog && !frameConfirmation && <Modal title="重新载入浏览器版本" onCancel={() => setStorageConflictDialog(false)}><p>重新载入会放弃当前未保存输入。建议先“保留当前恢复副本”；其他标签页已保存版本不会被覆盖。</p><div className="dialog-actions"><button data-cancel onClick={() => setStorageConflictDialog(false)}>取消</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button className="danger-button" onClick={() => void reloadStoredProject()}>明确放弃并重新载入</button></div></Modal>}
+    {fileConflict && !frameConfirmation && <Modal title="外部文件内容已变化" onCancel={() => setFileConflict(null)}><p>文件 {fileConflict.name} 与已确认基线不同。当前地图保持不变，写回前会再次读取外部内容。</p><p>{localMessage}</p>{fileConflict.issues.map((issue, index) => <p key={index} className="inline-error">{issue.code} · {issue.jsonPath || "/"} · {issue.message}</p>)}<div className="dialog-actions"><button data-cancel onClick={() => setFileConflict(null)}>取消</button><button onClick={() => void openNative(true)}>重新载入文件</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => void writeNative(true)}>文件另存为</button>{overwriteReady?.token === fileConflict.token ? <button className="danger-button" onClick={() => void writeNative(false, fileConflict.token)}>明确覆盖外部版本</button> : <button onClick={() => void prepareOverwrite()} disabled={!fileConflict.loaded?.ok}>先保存双方恢复副本</button>}</div><p className="field-note">写前比对不能锁定其他应用；不保证跨应用原子写入。非法外部文件保留原件，不能直接覆盖。</p></Modal>}
     {newDialog && <Modal title="新建地图" onCancel={() => setNewDialog(false)}><p>创建本地米制 synthetic 布局。地图 ID 独立生成。</p><label className="field-label">新地图名称<input aria-label="新地图名称" value={newName} onChange={event => setNewName(event.target.value)} /></label><div className="dialog-actions"><button data-cancel onClick={() => setNewDialog(false)}>取消</button><button className="primary-button" onClick={createNew} disabled={!newName.trim()}>创建地图</button></div></Modal>}
     {proposal && <Modal title="未保存编辑冲突" onCancel={() => { resolveImport(sessionRef.current, proposal.value, 'cancel'); setProposal(null); }}><p>当前存在尚未确认的编辑或未应用输入。候选 JSON 已校验；继续前会保存原工程的已提交地图，未应用输入将丢弃。</p><div className="conflict-summary"><strong>当前：{session.map.metadata.name}</strong><span>候选：{proposal.value.loaded.map.metadata.name}</span></div><p className="field-note">“先导出当前版本”会下载独立文件并保留此对话。下载不是工程保存。原工程保留在最近项目；文件写回单独授权。</p><div className="dialog-actions"><button data-cancel onClick={() => setProposal(null)}>取消</button><button onClick={exportCurrent}>先导出当前版本</button><button className="danger-button" onClick={() => finishImport(proposal.value, proposal.isNew)}>放弃编辑并重载</button></div></Modal>}
     {copyDialog && <Modal title="复制选中对象" onCancel={() => setCopyDialog(false)}><p>将复制 <strong>{closure.nodes.length} 个节点</strong>、<strong>{closure.roads.length} 条道路</strong>、{closure.facilities.length} 个设施、{closure.zones.length} 个区域、{closure.accessPoints.length} 个入口和 {closure.servicePoints.length} 个服务点。道路端点/设施和区域成员自动纳入并重映射新 ID；外部道路不复制。</p><div className="coordinate-fields">{(['X', 'Y', 'Z'] as const).map((axis, index) => <label key={axis} className="field-label">{axis} 偏移 (m)<input aria-label={axis + ' 偏移 (m)'} type="number" step="any" value={copyDelta[index] ?? ''} onChange={event => setCopyDelta(values => values.map((v, i) => i === index ? event.target.value : v))} /></label>)}</div><p className="field-note">复制为一个事务；不会连接回原节点。对象扩展含未知引用语义时拒绝复制。</p><label className="check-field"><input type="checkbox" checked={copyRetainFacility} onChange={event => setCopyRetainFacility(event.target.checked)} />允许单独复制的入口/服务点关联原设施或区域</label>{operationIssues.length > 0 && <div role="alert" className="inline-error">{operationIssues.map(issue => <p key={issue.code}>{issue.code}：{issue.message}</p>)}</div>}<div className="dialog-actions"><button data-cancel onClick={() => setCopyDialog(false)}>取消</button><button className="primary-button" onClick={duplicate}>确认复制</button></div></Modal>}
@@ -640,7 +661,7 @@ export function App() {
       <div className="dialog-actions"><button data-cancel onClick={() => setSplitDialog(false)}>取消</button><button className="primary-button" onClick={splitRoad}>确认拆分</button></div>
     </Modal>}
     {saveDialog && <Modal title="有未应用输入" onCancel={() => setSaveDialog(false)}><p>表单或绘制中的改动尚未成为地图事务。保存只包含已提交地图，未应用输入仍留在当前表单中。</p><div className="dialog-actions"><button data-cancel onClick={() => setSaveDialog(false)}>返回应用属性</button><button onClick={() => saveProject(true)}>仅保存已提交地图</button></div></Modal>}
-    {!projects.ready && <Modal title="恢复浏览器工程" onCancel={() => {}}><p>{projects.error || '正在读取 IndexedDB；恢复完成前不会写入空地图。'}</p>{projects.error && <div className="dialog-actions"><button onClick={projects.retry}>重试恢复</button><button onClick={projects.continueTemporary}>仅内存继续编辑</button></div>}</Modal>}
+    {!projects.ready && !frameConfirmation && <Modal title="恢复浏览器工程" onCancel={() => {}}><p>{projects.error || '正在读取 IndexedDB；恢复完成前不会写入空地图。'}</p>{projects.error && <div className="dialog-actions"><button onClick={projects.retry}>重试恢复</button><button onClick={projects.continueTemporary}>仅内存继续编辑</button></div>}</Modal>}
   </main>;
 }
 

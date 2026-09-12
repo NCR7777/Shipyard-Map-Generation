@@ -62,7 +62,14 @@ describe('P1 explicit operation protection and real SR03 rigid contents', () => 
     slots(map, 'facilities', 'F_001').forEach((slot, i) => polygonMoved(slot.boundary, slots(after, 'facilities', 'F_001')[i]!.boundary, translate));
     for (const id of ['N_0012', 'N_0013', 'N_0014']) expect(after.nodes[id]!.position).toEqual(translate(map.nodes[id]!.position));
     for (const id of ['N_0011', 'N_0015', 'N_0016']) expect(after.nodes[id]).toEqual(map.nodes[id]);
-    for (const key of ['roads', 'resources', 'movements', 'accessPoints', 'servicePoints', 'sources', 'metadata', 'extensions', 'extensionNamespaces', 'siteBoundary'] as const) expect(after[key]).toEqual(map[key]);
+    for (const key of ['roads', 'resources', 'movements', 'accessPoints', 'servicePoints', 'metadata', 'extensions', 'extensionNamespaces', 'siteBoundary'] as const) expect(after[key]).toEqual(map[key]);
+    expect(after.sources).toEqual({ ...map.sources, source_editor_geometry: {
+      name: '编辑器人工几何设计假设', category: 'design_assumption',
+      description: '用户在本地米制编辑器中修改的几何字段；保留原始来源，未经现场测量或地理配准核验。',
+    } });
+    expect(after.facilities.F_001!.provenance.category).toBe(map.facilities.F_001!.provenance.category);
+    expect(after.facilities.F_001!.provenance.fieldSources?.boundary).toBe('source_editor_geometry');
+    for (const id of ['N_0012', 'N_0013', 'N_0014']) expect(after.nodes[id]!.provenance.fieldSources?.position).toBe('source_editor_geometry');
     expect(after.facilities.F_002).toEqual(map.facilities.F_002);
   });
   it('rotates parking slots, entry nodes, service nodes and internal turn reserves in one closure', () => {

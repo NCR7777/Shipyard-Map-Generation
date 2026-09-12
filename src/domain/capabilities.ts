@@ -10,7 +10,7 @@ export function mapCapabilities(map: YardMap, planning = inspectPlanning(map)): 
     if (Object.keys(map[key]).length > 0) { unrendered.push(key); reasons.push(`尚不支持 ${key} 的同步编辑，原始数据完整保留。`); }
   }
   if (Object.keys(map.movements).length) unrendered.push('movements_without_display_geometry');
-  if (map.coordinateFrame.geographicAnchor) reasons.push('地理锚定转换尚未实现。');
+  if (map.coordinateFrame.geographicAnchor) unchecked.push('geographic_anchor_accuracy', 'geographic_reprojection');
   if (Object.values(map.roads).some(r => r.corridorPolygon)) unrendered.push('roads.corridorPolygon');
   for (const [namespace, declaration] of Object.entries(map.extensionNamespaces)) {
     const recognized = namespace === 'sr02.planning' && planning.supported;
