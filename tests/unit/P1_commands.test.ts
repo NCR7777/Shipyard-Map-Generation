@@ -74,11 +74,12 @@ describe('P1 explicit operation protection and real SR03 rigid contents', () => 
   });
   it('rotates parking slots, entry nodes, service nodes and internal turn reserves in one closure', () => {
     const map = fixture();
-    const command: MapCommand = { type: 'rotateSelection', selection: select({ zones: ['Z_005'] }), pivot: [0, 0, 0], angleRad: Math.PI / 2, zoneMovePolicy: 'withStaticContents' };
+    const command: MapCommand = { type: 'rotateSelection', selection: select({ zones: ['Z_005'] }), pivot: [435, 79.5, 0], angleRad: Math.PI / 2, zoneMovePolicy: 'withStaticContents' };
     const support = commandSupport(map, command);
     expect(support.impact?.selection.nodes).toEqual(['N_0031', 'N_0032', 'N_0033', 'N_0035', 'N_0036', 'N_0037', 'N_0038', 'N_0039']);
     expect(support.impact?.junctionIds).toEqual(['J_N_0031', 'J_N_0032', 'J_N_0033', 'J_N_0035', 'J_N_0038']);
-    const after = run(map, command), rotate = ([x, y, z]: Vec3): Vec3 => [-y, x, z];
+    reject(map, { ...command, pivot: [0, 0, 0] }, 'OWNER_ROAD_NEW_BUILDING_CROSSING');
+    const after = run(map, command), rotate = ([x, y, z]: Vec3): Vec3 => [435 - (y - 79.5), 79.5 + (x - 435), z];
     polygonMoved(map.zones.Z_005!.boundary, after.zones.Z_005!.boundary, rotate);
     slots(map, 'zones', 'Z_005').forEach((slot, i) => polygonMoved(slot.boundary, slots(after, 'zones', 'Z_005')[i]!.boundary, rotate));
     for (const id of ['J_N_0035', 'J_N_0038']) polygonMoved(map.junctions[id]!.boundary!, after.junctions[id]!.boundary!, rotate);
@@ -94,13 +95,15 @@ describe('P1 explicit operation protection and real SR03 rigid contents', () => 
     const loaded = loadMap(serializeMap(redone.map)); expect(loaded.ok && loaded.map).toEqual(redone.map);
   });
   it.each(['boundaryOnly', 'withAssociatedNodes'] as const)('does not silently reinterpret legacy policy %s for slots', policy => {
-    reject(fixture(), { type: 'translateSelection', selection: select({ facilities: ['F_001'] }), delta: [1, 0, 0], facilityMovePolicy: policy }, 'STATIC_CONTENTS_REQUIRED');
+    reject(fixture(), { type: 'translateSelection', selection: select({ facilities: ['F_001'] }), delta: [1, 0, 0], facilityMovePolicy: policy }, policy === 'boundaryOnly' ? 'OWNER_ENTRANCE_REPOSITION_REQUIRED' : 'STATIC_CONTENTS_REQUIRED');
   });
   it('rejects direct geometry patches and point operations that bypass a slot owner', () => {
     const map = fixture(), boundary = structuredClone(map.facilities.F_001!.boundary); boundary.outer[0][0] += 1;
-    reject(map, { type: 'updateFacility', id: 'F_001', patch: { boundary } }, 'OPERATION_DEPENDENCIES_UNSUPPORTED');
-    reject(map, { type: 'updateNode', id: 'N_0013', patch: { position: [1, 2, 0] } }, 'LOCAL_OWNER_DEPENDENCY');
-    reject(map, { type: 'translateSelection', selection: select({ servicePoints: ['SP_001'] }), delta: [1, 0, 0] }, 'OPERATION_DEPENDENCIES_UNSUPPORTED');
+    reject(map, { type: 'updateFacility', id: 'F_001', patch: { boundary } }, 'POLYGON_NOT_CLOSED');
+    reject(map, { type: 'updateNode', id: 'N_0013', patch: { position: [1, 2, 0] } }, 'SPATIAL_SERVICE_OUTSIDE_OWNER');
+    const moved = run(map, { type: 'translateSelection', selection: select({ servicePoints: ['SP_001'] }), delta: [1, 0, 0] });
+    expect(moved.facilities).toEqual(map.facilities); expect(moved.resources).toEqual(map.resources); expect(moved.servicePoints).toEqual(map.servicePoints);
+    expect(moved.nodes.N_0013!.position).toEqual([map.nodes.N_0013!.position[0] + 1, map.nodes.N_0013!.position[1], map.nodes.N_0013!.position[2]]);
   });
   it('rejects unknown global behavior and unknown fields inside the known behavior', () => {
     const unknown = fixture(); unknown.extensionNamespaces['example.unknown'] = { category: 'behavior', version: '1' }; unknown.extensions['example.unknown'] = { preserve: true };

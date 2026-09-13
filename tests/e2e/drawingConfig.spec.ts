@@ -23,12 +23,11 @@ const defaults: Drawing = {
 const custom: Drawing = {
   hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
   snapGrid: 5, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer',
-  facilityMovePolicy: 'withAssociatedNodes', zoneMovePolicy: 'withAssociatedNodes',
+  facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly', // Legacy fields persist but UX02 ordinary interaction no longer selects policies.
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
 };
 const labels = {
   snapGrid: '网格吸附', snapNodes: '节点吸附', facilityKind: '新建设施类型', zoneKind: '新建区域类型',
-  facilityMovePolicy: '设施移动策略', zoneMovePolicy: '区域移动策略',
   showRoadBands: '显示道路带', showRoadCenterlines: '显示中心线', showOrdinaryNodes: '显示普通节点',
 } as const;
 
@@ -79,14 +78,16 @@ async function replaceEditorRecord(page: Page, value: unknown) {
   }), { id, value });
 }
 async function configure(page: Page, drawing: Drawing) {
-  for (const key of ['snapGrid', 'facilityKind', 'zoneKind', 'facilityMovePolicy', 'zoneMovePolicy'] as const) {
+  for (const key of ['snapGrid', 'facilityKind', 'zoneKind'] as const) {
     await (await drawingControl(page, labels[key])).selectOption(String(drawing[key]));
   }
   for (const key of ['snapNodes', 'showRoadBands', 'showRoadCenterlines', 'showOrdinaryNodes'] as const)
     await (await drawingControl(page, labels[key])).setChecked(drawing[key]);
 }
 async function expectDrawing(page: Page, drawing: Drawing) {
-  for (const key of ['snapGrid', 'facilityKind', 'zoneKind', 'facilityMovePolicy', 'zoneMovePolicy'] as const) {
+  await expect(page.getByLabel('设施移动策略', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('区域移动策略', { exact: true })).toHaveCount(0);
+  for (const key of ['snapGrid', 'facilityKind', 'zoneKind'] as const) {
     await expect((await drawingControl(page, labels[key]))).toHaveValue(String(drawing[key]));
   }
   for (const key of ['snapNodes', 'showRoadBands', 'showRoadCenterlines', 'showOrdinaryNodes'] as const)
@@ -149,7 +150,7 @@ async function undoCount(page: Page) {
   return Number(match[1]);
 }
 
-test('D01 all six drawing choices survive real IDB save and refresh and drive 5m/node snapping', async ({ page }, info) => {
+test('D01 ordinary drawing choices survive real IDB save and refresh and drive 5m/node snapping', async ({ page }, info) => {
   await ready(page);
   const nodeId = await addNode(page);
   await saved(page);
@@ -273,7 +274,7 @@ test('D04 rapid A/B navigation isolates drawing snapshots during a simulated nat
   await expectDrawing(page, configB); await expect(page.getByTestId('map-hash')).toHaveText(hashB!);
   // Leave before the 600ms debounce: navigation must retain the latest B choices, with B's target ID.
   const newerB: Drawing = {
-  ...configB, snapNodes: true, zoneMovePolicy: 'withAssociatedNodes' };
+  ...configB, snapNodes: true };
   await configure(page, newerB); await open(page, idA);
   await expectDrawing(page, newerA); await expect(page.getByTestId('map-hash')).toHaveText(hashA!);
   await open(page, idB); await expectDrawing(page, newerB);
@@ -383,7 +384,7 @@ test('D08 refresh resets selection/tool/free-polygon mode and discards incomplet
 });
 
 
-test('D09 Save and Ctrl+S persist the current six choices with automatic debounce deliberately paused', async ({ page }, info) => {
+test('D09 Save and Ctrl+S persist current ordinary choices with automatic debounce deliberately paused', async ({ page }, info) => {
   await ready(page); await addNode(page); await savedDrawing(page, defaults);
   const before = await download(page, info, 'manual-before.map.json');
   const hash = await page.getByTestId('map-hash').textContent(); const history = await undoCount(page);
@@ -409,7 +410,7 @@ test('D09 Save and Ctrl+S persist the current six choices with automatic debounc
   await saveToBrowser(page);
   await savedDrawing(page, custom);
   const next: Drawing = {
-  ...defaults, snapGrid: 10, facilityKind: 'assembly', zoneKind: 'waiting', zoneMovePolicy: 'withAssociatedNodes' };
+  ...defaults, snapGrid: 10, facilityKind: 'assembly', zoneKind: 'waiting' };
   await configure(page, next); await page.waitForTimeout(750);
   expect((await editor(page)).drawing).toEqual(custom);
   await (await drawingControl(page, '网格吸附')).focus();

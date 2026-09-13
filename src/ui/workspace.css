@@ -36,3 +36,7 @@
 
 /* Keep hidden directory counters inside their existing scroll container. */
 .object-list { position: relative; }
+
+.canvas-context { position:absolute; z-index:12; top:34px; left:12px; max-width:calc(100% - 24px); background:#f7fafbea; border-radius:4px; padding:0 6px; }
+.canvas-context:empty { display:none; }
+.canvas-context button { margin:4px; }

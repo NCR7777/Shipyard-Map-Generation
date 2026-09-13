@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import type { useFrameCamera } from '../../ui/useFrameCamera';
 import { useCurrentCallback } from '../../ui/useCurrentCallback';
 import { createDisplayIndex, selectDisplay, layoutLabels, createTextMeasurer, type ScreenRect, type DisplayGeometry } from './display';
-import { Stage, Layer, Circle, Line, Text } from 'react-konva';
+import { Stage, Layer, Circle, Line, Text, Arrow } from 'react-konva';
 import Konva from 'konva';
 
 // Middle button belongs exclusively to viewport panning in this editor.
@@ -23,11 +23,15 @@ import { BoundaryHandles, type BoundaryTarget, type BoundaryPreview } from './Bo
 import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '../../geometry/coordinates';
 
 export type Tool = 'select' | 'node' | 'road' | 'pan' | 'facilityRect' | 'facilityPolygon' | 'zoneRect' | 'zonePolygon';
-export type PointPickResult = { nodeId: string } | { position: Vec3 };
-export interface PointPick { mode: 'existing' | 'new'; nodeId?: string; position?: Vec3 }
+export type PointPickResult = { nodeId: string } | { position: Vec3 } | { roadId: string; distanceM: number; position: Vec3 };
+export interface PointPick { mode: 'existing' | 'new' | 'road' | 'path' | 'relocate'; nodeId?: string; position?: Vec3; selectedRoadIds?: string[]; eligibleRoadIds?: string[] }
 export type TopologyTarget = { kind: 'nodes'; id: string; position: Vec3 } | { kind: 'roads'; id: string; position: Vec3; distanceM: number };
 export interface DraftRoad { fromNodeId: string; points: Vec3[] }
 interface Props {
+  onPointIdentities?: SpatialLayerProps['onPointIdentities'];
+  canEditRoad?: (id: string) => boolean;
+  onRoadGeometryCommit?: (id: string, shapePoints: Vec3[], baseChangeToken: number) => boolean;
+  repairPreview?: { kind: 'facilities' | 'zones'; id: string; boundary: Polygon; points: Vec3[] } | null;
   backgrounds?: Omit<BackgroundCanvasProps, 'camera' | 'readCamera'>; comparisonMode?: boolean;
   routePreview?: { mapContentHash: string; points: Vec3[]; confirmed: boolean } | null;
   diagnosticPosition?: Vec3 | null;
@@ -55,7 +59,7 @@ interface Props {
   onAddNode: (point: Vec3) => void;
   onRoadNode: (id: string) => void;
   onRoadPoint: (point: Vec3) => void;
-  onTranslate: (delta: Vec3) => void;
+  onTranslate: (delta: Vec3, baseChangeToken: number) => void;
   topologySnap?: boolean;
   lockedTypes?: readonly SceneKind[];
   onTopologyDrop?: (nodeId: string, target: TopologyTarget, baseChangeToken: number) => void;
@@ -134,6 +138,8 @@ export function MapCanvas(props: Props) {
   function captureEnd() { consumeCamera(); pressed.current = false; }
 
   const [size, setSize] = useState({ width: 800, height: 540 });
+  const [handlePreview, setHandlePreview] = useState<{ roadId: string; shapePoints: Vec3[]; mapContentHash: string } | null>(null);
+  const handleDragging = useRef(false);
   const [previewDelta, setPreviewDelta] = useState<Vec3 | null>(null);
   const [rubberEnd, setRubberEnd] = useState<Vec3 | null>(null);
   const [pickNotice, setPickNotice] = useState('');
@@ -153,7 +159,7 @@ export function MapCanvas(props: Props) {
     function cancel() {
       pan.current = null; pressed.current = false; dragStart.current = null; setTopologyTarget(null);
       if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
-      hoverTimer.current = null; setHoverKey(null); setPreviewDelta(null);
+      hoverTimer.current = null; setHoverKey(null); setPreviewDelta(null); setHandlePreview(null); handleDragging.current = false;
       stage.current?.find((node: Konva.Node) => node.isDragging()).forEach(node => node.stopDrag());
       latest.current.frameCamera.cancel();
     }
@@ -173,9 +179,9 @@ export function MapCanvas(props: Props) {
   }, []);
 
   useEffect(() => {
-    dragStart.current = null; setPreviewDelta(null); setTopologyTarget(null);
+    handleDragging.current = false; setHandlePreview(null); dragStart.current = null; setPreviewDelta(null); setTopologyTarget(null);
     stage.current?.find((node: Konva.Node) => node.isDragging()).forEach(node => node.stopDrag());
-  }, [props.draftResetToken]);
+  }, [props.draftResetToken, props.scene.mapContentHash, props.boundaryChangeToken, props.selection, props.readonly, props.tool]);
   useEffect(() => { setPickNotice(''); }, [props.pointPick?.mode]);
   const drawing = useSpatialDrawing(props.tool, props.readonly || !!props.pointPick, props.camera, props.onPolygonCreate, props.draftResetToken);
   const drawingDirty = drawing.vertices.length > 0;
@@ -222,8 +228,9 @@ export function MapCanvas(props: Props) {
     return [original[0] + previewDelta[0], original[1] + previewDelta[1], original[2] + previewDelta[2]];
   }
   const nodeById = useMemo(() => new Map(props.scene.nodes.map(n => [n.id, n])), [props.scene.nodes]);
-  const shapePreview = props.roadShapePreview?.mapContentHash === props.scene.mapContentHash
-    && props.selection.roads.includes(props.roadShapePreview.roadId) ? props.roadShapePreview : null;
+  const activeShapePreview = handlePreview ?? props.roadShapePreview;
+  const shapePreview = activeShapePreview?.mapContentHash === props.scene.mapContentHash
+    && props.selection.roads.includes(activeShapePreview.roadId) ? activeShapePreview : null;
   function points(road: SceneSnapshot['roads'][number]): number[] {
     const route = shapePreview?.roadId === road.id
       ? [road.points[0]!, ...shapePreview.shapePoints, road.points.at(-1)!] : road.points;
@@ -259,17 +266,18 @@ export function MapCanvas(props: Props) {
   }
   function pickNode(id: string) {
     if (!props.pointPick || props.readonly) return;
-    if (props.pointPick.mode === 'existing') props.onPointPick?.({ nodeId: id });
+    if (props.pointPick.mode === 'relocate') { const screen = pointer(); if (screen) props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, { gridM: props.snap?.gridM ?? null, nodes: false }).world }); return; }
+    if (props.pointPick.mode === 'existing' || props.pointPick.mode === 'road') props.onPointPick?.({ nodeId: id });
     else {
       const node = nodeById.get(id);
-      if (node) props.onPointPick?.({ position: [...node.position] });
+      if (node && props.pointPick.mode === 'new') props.onPointPick?.({ position: [...node.position] });
     }
   }
   function drawAt(screen: Vec2) {
     if (props.backgrounds?.adjustingId || boundaryActiveRef.current) return;
     if (props.pointPick) {
       if (props.readonly) return;
-      if (props.pointPick.mode === 'new') props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, props.snap).world });
+      if (props.pointPick.mode === 'new' || props.pointPick.mode === 'relocate') props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, props.pointPick.mode === 'relocate' ? { gridM: props.snap?.gridM ?? null, nodes: false } : props.snap).world });
       else setPickNotice('请选择已有节点或入口/服务点标记；背景、道路中部和附近坐标不代表已有节点。');
       return;
     }
@@ -290,6 +298,7 @@ export function MapCanvas(props: Props) {
     return keys;
   }, [props.selection, selectedNodeIds, props.inspectKey, snapKey, props.draftRoad]);
   const overrides = new Map<string, DisplayGeometry>(), offsets = new Map<string, Vec3>();
+  if (props.repairPreview) overrides.set(props.repairPreview.kind + '/' + props.repairPreview.id, { polygons: [props.repairPreview.boundary] });
   if (boundaryPreview) overrides.set(boundaryPreview.kind + '/' + boundaryPreview.id, { polygons: [boundaryPreview.boundary] });
   if (shapePreview || previewDelta) for (const road of props.scene.roads) {
     if (shapePreview?.roadId !== road.id && !(previewDelta && (selectedNodeIds.has(road.fromNodeId) || selectedNodeIds.has(road.toNodeId)))) continue;
@@ -363,7 +372,15 @@ export function MapCanvas(props: Props) {
   function roadClick(event: KonvaEventObject<MouseEvent>, id: string) {
     if (event.evt.button !== 0) return;
     if (props.splitPickRoadId) { event.cancelBubble = true; const screen = pointer(); if (screen) pickSplit(screen); }
-    else if (props.pointPick) { event.cancelBubble = true; const screen = pointer(); if (screen) drawAt(screen); }
+    else if (props.pointPick) {
+      event.cancelBubble = true; const screen = pointer();
+      if (screen && !props.readonly && (props.pointPick.mode === 'road' || props.pointPick.mode === 'path')) {
+        if (props.lockedTypes?.includes('roads')) { setPickNotice('道路已锁定，请先解除该类型锁定。'); return; }
+        const road = props.scene.roads.find(road => road.id === id);
+        const projected = road && projectPolyline(screenToWorld(screen, props.frameCamera.read()), road.points);
+        if (projected) props.onPointPick?.({ roadId: id, distanceM: projected.distanceM, position: projected.position });
+      } else if (screen) drawAt(screen);
+    }
     else if (props.tool === 'select') { event.cancelBubble = true; props.onSelect('roads', id, event.evt.shiftKey); }
     else if (!props.readonly && (props.tool === 'node' || props.tool === 'road' || isSpatialTool(props.tool))) {
       const screen = pointer(); if (!screen) return; event.cancelBubble = true; drawAt(screen);
@@ -405,21 +422,21 @@ export function MapCanvas(props: Props) {
   });
   const onNodeDragEnd = useCurrentCallback((event: KonvaEventObject<DragEvent>) => {
     const origin = dragStart.current; dragStart.current = null; setPreviewDelta(null); setTopologyTarget(null);
-    if (!origin) return;
+    if (!origin || dragToken.current !== props.boundaryChangeToken) return;
     const nodeId = event.currentTarget.getAttr('nodeId') as string;
     const target = topologyCandidate([event.target.x(), event.target.y()], nodeId, origin[2]);
     if (target) { props.onTopologyDrop?.(nodeId, target, dragToken.current); return; }
     const value = snapPosition([event.target.x(), event.target.y()], props.frameCamera.read(), props.scene.nodes, props.snap, selectedNodeIds, origin[2]).world;
-    props.onTranslate([value[0] - origin[0], value[1] - origin[1], 0]);
+    props.onTranslate([value[0] - origin[0], value[1] - origin[1], 0], dragToken.current);
   });
   const spatialProps: SpatialLayerProps = {
-    comparisonMode: props.comparisonMode, hiddenTypes: props.hiddenTypes, visibleKeys: display.keys, onHover: hover, canDrag: props.canDrag,
+    onPointIdentities: props.onPointIdentities, comparisonMode: props.comparisonMode, hiddenTypes: props.hiddenTypes, visibleKeys: display.keys, onHover: hover, canDrag: props.canDrag,
     scene: props.scene, camera: props.camera, selection: props.selection, previewDelta, boundaryPreview,
     snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && props.tool === 'road', movingNodeIds: selectedNodeIds,
     disableDrag: !!props.splitPickRoadId || props.hasUnappliedInput || boundaryActive, pickingPoint: !!props.pointPick, onPickNode: pickNode,
     onSelect: props.onSelect, onRoadNode: props.onRoadNode, onDrawClick: () => { const p = pointer(); if (p) drawAt(p); },
-    onDragStart: origin => { dragStart.current = origin; }, onPreview: setPreviewDelta,
-    onDragEnd: delta => { const active = dragStart.current; dragStart.current = null; if (active) props.onTranslate(delta); },
+    onDragStart: origin => { dragStart.current = origin; dragToken.current = props.boundaryChangeToken; }, onPreview: setPreviewDelta,
+    onDragEnd: delta => { const active = dragStart.current; dragStart.current = null; if (active && dragToken.current === props.boundaryChangeToken) props.onTranslate(delta, dragToken.current); },
   };
   const firstVertex = drawing.vertices[0];
   const spatialPreview = isRectangleTool(props.tool) && firstVertex && rubberEnd
@@ -439,7 +456,7 @@ export function MapCanvas(props: Props) {
           return;
         }
         const drawingPointer = !!props.pointPick || props.tool === 'node' || props.tool === 'road' || isSpatialTool(props.tool);
-        const snapped = drawingPointer ? snapPosition(point, props.frameCamera.read(), props.scene.nodes, props.snap) : null;
+        const snapped = drawingPointer ? snapPosition(point, props.frameCamera.read(), props.scene.nodes, props.pointPick?.mode === 'relocate' ? { gridM: props.snap?.gridM ?? null, nodes: false } : props.snap) : null;
         const world = snapped?.world ?? screenToWorld(point, props.frameCamera.read());
         if (cursorOutput.current) cursorOutput.current.textContent = `X ${world[0].toFixed(3)} m · Y ${world[1].toFixed(3)} m`;
         if (drawingPointer) { setRubberEnd(world); setSnapKey(snapped?.nodeId ? 'nodes/' + snapped.nodeId : null); }
@@ -470,9 +487,16 @@ export function MapCanvas(props: Props) {
           const auxiliary = road.bandWidthPx === null;
           if (!props.roadDisplay.showRoadCenterlines && !(props.roadDisplay.showRoadBands && auxiliary)) return null;
           return <Line key={road.id} roadId={road.id} name="road-centerline" points={road.screenPoints}
-            stroke={props.selection.roads.includes(road.id) ? '#ad5f17' : auxiliary ? '#a76c24' : '#216b88'}
+            stroke={props.pointPick?.selectedRoadIds?.includes(road.id) ? '#16834b' : props.pointPick?.eligibleRoadIds?.includes(road.id) ? '#078ca0' : props.selection.roads.includes(road.id) ? '#ad5f17' : auxiliary ? '#a76c24' : '#216b88'}
             strokeWidth={2} hitStrokeWidth={14} dash={auxiliary ? [7, 5] : undefined} lineCap="round" lineJoin="round"
             onMouseEnter={onRoadEnter} onMouseLeave={onShapeLeave} onClick={onRoadClick} />;
+        })}
+        {props.roadDisplay.showRoadCenterlines && visibleRoads.filter(road => road.direction === 'forward' || road.direction === 'backward').map(road => {
+          const middle = Math.max(0, Math.floor((road.screenPoints.length / 2 - 1) / 2) * 2);
+          const a = road.screenPoints.slice(middle, middle + 2), b = road.screenPoints.slice(middle + 2, middle + 4);
+          const dx = b[0]! - a[0]!, dy = b[1]! - a[1]!, length = Math.hypot(dx, dy); if (length < 24) return null;
+          const sign = road.direction === 'forward' ? 1 : -1, x = (a[0]! + b[0]!) / 2, y = (a[1]! + b[1]!) / 2;
+          return <Arrow key={'arrow/' + road.id} name="road-direction-arrow" points={[x - sign * dx / length * 8, y - sign * dy / length * 8, x + sign * dx / length * 8, y + sign * dy / length * 8]} pointerLength={6} pointerWidth={6} stroke="#216b88" fill="#216b88" listening={false}/>;
         })}
         <DeclaredLayer items={props.scene.items} visibleKeys={display.keys} onHover={hover} camera={props.camera} hiddenTypes={props.hiddenTypes ?? []} selectedKey={focusKey} onSelect={item => props.onInspect?.(item)} selection={props.selection} previewDelta={previewDelta} movingJunctionIds={props.movingJunctionIds ?? []}/>
         {displayedNodes.map(node => {
@@ -483,6 +507,19 @@ export function MapCanvas(props: Props) {
             onMouseDown={onNodeDown} onClick={onNodeClick} onDragStart={onNodeDragStart} onDragMove={onNodeDragMove} onDragEnd={onNodeDragEnd} />;
         })}
         <AssociatedPointLayer {...spatialProps} />
+        {!props.readonly && !props.hasUnappliedInput && !props.pointPick && !props.lockedTypes?.includes('roads') && props.tool === 'select' && props.selection.roads.length === 1 && visibleRoads.filter(road => props.selection.roads.includes(road.id) && (props.canEditRoad?.(road.id) ?? true)).flatMap(road => road.points.slice(1, -1).map((point, index) => {
+          const [x, y] = worldToScreen(handlePreview?.roadId === road.id ? handlePreview.shapePoints[index]! : point, props.camera);
+          const move = (event: KonvaEventObject<DragEvent>) => {
+            const world = screenToWorld([event.target.x(), event.target.y()], props.frameCamera.read(), point[2]);
+            const shapePoints = road.points.slice(1, -1).map((value, i) => i === index ? world : [...value] as Vec3);
+            setHandlePreview({ roadId: road.id, shapePoints, mapContentHash: props.scene.mapContentHash }); return shapePoints;
+          };
+          return <Circle key={road.id + '/' + index} name="road-shape-handle" x={x} y={y} radius={6} fill="#fff2c4" stroke="#a66a00" strokeWidth={2} draggable
+            onMouseDown={event => { event.cancelBubble = true; }} onClick={event => { event.cancelBubble = true; }}
+            onDragStart={() => { handleDragging.current = true; dragToken.current = props.boundaryChangeToken; }} onDragMove={move}
+            onDragEnd={event => { if (handleDragging.current) props.onRoadGeometryCommit?.(road.id, move(event), dragToken.current); handleDragging.current = false; setHandlePreview(null); }}/>;
+        }))}
+
       </Layer>
       <Layer listening={false}>
         {props.routePreview?.mapContentHash === props.scene.mapContentHash && (() => {
@@ -491,6 +528,7 @@ export function MapCanvas(props: Props) {
         })()}
         {topologyTarget && (() => { const [x, y] = worldToScreen(topologyTarget.position, props.camera); return <Circle x={x} y={y} radius={12} stroke="#bd4a1c" strokeWidth={3} dash={[4, 3]}/>; })()}
         {props.diagnosticPosition && (() => { const point = worldToScreen(props.diagnosticPosition, props.camera); return point.every(Number.isFinite) ? <Circle x={point[0]} y={point[1]} radius={14} stroke="#c05f22" strokeWidth={3} dash={[5,3]}/> : null; })()}
+        {props.repairPreview?.points.map((point, i) => { const [x,y] = worldToScreen(point, props.camera); return <Circle key={'repair/' + i} x={x} y={y} radius={9} stroke="#b25616" strokeWidth={2} dash={[4,3]}/>; })}
         {labels.labels.map(({ key, ...label }) => <Text key={key} name="display-label" {...label} listening={false}/>)}
         {draftPoints.length > 1 && <Line points={draftPoints.flatMap(point => worldToScreen(point, props.camera))} stroke="#e08128" strokeWidth={2} dash={[7, 5]} />}
         {spatialPreview.length > 1 && <Line points={spatialPreview.flatMap(point => worldToScreen(point, props.camera))} stroke="#bd741d" strokeWidth={2} dash={[7, 5]} />}
@@ -514,7 +552,7 @@ export function MapCanvas(props: Props) {
       {!isRectangleTool(props.tool) && <button onClick={drawing.finish} disabled={drawing.vertices.length < 3 || props.readonly}>完成多边形</button>}
       <button onClick={drawing.cancel}>取消绘制</button>{drawing.error && <p role="alert">{drawing.error}</p>}
     </div>}
-    {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
+    {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.mode === 'path' ? '绿色为已选内部路径；青色为从末端沿已声明方向可继续选择的本对象道路。' : props.pointPick.mode === 'road' ? '点选接入道路或路口；仅生成候选，确认后才显式接路。' : props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
     <div className="canvas-label">LOCAL XY · 米制 · Z ↑</div>
     <output ref={cursorOutput} className="canvas-cursor" data-testid="cursor-position">本地 XY · 米制</output>
     {details && cardRect && props.labelMode !== 'off' && !props.frameCamera.navigating && !pressed.current && <div className="focus-details" style={{ left: cardRect.x, top: cardRect.y, right: 'auto' }} role="tooltip" data-testid="focus-details"><strong>{details.name || details.id}</strong><code>{details.id}</code><span>{details.source}</span></div>}

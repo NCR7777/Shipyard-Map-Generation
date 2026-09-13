@@ -1,4 +1,4 @@
-import { fileAction } from '../helpers/workbenchUi';
+import { fileAction, revealProperty } from '../helpers/workbenchUi';
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -58,7 +58,7 @@ async function drawRoadWithMouse(page: Page) {
   await clickWorld(page, 80, 0);
   await expect(page.getByTestId('road-count')).toHaveText('1');
   const road = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
-  await expect(page.getByLabel('折点 1 X (m)', { exact: true })).toHaveValue('40');
+  await expect(await revealProperty(page, '折点 1 X (m)')).toHaveValue('40');
   await page.getByRole('button', { name: '删除折点 1', exact: true }).click();
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await page.getByTestId(`node-item-${b}`).click();

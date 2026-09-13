@@ -1,3 +1,5 @@
+import { revealProperty, openChecks } from '../helpers/workbenchUi';
+import { expectVisiblePosition } from '../helpers/RF01_workbench';
 import { fileAction, chooseBrowserSaveTarget, drawingControl, drawingAction } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
@@ -58,7 +60,7 @@ test('G01 real 60m x 30m facility retains world geometry after pan, zoom, browse
   page.on('pageerror', error => runtimeErrors.push(error.message));
   await ready(page);
   const id = await drawFacility(page);
-  await page.getByLabel('名称', { exact: true }).fill('synthetic 60×30厂房');
+  await (await revealProperty(page, '名称')).fill('synthetic 60×30厂房');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await saved(page);
   const before = await download(page, info, 'facility-before.map.json');
@@ -88,7 +90,7 @@ test('G04 a 100-step real facility drag with associated nodes is one undo transa
   await ready(page);
   await importMap(page, associatedFixture());
   await page.getByTestId('facilities-item-fA').click();
-  await (await drawingControl(page, '设施移动策略')).selectOption('withAssociatedNodes');
+  await expect(page.getByLabel('设施移动策略', { exact: true })).toHaveCount(0); // UX02 body drag maintains explicit private contents.
   const before = await download(page, info, 'drag-before.map.json');
   const from = await screenPoint(page, 30, 15);
   const to = await screenPoint(page, 40, 20);
@@ -116,9 +118,9 @@ test('G05 real polygon drawing closes explicitly and invalid numeric vertices le
   await page.keyboard.press('Enter');
   await dimensions(page, 60, 30, 1800);
   const original = await download(page, info, 'polygon-valid.map.json');
-  await page.getByLabel('边界编辑模式', { exact: true }).selectOption('polygon');
-  await page.getByLabel('外环 顶点 2 Y (m)', { exact: true }).fill('30');
-  await page.getByLabel('外环 顶点 3 Y (m)', { exact: true }).fill('0');
+  await (await revealProperty(page, '边界编辑模式')).selectOption('polygon');
+  await (await revealProperty(page, '外环 顶点 2 Y (m)')).fill('30');
+  await (await revealProperty(page, '外环 顶点 3 Y (m)')).fill('0');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await expect(page.getByTestId('issue-panel')).toContainText('POLYGON');
   expect(await download(page, info, 'polygon-rejected.map.json')).toEqual(original);
@@ -135,7 +137,7 @@ test('G08 an absent background never removes rendered facilities, areas or autho
   expect(await download(page, info, 'missing-background-preserved.map.json')).toEqual(map);
 });
 
-test('G02 true facility entrance/service creation round-trips through JSON and stays editable with stable authoritative node links', async ({ page }, info) => {
+test('G02 rejects undeclared workshop crossing then explicitly reclassifies a synthetic open yard with stable entrance/service JSON links', async ({ page }, info) => {
   await ready(page);
   const facilityId = await drawFacility(page);
   await drawingAction(page, '添加入口');
@@ -162,12 +164,36 @@ test('G02 true facility entrance/service creation round-trips through JSON and s
   await expect(serviceModal).not.toBeVisible();
   const serviceId = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
   await expect(page.getByTestId('node-count')).toHaveText('2');
+  const beforeRoad = await download(page, info, 'workshop-before-road.map.json');
+  const beforeHash = await page.getByTestId('map-hash').textContent();
+  const historyCount = async () => Number((await page.locator('.canvas-status').textContent())!.match(/(\d+) 个撤销事务/)![1]);
+  const beforeHistory = await historyCount();
+  const clickRoadPoint = async (x: number, y: number) => { const p = await expectVisiblePosition(page, [x,y,0]); await page.mouse.click(p.x,p.y); };
   await page.getByRole('button', { name: '道路折线', exact: true }).click();
-  await clickWorld(page, 0, 0);
-  await clickWorld(page, 15, 10);
+  await clickRoadPoint(0, 0); await clickRoadPoint(15, 10);
+  await expect(page.getByTestId('road-count')).toHaveText('0');
+  await openChecks(page);
+  await expect(page.getByTestId('issue-panel').getByRole('button', { name: /^OWNER_ROAD_NEW_BUILDING_CROSSING / })).toBeVisible();
+  await expect(page.getByTestId('map-hash')).toHaveText(beforeHash!); expect(await historyCount()).toBe(beforeHistory);
+  expect(await download(page, info, 'workshop-road-rejected.map.json')).toEqual(beforeRoad);
+  await page.getByTestId('map-canvas').focus(); await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: '未应用输入保护', exact: true }).getByRole('button', { name: '丢弃未应用输入并继续', exact: true }).click();
+  await page.getByRole('button', { name: '选择', exact: true }).click();
+  await page.getByTestId('facilities-item-' + facilityId).click();
+  // This synthetic positive branch explicitly models an open yard, not an implicit road through a workshop.
+  await page.getByLabel('设施类型', { exact: true }).selectOption('yard');
+  await page.getByRole('button', { name: '应用属性', exact: true }).click();
+  const yardMap = structuredClone(beforeRoad); yardMap.revision++; yardMap.facilities[facilityId]!.kind = 'yard';
+  expect(await download(page, info, 'explicit-open-yard.map.json')).toEqual(yardMap);
+  await page.getByRole('button', { name: '检查与问题', exact: true }).click();
+  await page.getByRole('button', { name: '适应地图', exact: true }).click();
+  await page.getByRole('button', { name: '道路折线', exact: true }).click();
+  await clickRoadPoint(0, 0); await clickRoadPoint(15, 10);
   await expect(page.getByTestId('road-count')).toHaveText('1');
   await saved(page);
   const original = await download(page, info, 'created-associated.map.json');
+  expect(original.facilities[facilityId]!.kind).toBe('yard');
+  expect(Object.hasOwn(Object.values(original.roads)[0]!, 'owner')).toBe(false);
   expect(original.facilities[facilityId]!.accessPointIds).toEqual([accessId]);
   expect(original.facilities[facilityId]!.servicePointIds).toEqual([serviceId]);
   expect(original.accessPoints[accessId]!.facilityId).toBe(facilityId);
@@ -189,7 +215,7 @@ test('G02 true facility entrance/service creation round-trips through JSON and s
   await page.getByTestId('facilities-item-' + facilityId).click();
   await dimensions(page, 60, 30, 1800);
   expect(await download(page, info, 'associated-reimported.map.json')).toEqual(original);
-  await page.getByLabel('名称', { exact: true }).fill('JSON重开后可编辑');
+  await (await revealProperty(page, '名称')).fill('JSON重开后可编辑');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await saved(page);
   await page.reload();
@@ -206,12 +232,12 @@ test('G06 G09 grid/node snapping never creates topology; explicit split preserve
   await ready(page);
   await importMap(page, associatedFixture());
   await page.getByTestId('road-item-rAB').click();
-  await page.getByLabel('道路方向', { exact: true }).selectOption('backward');
-  await page.getByText('物理参数与来源', { exact: true }).click();
-  await page.getByLabel('道路宽度 (m) 状态', { exact: true }).selectOption('known');
-  await page.getByLabel('道路宽度 (m) 数值', { exact: true }).fill('12');
-  await page.getByLabel('净高限制 (m) 状态', { exact: true }).selectOption('unrestricted');
-  await page.getByLabel('承载限制 (kg) 状态', { exact: true }).selectOption('not_applicable');
+  await (await revealProperty(page, '道路方向')).selectOption('backward');
+  await (await revealProperty(page, '质量显示单位')).selectOption('kg');
+  await (await revealProperty(page, '道路宽度 (m) 状态')).selectOption('known');
+  await (await revealProperty(page, '道路宽度 (m) 数值')).fill('12');
+  await (await revealProperty(page, '净高限制 (m) 状态')).selectOption('unrestricted');
+  await (await revealProperty(page, '承载限制 (kg) 状态')).selectOption('not_applicable');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   const physical = await download(page, info, 'physical-assumptions.map.json');
   const width = physical.roads.rAB!.widthM;
@@ -355,6 +381,7 @@ test('G01 G05 requested area kinds are drawable and a facility rotation commits 
   await page.getByTestId('facilities-item-' + facilityId).click();
   await page.getByRole('button', { name: '旋转', exact: true }).click();
   const rotateModal = page.getByRole('dialog', { name: '旋转选中对象', exact: true });
+  await rotateModal.getByLabel('角度单位', { exact: true }).selectOption('rad');
   await rotateModal.getByLabel('旋转角度 (rad)', { exact: true }).fill(String(Math.PI / 2));
   for (const axis of ['X', 'Y', 'Z']) await rotateModal.getByLabel('中心 ' + axis + ' (m)', { exact: true }).fill('0');
   await rotateModal.getByRole('button', { name: '确认旋转', exact: true }).click();

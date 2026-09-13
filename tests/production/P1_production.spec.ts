@@ -1,4 +1,4 @@
-import { fileAction, saveToBrowser, drawingControl } from '../helpers/workbenchUi';
+import { fileAction, saveToBrowser, drawingControl, openChecks } from '../helpers/workbenchUi';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { cpus, platform, release, totalmem } from 'node:os';
@@ -78,19 +78,20 @@ async function screen(page: Page, point: Vec3) {
   return { x: box.x + Number(await camera.getAttribute('data-offset-x')) + point[0] * scale,
     y: box.y + Number(await camera.getAttribute('data-offset-y')) - point[1] * scale };
 }
-async function drag100(page: Page, from: Vec3, to: Vec3) {
+async function drag100(page: Page, from: Vec3, to: Vec3, expectedChange = true) {
   const hash = (await page.getByTestId('map-hash').textContent())!;
   const a = await screen(page, from); const b = await screen(page, to);
   await page.mouse.move(a.x, a.y); await page.mouse.down();
   await page.mouse.move(b.x, b.y, { steps: 100 });
   await expect(page.getByTestId('map-hash')).toHaveText(hash);
   await page.mouse.up();
-  await expect(page.getByTestId('map-hash')).not.toHaveText(hash, { timeout: 60000 });
+  if (expectedChange) await expect(page.getByTestId('map-hash')).not.toHaveText(hash, { timeout: 60000 });
+  else await expect(page.getByTestId('map-hash')).toHaveText(hash);
 }
 async function choose(page: Page, kind: 'facilities' | 'zones', id: string) {
   await page.getByTestId('object-search').fill(id); await page.getByTestId(kind + '-item-' + id).click();
   await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue(id);
-  await (await drawingControl(page, kind === 'facilities' ? '设施移动策略' : '区域移动策略')).selectOption('withStaticContents');
+  /* UX02 chooses the existing safe static-content policy automatically. */
   await (await drawingControl(page, '网格吸附')).selectOption('1');
 }
 function translated(original: YardMap, kind: 'facilities' | 'zones', id: string, nodes: string[], delta: Vec3) {
@@ -182,7 +183,7 @@ for (const target of targets) {
 }
 
 for (const owner of [
-  { kind: 'facilities' as const, id: 'F_001', from: [78,180,0] as Vec3, to: [88,185,0] as Vec3, delta: [10,5,0] as Vec3, nodes: ['N_0012','N_0013','N_0014'] },
+  { kind: 'facilities' as const, id: 'F_001', from: [78,180,0] as Vec3, to: [73,185,0] as Vec3, delta: [-5,5,0] as Vec3, nodes: ['N_0012','N_0013','N_0014'] },
   { kind: 'zones' as const, id: 'Z_005', from: [459,94,0] as Vec3, to: [449,99,0] as Vec3, delta: [-10,5,0] as Vec3, nodes: ['N_0031','N_0032','N_0033','N_0035','N_0036','N_0037','N_0038','N_0039'] },
 ]) {
   test(`P1 production ${owner.id}: real static-contents edit, before/after hashes, checkpoint and reload`, async ({ page }, info) => {
@@ -193,6 +194,15 @@ for (const owner of [
     await page.getByRole('button', { name: '适应地图', exact: true }).click();
     await choose(page, owner.kind, owner.id);
     const before = await download(page, info, owner.id + '-before.map.json'); expect(before.map).toEqual(original.map);
+    if (owner.id === 'F_001') {
+      await drag100(page, owner.from, [88,185,0], false);
+      expect((await download(page, info, 'F001-road-band-rejected.map.json')).map).toEqual(before.map);
+      await expect(page.getByTestId('map-hash')).toHaveText(before.contentHash);
+      await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
+      await openChecks(page);
+      await expect(page.getByTestId('issue-panel').getByRole('button', { name: /^OWNER_ROAD_NEW_BUILDING_BAND_CONFLICT / })).toHaveCount(2);
+      await page.getByRole('button', { name: '检查与问题', exact: true }).click();
+    }
     await drag100(page, owner.from, owner.to);
     const after = await download(page, info, owner.id + '-after.map.json');
     expect(after.map).toEqual(translated(before.map, owner.kind, owner.id, owner.nodes, owner.delta));

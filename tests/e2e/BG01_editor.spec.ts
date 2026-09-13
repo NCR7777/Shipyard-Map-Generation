@@ -1,3 +1,4 @@
+import { openPropertyDetails } from '../helpers/workbenchUi';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -109,11 +110,11 @@ test('BG01 locked raster leaves real node, road and building editing safe; delet
   await page.getByRole('button',{name:'应用属性',exact:true}).click();await expect(page.getByTestId('map-hash')).not.toHaveText(firstHash);
   let map=await current(page);expect(map.coordinateFrame).toEqual(original.coordinateFrame);expect(map.backgroundLayers).toEqual(first.backgroundLayers);
   const roadCommand=GA01RoadCommand(map,target,'shape');
-  await page.getByTestId('object-search').fill(roadCommand.id);await page.getByTestId('road-item-'+roadCommand.id).click();await page.getByRole('button',{name:'添加内部折点',exact:true}).click();
+  await page.getByTestId('object-search').fill(roadCommand.id);await page.getByTestId('road-item-'+roadCommand.id).click();await openPropertyDetails(page, '技术详情与折点');await page.getByRole('button',{name:'添加内部折点',exact:true}).click();
   for(const [axis,v]of [['X',roadCommand.patch.shapePoints![0]![0]],['Y',roadCommand.patch.shapePoints![0]![1]],['Z',roadCommand.patch.shapePoints![0]![2]]]as const)await page.getByLabel('折点 1 '+axis+' (m)',{exact:true}).fill(String(v));
   await page.getByRole('button',{name:'应用属性',exact:true}).click();map=await current(page);expect(map.roads[roadCommand.id]!.shapePoints).toEqual(roadCommand.patch.shapePoints);expect(map.backgroundLayers).toEqual(first.backgroundLayers);
   await selectResult(page,'facilities',target.facilityId);const mode=page.getByLabel('边界编辑模式',{exact:true});if(await mode.isVisible())await mode.selectOption('polygon');
-  const boundary=GA01Boundary(map,target);
+  await openPropertyDetails(page, '边界顶点 · m');const boundary=GA01Boundary(map,target);
   for(const [i,p]of boundary.outer.slice(0,-1).entries())for(const [axis,v]of [['X',p[0]],['Y',p[1]]] as const)await page.getByLabel('外环 顶点 '+(i+1)+' '+axis+' (m)',{exact:true}).fill(String(v));
   await page.getByRole('button',{name:'应用属性',exact:true}).click();map=await current(page);expect(map.facilities[target.facilityId]!.boundary).toEqual(boundary);expect(map.backgroundLayers).toEqual(first.backgroundLayers);
   await openPanel(page);const beforeDelete=await current(page);

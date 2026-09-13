@@ -1,4 +1,4 @@
-import { fileAction, drawingControl, drawingAction } from '../helpers/workbenchUi';
+import { fileAction, drawingControl, drawingAction, revealProperty } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { PhysicalValue, YardMap } from '../../src/domain/model';
@@ -172,6 +172,7 @@ test('W03 width editing records a design source, undoes atomically and reimports
   await clickWorld(page, 37, 30);
   await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue('rAB');
   await expect(page.getByTestId('camera-state')).toHaveAttribute('data-scale', '4');
+  await revealProperty(page, '道路宽度 (m) 状态');
   await expect(page.getByLabel('道路宽度 (m) 状态', { exact: true })).toBeVisible();
   await page.getByLabel('道路宽度 (m) 状态', { exact: true }).selectOption('known');
   await page.getByLabel('道路宽度 (m) 数值', { exact: true }).fill('12');
@@ -279,7 +280,7 @@ test('W07 uncommitted polyline and node-drag previews move the band without muta
   await importMap(page, map); await display(page, { centers: false }); await saved(page);
   await page.getByTestId('road-item-rAB').click();
   const hash = await page.getByTestId('map-hash').textContent(); const stored = await record(page, 'projects');
-  await page.getByLabel('折点 1 Y (m)', { exact: true }).fill('60');
+  await (await revealProperty(page, '折点 1 Y (m)')).fill('60');
   await expect(page.getByTestId('unapplied-inputs')).toBeVisible();
   await expect.poll(async () => (await pixels(page, [50, 58], 2, 2)).band).toBeGreaterThan(0);
   await expect.poll(async () => (await pixels(page, [50, 30], 2, 2)).band).toBe(0);

@@ -39,7 +39,7 @@ test('a selected service node can preview a topology connection; a drop without 
   await page.getByRole('button', { name: '适应地图', exact: true }).click();
   const hash = await page.getByTestId('map-hash').textContent();
   await drag(page, [50, 40], [56, 40]);
-  await expect(page.getByTestId('issue-panel')).toContainText('LOCAL_POINT_DEPENDENCY');
+  await expect(page.getByTestId('issue-panel')).toContainText('OWNER_SHARED_NODE');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
   await expect(page.locator('.canvas-status')).toContainText('0 个撤销事务');
   expect(await exported(page, info, 'unsupported-no-target')).toEqual(map);

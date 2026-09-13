@@ -33,7 +33,7 @@ export function ServiceSemanticsFields({ draft, onChange, map, accessPointId, ow
   return <fieldset className="service-semantics" disabled={readonly}>
     <legend>目标到达声明</legend>
     <label className="field-label">到达语义<select aria-label="到达语义" value={draft.mode} onChange={event => onChange({ ...draft, mode: event.target.value as ServiceArrivalDraft['mode'] })}>
-      <option value="node_proxy">node_proxy · 边界代理（推荐）</option><option value="explicit_internal">explicit_internal · 显式内部路径</option><option value="undeclared">未声明（草稿）</option>
+      <option value="node_proxy">在入口交接（明确场内转运核算）</option><option value="explicit_internal">沿内部道路到指定位置</option><option value="undeclared">未声明（草稿）</option>
     </select></label>
     {draft.mode === 'node_proxy' && <>
       <label className="field-label">场内转运核算<select aria-label="场内转运核算" value={draft.transferAssumption} onChange={event => onChange({ ...draft, transferAssumption: event.target.value as ServiceArrivalDraft['transferAssumption'] })}>

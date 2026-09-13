@@ -111,7 +111,7 @@ describe('GA01-B bounded operation dependencies', () => {
     expect(support.affectedRefs).toEqual(expect.arrayContaining([{ kind: 'facilities', id: 'owner' }, { kind: 'zones', id: 'overlay' }, { kind: 'slots', id: 'slot', ownerId: 'owner' }, { kind: 'resources', id: 'overlay_resource' }, { kind: 'resources', id: 'storage' }]));
     const result = run(map, command);
     expect(result.map.zones).toEqual(map.zones); expect(result.map.facilities).toEqual(map.facilities); expect(result.map.resources).toEqual(map.resources);
-    reject(map, shape, 'LOCAL_OWNER_DEPENDENCY');
+    const shaped = run(map, shape); expect(shaped.map.facilities).toEqual(map.facilities); expect(shaped.map.zones).toEqual(map.zones); expect(shaped.map.resources).toEqual(map.resources);
     reject(map, { type: 'translateSelection', selection: { nodes: [], roads: [], facilities: ['owner'] }, delta: [1, 0, 0], facilityMovePolicy: 'withStaticContents' }, 'STATIC_OVERLAY_DEPENDENCY');
   });
   it('refuses partial multi-node junction movement and independent turn paths', () => {
@@ -120,12 +120,15 @@ describe('GA01-B bounded operation dependencies', () => {
     map.junctions.j!.nodeIds = ['b']; map.movements.m!.internalPath = [[9, 0, 0], [11, 0, 0]];
     reject(map, move(), 'LOCAL_MOVEMENT_GEOMETRY'); reject(map, shape, 'LOCAL_MOVEMENT_GEOMETRY');
   });
-  it('preserves owner slots and resource locks instead of editing their internal road alone', () => {
+  it('preserves owner slots and resource locks during bounded internal road edits', () => {
     const map = fixture(); owner(map); expect(validateMap(map).ok).toBe(true);
     const refs = selectionImpact(map, { nodes: ['a'], roads: [] }).affectedRefs;
     expect(refs).toEqual(expect.arrayContaining([{ kind: 'facilities', id: 'owner' }, { kind: 'slots', id: 'slot', ownerId: 'owner' }, { kind: 'extensions', id: '/facilities/owner/extensions/sr02.planning' }, { kind: 'resources', id: 'storage' }]));
-    reject(map, move(), 'LOCAL_OWNER_DEPENDENCY'); reject(map, shape, 'LOCAL_OWNER_DEPENDENCY');
-    reject(map, { type: 'updateRoad', id: 'ab', patch: { widthM: { state: 'known', value: 2 } }, designAssumption: { id: 'assumption' } }, 'LOCAL_OWNER_DEPENDENCY');
+    for (const command of [move(), shape, { type: 'updateRoad', id: 'ab', patch: { widthM: { state: 'known', value: 2 } }, designAssumption: { id: 'assumption' } }] as MapCommand[]) {
+      const edited = run(map, command); expect(edited.map.facilities).toEqual(map.facilities); expect(edited.map.resources).toEqual(map.resources);
+      expect(edited.transaction?.affectedRefs).toEqual(expect.arrayContaining([{ kind: 'resources', id: 'storage' }, { kind: 'slots', id: 'slot', ownerId: 'owner' }]));
+    }
+    map.roads.ab!.corridorPolygon = rectangle(-1, -1, 12, 2); reject(map, shape, 'ROAD_GEOMETRY_DEPENDENCY');
   });
   it('tracks service entry nodes and every internally referenced road plus indirect resource ownership', () => {
     const map = fixture(); map.zones.zone = newZone(rectangle(-5, -5, 30, 15));
@@ -133,14 +136,15 @@ describe('GA01-B bounded operation dependencies', () => {
     map.resources.r!.appliesTo = [{ entityType: 'servicePoints', entityId: 'service' }];
     const refs = selectionImpact(map, { nodes: ['a'], roads: [] }).affectedRefs;
     expect(refs).toEqual(expect.arrayContaining([{ kind: 'servicePoints', id: 'service' }, { kind: 'zones', id: 'zone' }, { kind: 'resources', id: 'r' }]));
-    reject(map, move(), 'LOCAL_POINT_DEPENDENCY'); reject(map, shape, 'LOCAL_INTERNAL_PATH_DEPENDENCY');
+    reject(map, move(), 'LOCAL_INTERNAL_PATH_DEPENDENCY'); reject(map, shape, 'LOCAL_INTERNAL_PATH_DEPENDENCY');
   });
-  it('protects a shared access node and its remote service target', () => {
+  it('moves a dedicated access leaf without moving its remote service target, and protects real public sharing', () => {
     const map = fixture(); map.facilities.owner = newFacility(rectangle(-5, -5, 30, 15));
     map.accessPoints.access = newAccessPoint('owner', 'a'); map.facilities.owner.accessPointIds = ['access'];
     map.servicePoints.service = newServicePoint('c', 'service', 'loading', 'owner', 'access'); map.facilities.owner.servicePointIds = ['service'];
     expect(selectionImpact(map, { nodes: ['a'], roads: [] }).affectedRefs).toContainEqual({ kind: 'servicePoints', id: 'service' });
-    reject(map, move(), 'LOCAL_POINT_DEPENDENCY');
+    const edited = run(map, move()); expect(edited.map.nodes.c).toEqual(map.nodes.c); expect(edited.map.servicePoints).toEqual(map.servicePoints); expect(edited.map.resources).toEqual(map.resources);
+    map.roads.ca = newRoad('c', 'a'); reject(map, move(), 'OWNER_PUBLIC_NODE');
   });
   it('lets existing direction validation reject prohibited movement or internal path arcs', () => {
     const map = fixture(); const command: MapCommand = { type: 'updateRoad', id: 'ab', patch: { direction: 'backward' } };

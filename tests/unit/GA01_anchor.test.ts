@@ -169,6 +169,8 @@ describe('GA01 fixed coordinate frame and atomic geometry provenance', () => {
     const edited = editSession(session, { type: 'translateSelection', selection: { nodes: [], roads: [], facilities: ['owner'] }, delta: [1, 2, 0], facilityMovePolicy: 'withStaticContents' });
     expect(edited.ok, JSON.stringify(edited.issues)).toBe(true);
     const after = edited.session.map;
+    expect(edited.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'OWNER_ROAD_NONPLANAR', severity: 'warning' })]));
+    expect(after.nodes.a!.position[2]).toBe(map.nodes.a!.position[2]); expect(after.nodes.b!.position[2]).toBe(map.nodes.b!.position[2]);
     for (const [provenance, field] of [[after.nodes.a!.provenance, 'position'], [after.roads.road!.provenance, 'shapePoints'], [after.facilities.owner!.provenance, 'boundary'], [after.junctions.junction!.provenance, 'boundary'], [after.facilities.owner!.provenance, 'extensions/sr02.planning/slots/0/boundary']] as const) {
       expect(provenance.fieldSources?.[field]).toBe('source_editor_geometry');
     }

@@ -28,7 +28,8 @@ function sourceId(map: YardMap, preferred: string, source: Source): string {
 }
 
 /** Only called on a candidate topology transaction; callers retain the original map on failure. */
-export function recordTopologySources(before: YardMap, after: YardMap, refs: readonly CommandAffectedRef[]): CommandAffectedRef[] {
+export function recordTopologySources(before: YardMap, after: YardMap, refs: readonly CommandAffectedRef[], existingSourceId?: string): CommandAffectedRef[] {
+  if (existingSourceId && after.sources[existingSourceId]?.category !== 'design_assumption') throw new Error('Topology source must reference the current explicit design assumption.');
   const changes: { provenance: Provenance; field: string }[] = [];
   const seen = new Set<string>();
   for (const ref of refs) {
@@ -45,7 +46,7 @@ export function recordTopologySources(before: YardMap, after: YardMap, refs: rea
     }
   }
   if (!changes.length) return [];
-  const id = sourceId(after, 'source_editor_topology', TOPOLOGY_SOURCE);
+  const id = existingSourceId ?? sourceId(after, 'source_editor_topology', TOPOLOGY_SOURCE);
   const added = !Object.hasOwn(after.sources, id);
   if (added) after.sources[id] = { ...TOPOLOGY_SOURCE };
   for (const { provenance, field } of changes) {

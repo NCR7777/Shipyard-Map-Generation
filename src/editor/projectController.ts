@@ -33,9 +33,17 @@ export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
 export interface BackgroundLayerPreference { visible: boolean; opacity: number; locked: boolean }
 export interface BackgroundPreferences { comparisonMode: boolean; layers: Record<string, BackgroundLayerPreference> }
 export const DEFAULT_BACKGROUND_LAYER_PREFERENCE: Readonly<BackgroundLayerPreference> = Object.freeze({ visible: true, opacity: 1, locked: true });
-export interface EditorState { camera: Camera; drawing: DrawingConfig; workbench?: WorkbenchPreferences; backgrounds?: BackgroundPreferences }
+export type PropertyUnits = { mass: 'kg' | 't'; speed: 'm/s' | 'km/h'; angle: 'rad' | 'deg' };
+export const DEFAULT_PROPERTY_UNITS: Readonly<PropertyUnits> = Object.freeze({ mass: 't', speed: 'km/h', angle: 'deg' });
+export function validatePropertyUnits(value: unknown): PropertyUnits {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['mass', 'speed', 'angle'].includes(key))) throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '属性单位设置无效。');
+  const units = { ...DEFAULT_PROPERTY_UNITS, ...value };
+  if (!['kg', 't'].includes(units.mass) || !['m/s', 'km/h'].includes(units.speed) || !['rad', 'deg'].includes(units.angle)) throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '属性单位不受支持。');
+  return units;
+}
+export interface EditorState { propertyUnits?: PropertyUnits; camera: Camera; drawing: DrawingConfig; workbench?: WorkbenchPreferences; backgrounds?: BackgroundPreferences }
 /** Legacy camera-only records and partial drawing settings are normalized at the storage boundary. */
-export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> & { showLabels?: boolean }; workbench?: Partial<WorkbenchPreferences>; backgrounds?: { comparisonMode?: boolean; layers?: Record<string, Partial<BackgroundLayerPreference>> } }
+export interface EditorStateInput { propertyUnits?: Partial<PropertyUnits>; camera: Camera; drawing?: Partial<DrawingConfig> & { showLabels?: boolean }; workbench?: Partial<WorkbenchPreferences>; backgrounds?: { comparisonMode?: boolean; layers?: Record<string, Partial<BackgroundLayerPreference>> } }
 export interface RasterAssetBytes { sha256: string; mimeType: 'image/png' | 'image/jpeg' | 'image/webp'; width: number; height: number; bytes: ArrayBuffer }
 /** Binary storage is separate from the map CAS queue and works without DOM types. */
 export interface RasterAssetStorePort {
@@ -118,7 +126,7 @@ export function validateEditorState(value: unknown): EditorState {
     || typeof camera.offsetX !== 'number' || !Number.isFinite(camera.offsetX)
     || typeof camera.offsetY !== 'number' || !Number.isFinite(camera.offsetY)
     || typeof camera.scale !== 'number' || !Number.isFinite(camera.scale) || camera.scale <= 0
-    || Object.keys(value).some(key => !['camera', 'drawing', 'workbench', 'backgrounds'].includes(key)) || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
+    || Object.keys(value).some(key => !['camera', 'drawing', 'workbench', 'backgrounds', 'propertyUnits'].includes(key)) || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '视窗偏移必须有限，比例必须为正的有限值；不能混入领域数据或临时交互。');
   }
   if ('drawing' in value && (!value.drawing || typeof value.drawing !== 'object' || Array.isArray(value.drawing)
@@ -149,7 +157,7 @@ export function validateEditorState(value: unknown): EditorState {
     try { workbench = validateWorkbenchPreferences(value.workbench); }
     catch { throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '工作台布局或保存目标设置无效。'); }
   }
-  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing: { ...drawing, hiddenTypes: [...drawing.hiddenTypes], lockedTypes: [...drawing.lockedTypes] }, ...(workbench ? { workbench } : {}), ...('backgrounds' in value ? { backgrounds: validateBackgroundPreferences(value.backgrounds) } : {}) };
+  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing: { ...drawing, hiddenTypes: [...drawing.hiddenTypes], lockedTypes: [...drawing.lockedTypes] }, ...(workbench ? { workbench } : {}), ...('backgrounds' in value ? { backgrounds: validateBackgroundPreferences(value.backgrounds) } : {}), ...('propertyUnits' in value ? { propertyUnits: validatePropertyUnits(value.propertyUnits) } : {}) };
 }
 
 export interface ActiveProject {

@@ -1,4 +1,4 @@
-import { fileAction } from '../helpers/workbenchUi';
+import { fileAction, revealProperty } from '../helpers/workbenchUi';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -158,8 +158,8 @@ test('DP A04 synthetic long stable ID remains the complete selectable copy sourc
   await expect(card.locator('code')).toHaveText(id);
   await expect(card.locator('span')).toHaveText('synthetic · ' + sourceId);
   await expect(page.getByLabel('名称', { exact: true })).toHaveValue(name);
-  await expect(page.locator('.spatial-property .provenance-note')).toContainText('来源声明：synthetic');
-  const field = page.getByLabel('稳定 ID', { exact: true });
+  await expect(page.locator('.spatial-property .provenance-note')).toContainText('synthetic');
+  const field = await revealProperty(page, '稳定 ID');
   await expect(field).toHaveValue(id); await expect(field).toHaveAttribute('readonly', '');
   await field.click(); await page.keyboard.press('Control+a');
   // Inspect the native text selection that a copy operation consumes; do not change the system clipboard.

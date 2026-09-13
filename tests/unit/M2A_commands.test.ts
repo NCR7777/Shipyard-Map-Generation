@@ -128,10 +128,11 @@ describe('M2A independent commands, references and world geometry', () => {
     refused(map, { type: 'translateSelection', selection: select({ facilities: ['fA'] }), delta: [10, 5, 0] });
   });
 
-  it('G03 moves just the boundary when that explicit policy is chosen', () => {
+  it('G03 moves just a legal boundary and refuses detaching its entrance', () => {
     const map = associatedFixture();
-    const result = execute(map, { type: 'translateSelection', selection: select({ facilities: ['fA'] }), delta: [10, 5, 0], facilityMovePolicy: 'boundaryOnly' }).map;
-    expect(result.facilities.fA!.boundary.outer[0]).toEqual([10, 5, 0]);
+    refused(map, { type: 'translateSelection', selection: select({ facilities: ['fA'] }), delta: [10, 5, 0], facilityMovePolicy: 'boundaryOnly' });
+    const result = execute(map, { type: 'translateSelection', selection: select({ facilities: ['fA'] }), delta: [-5, 0, 0], facilityMovePolicy: 'boundaryOnly' }).map;
+    expect(result.facilities.fA!.boundary.outer[0]).toEqual([-5, 0, 0]);
     expect(result.nodes).toEqual(map.nodes);
     expect(roadPoints(result, 'rAB')).toEqual(roadPoints(map, 'rAB'));
     expect(result.accessPoints).toEqual(map.accessPoints);

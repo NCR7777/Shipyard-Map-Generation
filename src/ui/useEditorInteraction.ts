@@ -1,5 +1,5 @@
 import { useReducer, useRef, type SetStateAction } from 'react';
-import type { ArcRef, YardMap } from '../domain/model';
+import type { ArcRef, YardMap, Polygon, Issue } from '../domain/model';
 import type { TopologyCommand } from '../domain/topologyEditing';
 import type { ImportProposal } from '../editor/session';
 import type { DraftContext } from '../editor/drafts';
@@ -8,6 +8,9 @@ import type { DraftRoad, Tool } from '../renderers/2d/MapCanvas';
 import type { PointCreationDraft } from './PointCreationPanel';
 
 export interface DialogValues {
+  roadBatch: { ids: string[] };
+  roadPreset: { roadId: string };
+  boundaryRepair: { kind: 'facilities' | 'zones'; id: string; boundary: Polygon; command: import('../domain/commands').MapCommand; issues: Issue[]; allowed: boolean };
   new: true; copy: true; upgrade: true; delete: true; rotate: true; split: true;
   recent: true; storageConflict: true;
   save: { target?: 'file' | 'browser'; saveAs?: boolean; overwriteToken?: number };
@@ -19,7 +22,7 @@ export interface DialogValues {
   topology: { command: TopologyCommand; token: number; baseMap: YardMap; turns: { id: string; incomingArc: ArcRef; outgoingArc: ArcRef }[] };
 }
 export type EditorDialog = { [K in keyof DialogValues]: { kind: K; value: DialogValues[K]; context: DraftContext } }[keyof DialogValues];
-interface ActivityValues { road: DraftRoad; polygon: true; point: PointCreationDraft; boundary: true; splitPick: true }
+interface ActivityValues { relocate: { kind: 'accessPoints' | 'servicePoints'; id: string }; road: DraftRoad; polygon: true; point: PointCreationDraft; boundary: true; splitPick: true }
 export type EditorActivity = { kind: 'idle' } | { [K in keyof ActivityValues]: { kind: K; value: ActivityValues[K]; context: DraftContext } }[keyof ActivityValues];
 export interface InteractionState { tool: Tool; activity: EditorActivity; dialog: EditorDialog | null }
 export type InteractionEvent = { type: 'tool'; tool: Tool } | { type: 'activity'; activity: EditorActivity } | { type: 'dialog'; dialog: EditorDialog | null } | { type: 'reset' };

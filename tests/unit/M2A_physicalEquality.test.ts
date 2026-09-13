@@ -3,7 +3,7 @@ import { applyMapCommand } from '../../src/domain/commands';
 import { loadMap } from '../../src/domain/load';
 import { serializeMap } from '../../src/domain/serialization';
 import { editorFixture } from '../helpers/M1_fixtures';
-import { makePhysicalDraft, parsePhysicalDraft } from '../../src/ui/RoadPhysicalFields';
+import { makePhysicalDraft, parsePhysicalPatch } from '../../src/ui/RoadPhysicalFields';
 import { createSession, editSession, redoSession, undoSession } from '../../src/editor/session';
 
 describe('M2A physical value equality is semantic, independent of JSON object-key order', () => {
@@ -47,28 +47,28 @@ describe('road width uses the shared physical form and transaction', () => {
     const road = editorFixture().roads.rAB!;
     road.widthM = { state: 'known', value: 12, sourceRef: 'source_width' };
     const draft = makePhysicalDraft(road);
-    const parsed = parsePhysicalDraft(draft);
+    const parsed = parsePhysicalPatch(road, draft);
     expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(parsed.values.widthM).toEqual(road.widthM);
+    if (parsed.ok) expect({ ...road, ...parsed.patch }.widthM).toEqual(road.widthM);
     for (const value of ['', '0', '-1', 'Infinity', 'NaN']) {
-      expect(parsePhysicalDraft({ ...draft, widthM: { ...draft.widthM, value } }).ok).toBe(false);
+      expect(parsePhysicalPatch(road, { ...draft, widthM: { ...draft.widthM, value } }).ok).toBe(false);
     }
     for (const state of ['unknown', 'unrestricted', 'not_applicable'] as const) {
-      const result = parsePhysicalDraft({ ...draft, widthM: { ...draft.widthM, state, reason: '原始记录说明' } });
+      const result = parsePhysicalPatch(road, { ...draft, widthM: { ...draft.widthM, state, reason: '原始记录说明' } });
       expect(result.ok).toBe(true);
-      if (result.ok) expect(result.values.widthM).toEqual({ state, reason: '原始记录说明' });
+      if (result.ok) expect(result.patch.widthM).toEqual({ state, reason: '原始记录说明' });
     }
   });
 
   it('commits width and bends once with explicit assumption, undoing and redoing geometry and source together', () => {
     const map = editorFixture();
-    const draft = makePhysicalDraft(map.roads.rAB!);
-    const parsed = parsePhysicalDraft({ ...draft, widthM: { state: 'known', value: '14', sourceRef: '', reason: '' } });
+    const road = map.roads.rAB!; const draft = makePhysicalDraft(road);
+    const parsed = parsePhysicalPatch(road, { ...draft, widthM: { state: 'known', value: '14', sourceRef: '', reason: '' } });
     if (!parsed.ok) throw new Error(parsed.message);
     expect(parsed.needsAssumption).toBe(true);
     const initial = createSession(map);
     const result = editSession(initial, {
-      type: 'updateRoad', id: 'rAB', patch: { ...parsed.values, shapePoints: [[40, 10, 0]] },
+      type: 'updateRoad', id: 'rAB', patch: { ...parsed.patch, shapePoints: [[40, 10, 0]] },
       designAssumption: { id: 'source_width_assumption', name: '宽度设计假设' },
     });
     expect(result.ok).toBe(true);

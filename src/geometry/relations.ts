@@ -116,3 +116,20 @@ export function roundRoadIntersectsPolygon(points: readonly Vec3[], radius: numb
   }
   return false;
 }
+
+/** Strict centerline/footprint interior crossing; boundary-only doorway contact is excluded. */
+export function polylineEntersPolygon(points: readonly Vec3[], polygon: Polygon, work: GeometryWork): boolean {
+  const boundary = edges(polygon);
+  work(points.length * boundary.length);
+  if (points.some(point => pointInPolygon(point, polygon) === 'inside')) return true;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!, b = points[i]!, cuts = [0, 1];
+    for (const edge of boundary) { work(); const hit = crossing([a, b], edge); if (hit) cuts.push(hit.t); }
+    cuts.sort((x, y) => x - y);
+    for (let j = 1; j < cuts.length; j++) {
+      work(boundary.length); const t = (cuts[j - 1]! + cuts[j]!) / 2;
+      if (pointInPolygon([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2]], polygon) === 'inside') return true;
+    }
+  }
+  return false;
+}

@@ -1,4 +1,4 @@
-import { fileAction, saveToBrowser, drawingControl } from '../helpers/workbenchUi';
+import { fileAction, saveToBrowser, drawingControl, openChecks } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { cpus, platform, release } from 'node:os';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
@@ -150,15 +150,29 @@ for (const target of sr03) {
 test('P1 A03 A06 real F_001 rigid contents drag and numeric rotation retain slots, anchors and declarations', async ({ page }, info) => {
   test.setTimeout(120000); await ready(page); const before = await importOriginal(page, sr03[0]!);
   await choose(page, 'facilities', 'F_001');
-  await (await drawingControl(page, '设施移动策略')).selectOption('withStaticContents');
+  /* UX02 chooses the existing safe static-content policy automatically. */
   await (await drawingControl(page, '网格吸附')).selectOption('1');
   const hash = await page.getByTestId('map-hash').textContent();
   await drag(page, [78, 180, 0], [88, 185, 0], async () => {
     await expect(page.getByTestId('map-hash')).toHaveText(hash!);
   });
+  await expect(page.getByTestId('map-hash')).toHaveText(hash!);
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
+  expect((await download(page, info, 'F001-road-band-rejected.map.json')).map).toEqual(before);
+  await openChecks(page);
+  for (const id of ['R_0004_S1', 'R_0004_S2']) {
+    const detail = page.getByTestId('issue-panel').locator('details').filter({ has: page.getByText('技术详情 · ' + id, { exact: true }) });
+    await detail.locator('summary').click();
+    await expect(detail).toContainText('OWNER_ROAD_NEW_BUILDING_BAND_CONFLICT');
+    await expect(detail).toContainText('/roads/' + id);
+  }
+  await page.getByRole('button', { name: '检查与问题', exact: true }).click();
+  await drag(page, [78, 180, 0], [73, 185, 0], async () => {
+    await expect(page.getByTestId('map-hash')).toHaveText(hash!);
+  });
   const moved = (await download(page, info, 'F001-moved.map.json')).map;
   const nodeIds = ['N_0012', 'N_0013', 'N_0014'];
-  expect(moved).toEqual(expectedOwnerTransform(before, 'facilities', 'F_001', nodeIds, ([x,y,z]) => [x + 10,y + 5,z]));
+  expect(moved).toEqual(expectedOwnerTransform(before, 'facilities', 'F_001', nodeIds, ([x,y,z]) => [x - 5,y + 5,z]));
   expect(moved.resources).toEqual(before.resources); expect(moved.movements).toEqual(before.movements);
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   expect((await download(page, info, 'F001-undo.map.json')).map).toEqual(before);
@@ -167,6 +181,7 @@ test('P1 A03 A06 real F_001 rigid contents drag and numeric rotation retain slot
   expect((await download(page, info, 'F001-redo.map.json')).map).toEqual(moved);
   await choose(page, 'facilities', 'F_001'); await transforms(page);
   const angle = 0.05; const cx = 75.5; const cy = 137;
+  await page.getByLabel('角度显示单位', { exact: true }).selectOption('rad');
   await page.getByLabel('旋转角 (rad)', { exact: true }).fill(String(angle));
   await page.getByLabel('旋转中心 X (m)', { exact: true }).fill(String(cx));
   await page.getByLabel('旋转中心 Y (m)', { exact: true }).fill(String(cy));
@@ -185,7 +200,7 @@ test('P1 A03 A06 real F_001 rigid contents drag and numeric rotation retain slot
 test('P1 A03 A06 real Z_005 parking slots and service nodes move together with public anchors fixed', async ({ page }, info) => {
   await ready(page); const before = await importOriginal(page, sr03[0]!);
   await choose(page, 'zones', 'Z_005');
-  await (await drawingControl(page, '区域移动策略')).selectOption('withStaticContents');
+  /* UX02 chooses the existing safe static-content policy automatically. */
   await (await drawingControl(page, '网格吸附')).selectOption('1');
   await drag(page, [459, 94, 0], [449, 99, 0]);
   const moved = (await download(page, info, 'Z005-moved.map.json')).map;
@@ -212,7 +227,7 @@ test('P1 A05 layer configuration survives reload without map history and locked 
   await expect(page.getByTestId('layer-visible-nodes')).not.toBeChecked(); await expect(page.getByTestId('layer-locked-nodes')).toBeChecked();
   await expect(page.getByTestId('label-mode')).toHaveValue('off'); await expect(page.getByTestId('object-search')).toHaveValue('F_001');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!); await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
-  await choose(page, 'facilities', 'F_001'); await (await drawingControl(page, '设施移动策略')).selectOption('withStaticContents');
+  await choose(page, 'facilities', 'F_001'); /* UX02 chooses the existing safe static-content policy automatically. */
   await transforms(page);
   const delta = page.getByLabel('平移 X (m)', { exact: true });
   if (await delta.isEnabled()) {
@@ -276,9 +291,9 @@ test('P1 A03 A06 approved name edit preserves every geometry and pending input c
 test('P1 A05 locked indirect resources and slots guard both history buttons and keyboard without consuming history', async ({ page }, info) => {
   test.setTimeout(90000); await ready(page); const original = await importOriginal(page, sr03[0]!);
   await choose(page, 'facilities', 'F_001');
-  await (await drawingControl(page, '设施移动策略')).selectOption('withStaticContents');
+  /* UX02 chooses the existing safe static-content policy automatically. */
   await (await drawingControl(page, '网格吸附')).selectOption('1');
-  await drag(page, [78, 180, 0], [88, 185, 0]);
+  await drag(page, [78, 180, 0], [73, 185, 0]);
   const moved = (await download(page, info, 'history-moved.map.json')).map;
   expect(moved.revision).toBe(original.revision + 1);
   await layers(page); await page.getByTestId('layer-locked-resources').check();

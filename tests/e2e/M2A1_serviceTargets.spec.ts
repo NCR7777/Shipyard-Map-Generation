@@ -1,3 +1,4 @@
+import { revealProperty } from '../helpers/workbenchUi';
 import { fileAction, drawingControl, drawingAction, chooseBrowserSaveTarget } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
@@ -102,7 +103,7 @@ test('N03 N05 a canvas-picked dedicated service node is one transaction and belo
   await page.getByRole('button', { name: '重做', exact: true }).click();
   expect(await download(page, info, 'dedicated-target-redone.map.json')).toEqual(created);
   await page.getByTestId('servicePoints-item-' + serviceId).click();
-  await page.getByLabel('关联区域', { exact: true }).selectOption(secondZone);
+  await (await revealProperty(page, '关联区域')).selectOption(secondZone);
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await saved(page); await page.reload(); await page.getByTestId('servicePoints-item-' + serviceId).click();
   await expect(page.getByLabel('关联区域', { exact: true })).toHaveValue(secondZone);
@@ -118,7 +119,7 @@ test('N25 unapplied service properties block dragging and require explicit decis
   await page.getByTestId('servicePoints-item-sZone').click();
   const original = await download(page, info, 'guard-original.map.json');
   const hash = await page.getByTestId('map-hash').textContent();
-  await page.getByLabel('名称', { exact: true }).fill('未应用的服务名称');
+  await (await revealProperty(page, '名称')).fill('未应用的服务名称');
   const from = await position(page, 80, 30); const to = await position(page, 90, 35);
   await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 30 }); await page.mouse.up();
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
@@ -138,14 +139,14 @@ test('N25 unapplied service properties block dragging and require explicit decis
   await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue('nB');
   expect(await download(page, info, 'guard-object-switch.map.json')).toEqual(original);
   await page.getByTestId('servicePoints-item-sZone').click();
-  await page.getByLabel('名称', { exact: true }).fill('工具切换前的暂存名称');
+  await (await revealProperty(page, '名称')).fill('工具切换前的暂存名称');
   await page.getByRole('button', { name: '节点', exact: true }).click();
   await guard(page).getByRole('button', { name: '丢弃未应用输入并继续', exact: true }).click();
   await clickWorld(page, 120, 40);
   await expect(page.getByTestId('node-count')).toHaveText('5');
   await page.getByTestId('servicePoints-item-sZone').click();
   await expect(page.getByLabel('名称', { exact: true })).toHaveValue(original.servicePoints.sZone!.name);
-  await page.getByLabel('名称', { exact: true }).fill('历史切换前的暂存名称');
+  await (await revealProperty(page, '名称')).fill('历史切换前的暂存名称');
   await page.getByRole('button', { name: '撤销', exact: true }).focus();
   await page.keyboard.press('Control+z');
   await guard(page).getByRole('button', { name: '取消，保留输入', exact: true }).click();
@@ -199,10 +200,10 @@ test('N09 N10 N12 a service in the middle of a road stays disconnected until exp
   await expect(summary).toContainText('unchecked');
   const splitHash = await page.getByTestId('map-hash').textContent();
   await expect(page.locator('.canvas-status')).toContainText('1 个撤销事务');
-  await page.getByLabel('到达语义', { exact: true }).selectOption('explicit_internal');
-  await page.getByLabel('内部路径入口节点', { exact: true }).selectOption('nA');
+  await (await revealProperty(page, '到达语义')).selectOption('explicit_internal');
+  await (await revealProperty(page, '内部路径入口节点')).selectOption('nA');
   await page.getByRole('button', { name: '添加内部路段', exact: true }).click();
-  await page.getByLabel('内部路段 1 道路', { exact: true }).selectOption(entryRoadId);
+  await (await revealProperty(page, '内部路段 1 道路')).selectOption(entryRoadId);
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   // GA01 checks the changed owner relationship: splitting establishes topology,
   // but cannot make an outside node an explicit internal service point.
@@ -214,11 +215,11 @@ test('N09 N10 N12 a service in the middle of a road stays disconnected until exp
 
   await page.getByTestId('zones-item-zA').click();
   await guard(page).getByRole('button', { name: '丢弃未应用输入并继续', exact: true }).click();
-  await page.getByLabel('边界编辑模式', { exact: true }).selectOption('polygon');
+  await (await revealProperty(page, '边界编辑模式')).selectOption('polygon');
   const ownerCorners = [[-1, -10, 0], [101, -10, 0], [101, 40, 0], [-1, 40, 0]];
   for (const [index, point] of ownerCorners.entries()) {
     for (const [axisIndex, axis] of ['X', 'Y'].entries()) {
-      await page.getByLabel(`外环 顶点 ${index + 1} ${axis} (m)`, { exact: true }).fill(String(point[axisIndex]));
+      await (await revealProperty(page, `外环 顶点 ${index + 1} ${axis} (m)`)).fill(String(point[axisIndex]));
     }
   }
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
@@ -231,10 +232,10 @@ test('N09 N10 N12 a service in the middle of a road stays disconnected until exp
   expect(contained.revision).toBe(split.revision + 1);
 
   await page.getByTestId('servicePoints-item-sZone').click();
-  await page.getByLabel('到达语义', { exact: true }).selectOption('explicit_internal');
-  await page.getByLabel('内部路径入口节点', { exact: true }).selectOption('nA');
+  await (await revealProperty(page, '到达语义')).selectOption('explicit_internal');
+  await (await revealProperty(page, '内部路径入口节点')).selectOption('nA');
   await page.getByRole('button', { name: '添加内部路段', exact: true }).click();
-  await page.getByLabel('内部路段 1 道路', { exact: true }).selectOption(entryRoadId);
+  await (await revealProperty(page, '内部路段 1 道路')).selectOption(entryRoadId);
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await expect(summary).toContainText('continuous · 50 m');
   await expect(summary).toContainText('network_reachability');
@@ -242,7 +243,7 @@ test('N09 N10 N12 a service in the middle of a road stays disconnected until exp
   const declared = await download(page, info, 'target-internal-declaration.map.json');
   expect(declared.servicePoints.sZone!.arrival).toEqual({ mode: 'explicit_internal', entryNodeId: 'nA', internalPath: [{ roadId: entryRoadId, direction: 'forward' }] });
   const hash = await page.getByTestId('map-hash').textContent();
-  await page.getByLabel('内部路段 1 方向', { exact: true }).selectOption('backward');
+  await (await revealProperty(page, '内部路段 1 方向')).selectOption('backward');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await expect(page.getByTestId('issue-panel')).toContainText('INTERNAL_PATH');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
@@ -251,7 +252,7 @@ test('N09 N10 N12 a service in the middle of a road stays disconnected until exp
 test('N07 a zone drag, copy and explicit member deletion retain shared-road safety and one-transaction undo', async ({ page }, info) => {
   await ready(page); const original = zoneServiceFixture(); await importMap(page, original);
   await page.getByTestId('zones-item-zA').click();
-  await page.getByLabel('区域移动关联点', { exact: true }).selectOption('withAssociatedNodes');
+  await expect(page.getByLabel('区域移动关联点', { exact: true })).toHaveCount(0);
   const from = await position(page, 72, 30); const to = await position(page, 82, 35);
   await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(to.x, to.y, { steps: 100 }); await page.mouse.up();
   const moved = await download(page, info, 'zone-moved.map.json');

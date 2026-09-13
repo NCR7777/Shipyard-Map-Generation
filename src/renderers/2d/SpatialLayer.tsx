@@ -10,6 +10,7 @@ import { useCurrentCallback } from '../../ui/useCurrentCallback';
 
 export interface SpatialLayerProps {
   comparisonMode?: boolean;
+  onPointIdentities?: (identities: { kind: 'accessPoints' | 'servicePoints'; id: string }[]) => void;
   hiddenTypes?: readonly SceneKind[]; canDrag?: (kind: keyof Selection, id: string) => boolean;
   visibleKeys?: ReadonlySet<string>; onHover?: (key: string | null) => void;
   scene: SceneSnapshot; camera: Camera; selection: Selection; previewDelta: Vec3 | null; boundaryPreview?: BoundaryPreview | null;
@@ -66,8 +67,10 @@ function useSpatialEvents(props: SpatialLayerProps) {
     const target = spatialTarget(event, props); if (target) props.onPreview(dragDelta(event, target.origin, props));
   });
   const onDragEnd = useCurrentCallback((event: KonvaEventObject<DragEvent>) => {
-    const target = spatialTarget(event, props); props.onPreview(null);
-    if (target) props.onDragEnd(dragDelta(event, target.origin, props));
+    const target = spatialTarget(event, props);
+    const delta = target ? dragDelta(event, target.origin, props) : null;
+    props.onPreview(null);
+    if (delta) props.onDragEnd(delta);
   });
   return { onMouseEnter, onMouseLeave, onMouseDown, onClick, onDragStart, onDragMove, onDragEnd };
 }
@@ -92,16 +95,38 @@ export function SpatialLayer(props: SpatialLayerProps) {
     </Group>;
   })}</>;
 }
+/** Same node reference only: equal coordinates never combine independent identities. */
+export function associatedPointGroups(scene: Pick<SceneSnapshot, 'accessPoints' | 'servicePoints'>, hiddenTypes: readonly SceneKind[] = [], visibleKeys?: ReadonlySet<string>) {
+  const points = [...scene.accessPoints.map(point => ({ ...point, entityType: 'accessPoints' as const })), ...scene.servicePoints.map(point => ({ ...point, entityType: 'servicePoints' as const }))];
+  const groups = new Map<string, typeof points>();
+  for (const point of points) {
+    if (hiddenTypes.includes(point.entityType)) continue;
+    const group = groups.get(point.nodeId); if (group) group.push(point); else groups.set(point.nodeId, [point]);
+  }
+  // Display candidates deduplicate labels by nodeId; keep all visible identities behind that one marker.
+  return [...groups.values()].filter(group => !visibleKeys || group.some(point => visibleKeys.has(point.entityType + '/' + point.id)));
+}
 export function AssociatedPointLayer(props: SpatialLayerProps) {
   const events = useSpatialEvents(props);
-  return <>{[...props.scene.accessPoints.map(point => ({ ...point, entityType: 'accessPoints' as const })), ...props.scene.servicePoints.map(point => ({ ...point, entityType: 'servicePoints' as const }))].filter(point => !props.hiddenTypes?.includes(point.entityType) && (!props.visibleKeys || props.visibleKeys.has(point.entityType + '/' + point.id))).map(point => {
+  return <>{associatedPointGroups(props.scene, props.hiddenTypes, props.visibleKeys).map(points => {
+    const selectedPoint = points.find(point => props.selection[point.entityType]?.includes(point.id));
+    const point = selectedPoint ?? points[0]!;
     const origin = point.position; const offset = props.movingNodeIds.has(point.nodeId) ? props.previewDelta : null;
     const pos = worldToScreen(move(origin, offset), props.camera); if (!pos.every(Number.isFinite)) return null;
-    const selected = !!props.selection[point.entityType]?.includes(point.id);
-    return <Group _useStrictMode listening={!props.selecting || !props.selection.nodes.includes(point.nodeId)} key={point.entityType + point.id} x={pos[0]} y={pos[1]} draggable={!props.disableDrag && props.selecting && !props.readonly && (props.canDrag?.(point.entityType, point.id) ?? true)}
-      entityKind={point.entityType} entityId={point.id} {...events}>
-      <Rect x={-9} y={-9} width={18} height={18} cornerRadius={point.entityType === 'accessPoints' ? 2 : 8} fill={selected ? '#e08128' : point.entityType === 'accessPoints' ? '#5e9086' : '#816db1'} stroke="#fff" strokeWidth={2} />
-      <Text x={-4} y={-5} text={point.entityType === 'accessPoints' ? '入' : '服'} fontSize={10} fill="#fff" listening={false} />
+    const selected = !!selectedPoint, combined = points.length > 1;
+    const identities = points.map(p => ({ kind: p.entityType, id: p.id }));
+    return <Group _useStrictMode key={'associated-' + point.nodeId} name="associated-point" pointNodeId={point.nodeId} pointIdentities={identities}
+      x={pos[0]} y={pos[1]} draggable={(!combined || selected) && !props.disableDrag && props.selecting && !props.readonly && (props.canDrag?.(point.entityType, point.id) ?? true)}
+      entityKind={point.entityType} entityId={point.id} {...events}
+      onMouseDown={event => { if (combined && props.selecting && !selected) { event.cancelBubble = true; return; } events.onMouseDown(event); }}
+      onClick={event => {
+        if (combined && props.selecting && !props.pickingPoint && !props.drawingRoad && event.evt.button === 0 && props.onPointIdentities) {
+          event.cancelBubble = true; props.onPointIdentities(identities); return;
+        }
+        events.onClick(event);
+      }}>
+      <Rect x={-9} y={-9} width={combined ? 24 : 18} height={18} cornerRadius={point.entityType === 'accessPoints' ? 2 : 8} fill={selected ? '#e08128' : point.entityType === 'accessPoints' ? '#5e9086' : '#816db1'} stroke="#fff" strokeWidth={2} />
+      <Text x={-4} y={-5} text={combined ? points.some(p => p.entityType === 'accessPoints') && points.some(p => p.entityType === 'servicePoints') ? '入/作' : (point.entityType === 'accessPoints' ? '入' : '作') + points.length : point.entityType === 'accessPoints' ? '入' : '服'} fontSize={10} fill="#fff" listening={false} />
     </Group>;
   })}</>;
 }

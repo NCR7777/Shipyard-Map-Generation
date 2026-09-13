@@ -1,4 +1,4 @@
-import { fileAction, drawingControl, openFileMenu } from '../helpers/workbenchUi';
+import { fileAction, openFileMenu } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { Polygon, Vec3, YardMap } from '../../src/domain/model';
@@ -94,6 +94,13 @@ function versionedFixture(version: YardMap['schemaVersion']): YardMap {
 }
 const preview = (page: Page) => page.getByTestId('boundary-edit-preview');
 const guard = (page: Page) => page.getByRole('dialog', { name: '未应用输入保护', exact: true });
+async function cancelRejectedContour(page: Page) {
+  const dialog = page.getByRole('dialog', { name: '轮廓局部修复预览', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '确认轮廓与入口局部修复', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: '取消轮廓修改', exact: true }).click();
+}
+
 
 // No map is injected through application internals. Creation, import, editing and saving use real UI.
 for (const kind of ['facilities', 'zones'] as const) {
@@ -142,6 +149,7 @@ test('R02 R08 a 30-degree rectangle uses local dimensions and numeric editing pr
   const id = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
   await page.getByRole('button', { name: '旋转', exact: true }).click();
   const modal = page.getByRole('dialog', { name: '旋转选中对象', exact: true });
+  await modal.getByLabel('角度单位', { exact: true }).selectOption('rad');
   await modal.getByLabel('旋转角度 (rad)', { exact: true }).fill(String(Math.PI / 6));
   for (const axis of ['X', 'Y', 'Z']) await modal.getByLabel('中心 ' + axis + ' (m)', { exact: true }).fill('0');
   await modal.getByRole('button', { name: '确认旋转', exact: true }).click();
@@ -248,9 +256,11 @@ test('R04 irregular outer and hole vertices remain authoritative; invalid pointe
   await drag(page, [60, 0, 0], [-10, 20, 0]);
   await expect(page.getByTestId('issue-panel')).toContainText('POLYGON');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
+  await cancelRejectedContour(page);
   expect(await download(page, info, 'self-intersection-rejected.map.json')).toEqual(holeEdited);
   await drag(page, [9, 9, 0], [70, 10, 0]);
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
+  await cancelRejectedContour(page);
   expect(await download(page, info, 'hole-outside-rejected.map.json')).toEqual(holeEdited);
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   expect(await download(page, info, 'valid-hole-undo.map.json')).toEqual(edited);
@@ -266,6 +276,7 @@ test('R04 a zero-area polygon drag is rejected without adding an undo step', asy
   await drag(page, [0, 30, 0], [30, 0, 0]);
   await expect(page.getByTestId('issue-panel')).toContainText('POLYGON_ZERO_AREA');
   await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
+  await cancelRejectedContour(page);
   expect(await download(page, info, 'zero-area-rejected.map.json')).toEqual(original);
 });
 
@@ -294,7 +305,7 @@ for (const version of ['0.1.0', '0.2.0'] as const) {
     original.zones.zA!.boundary = { outer: [[10, 50, 0], [30, 50, 0], [25, 70, 0], [10, 70, 0], [10, 50, 0]], holes: [] };
     await importMap(page, original);
     expect(await download(page, info, 'legacy-original.map.json')).toEqual(original);
-    await (await drawingControl(page, '设施移动策略')).selectOption('withAssociatedNodes');
+    // Contour resizing keeps linked nodes fixed; UX02 no longer exposes a whole-object policy selector.
     await drag(page, [60, 30, 0], [80, 45, 0]);
     const resized = await download(page, info, 'legacy-resized.map.json');
     expect(resized.schemaVersion).toBe(version); expect(resized.mapId).toBe(original.mapId);

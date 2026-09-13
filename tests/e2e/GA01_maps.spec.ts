@@ -1,4 +1,4 @@
-import { fileAction, saveToBrowser, saveShortcutToBrowser, drawingControl } from '../helpers/workbenchUi';
+import { fileAction, saveToBrowser, saveShortcutToBrowser, drawingControl, openPropertyDetails, revealProperty } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
@@ -39,6 +39,7 @@ for (const target of GA01_TARGETS) test('GA01 ' + phase + ' ' + target.id + ' ac
   } else {
     const mode = page.getByLabel('边界编辑模式', { exact: true });
     if (await mode.isVisible()) await mode.selectOption('polygon');
+    await openPropertyDetails(page, '边界顶点 · m');
     const boundary = GA01Boundary(original, target);
     for (const [index, point] of boundary.outer.slice(0, -1).entries()) for (const [axis, coordinate] of [['X', point[0]], ['Y', point[1]]] as const)
       await page.getByLabel('外环 顶点 ' + (index + 1) + ' ' + axis + ' (m)', { exact: true }).fill(String(coordinate));
@@ -69,15 +70,16 @@ for (const target of GA01_TARGETS) test('GA01 ' + phase + ' ' + target.id + ' ac
       await page.getByLabel('道路方向', { exact: true }).selectOption(originalDirection);
       assertGA01Equal((await exportMap(page, info, 'direction-rejected')).map, before);
       roadTransactions.push({ operation: 'direction', roadId: command.id, result: 'expected_blocked', code: 'ARC_DIRECTION_CONFLICT', mapAndHistoryUnchanged: true });
+      await openPropertyDetails(page, '技术详情与折点');
       await page.getByRole('button', { name: '添加内部折点', exact: true }).click();
       for (const [axis, value] of [['X', command.patch.shapePoints![0]![0]], ['Y', command.patch.shapePoints![0]![1]], ['Z', command.patch.shapePoints![0]![2]]] as const)
         await page.getByLabel('折点 1 ' + axis + ' (m)', { exact: true }).fill(String(value));
     } else {
-      const details = page.getByText('物理参数与来源', { exact: true });
-      if (await details.locator('..').getAttribute('open') === null) await details.click();
+      await openPropertyDetails(page, '通行限制与来源');
+      await page.getByLabel('速度显示单位', { exact: true }).selectOption('m/s');
       for (const [field, label] of [['widthM', '道路宽度 (m)'], ['speedLimitMps', '速度限制 (m/s)']] as const) {
         const value = command.patch[field]!; if (value.state !== 'known') throw new Error('expected numeric test assumption');
-        await page.getByLabel(label + ' 状态', { exact: true }).selectOption('known');
+        await (await revealProperty(page, label + ' 状态')).selectOption('known');
         await page.getByLabel(label + ' 数值', { exact: true }).fill(String(value.value));
         await page.getByLabel(label + ' 来源', { exact: true }).selectOption('');
       }

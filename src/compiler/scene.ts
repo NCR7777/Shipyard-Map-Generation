@@ -9,7 +9,7 @@ function sorted<T>(values: Record<string, T>): [string, T][] { return Object.ent
 
 export function toSceneSnapshot(map: YardMap): SceneSnapshot {
   const nodes: SceneSnapshot['nodes'] = sorted(map.nodes).map(([id, node]) => ({ id, name: node.name, kind: node.kind, position: [...node.position] }));
-  const roads: SceneSnapshot['roads'] = sorted(map.roads).map(([id, road]) => ({ id, name: road.name, fromNodeId: road.fromNodeId, toNodeId: road.toNodeId, points: roadPoints(map, id), lengthM: roadLength(map, id), widthM: structuredClone(road.widthM) }));
+  const roads: SceneSnapshot['roads'] = sorted(map.roads).map(([id, road]) => ({ id, name: road.name, fromNodeId: road.fromNodeId, toNodeId: road.toNodeId, points: roadPoints(map, id), lengthM: roadLength(map, id), direction: road.direction, widthM: structuredClone(road.widthM) }));
   const facilities: SceneSnapshot['facilities'] = sorted(map.facilities).map(([id, facility]) => ({ id, name: facility.name, kind: facility.kind, boundary: structuredClone(facility.boundary), accessPointIds: [...facility.accessPointIds], servicePointIds: [...facility.servicePointIds], heightM: structuredClone(facility.heightM) }));
   const zones: SceneSnapshot['zones'] = sorted(map.zones).map(([id, zone]) => ({ id, servicePointIds: zoneServicePointIds(map, id), name: zone.name, kind: zone.kind, boundary: structuredClone(zone.boundary), passability: zone.passability }));
   const accessPoints: SceneSnapshot['accessPoints'] = sorted(map.accessPoints).map(([id, point]) => ({ id, name: point.name, facilityId: point.facilityId, nodeId: point.nodeId, position: [...map.nodes[point.nodeId]!.position] }));

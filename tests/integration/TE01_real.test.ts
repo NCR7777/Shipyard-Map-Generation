@@ -11,6 +11,58 @@ import { createSession, editSession, undoSession, redoSession } from '../../src/
 import { roadLength, roadPoints } from '../../src/geometry/roads';
 import { TE01_TARGETS, TE01_NETWORK_COMMANDS, readTE01Target, TE01RoadDependencies, TE01_HANWHA, assertTE01Equal, assertTE01HanwhaDeletion } from '../helpers/TE01_targets';
 
+// UX02 keeps native public-node topology coverage without detaching facility entrances.
+// These are command-contract test candidates, not proposed repairs to the frozen originals.
+const UX02_PUBLIC_NETWORK_COMMANDS: Record<string, Partial<Record<'merge' | 'connect', MapCommand>>> = {
+  "cimc_v01": {
+    "merge": {
+      "type": "mergeNodes",
+      "sourceNodeId": "N_CR_fb03c217f1",
+      "targetNodeId": "N_CR_07a4cdb7ee"
+    },
+    "connect": {
+      "type": "connectNodeToRoad",
+      "nodeId": "N_CR_e6c5d9022b",
+      "roadId": "R_CR_3c6fae76dd",
+      "distanceM": 7.2000000000000455,
+      "newRoadIds": [
+        "R_TE01_left",
+        "R_TE01_right"
+      ],
+      "junctionId": "J_TE01_connect",
+      "approvedMovements": []
+    }
+  },
+  "cimc_v02": {
+    "merge": {
+      "type": "mergeNodes",
+      "sourceNodeId": "N_CR_fb03c217f1",
+      "targetNodeId": "N_CR_07a4cdb7ee"
+    }
+  },
+  "dalian_v01": {
+    "merge": {
+      "type": "mergeNodes",
+      "sourceNodeId": "N_DL_675ce2922b",
+      "targetNodeId": "N_DL_92eeec53e8"
+    }
+  },
+  "geoje_v01": {
+    "merge": {
+      "type": "mergeNodes",
+      "sourceNodeId": "N_GJ_d9c6a6a9e2",
+      "targetNodeId": "N_GJ_df9c69fae4"
+    }
+  },
+  "xinyangzi_v01": {
+    "merge": {
+      "type": "mergeNodes",
+      "sourceNodeId": "N_XY_359d4e9a26",
+      "targetNodeId": "N_XY_15ab967926"
+    }
+  }
+};
+
 function singleTransaction(map: YardMap, command: MapCommand): YardMap {
   const session = createSession(map); const result = editSession(session, command);
   expect(result.ok, JSON.stringify(result.issues.filter(issue => issue.severity === 'error'))).toBe(true);
@@ -61,7 +113,15 @@ describe('TE01 real frozen inputs, explicit topology edits', () => {
     const points = roadPoints(suppressed, newRoadIds[0]);
     assertTE01Equal(points[0], original.nodes[road.fromNodeId]!.position);
     assertTE01Equal(points.at(-1), original.nodes[road.toNodeId]!.position);
-    for (const command of Object.values(TE01_NETWORK_COMMANDS[target.id]!)) {
+    for (const [kind, oldCommand] of Object.entries(TE01_NETWORK_COMMANDS[target.id]!)) {
+      const replacement = UX02_PUBLIC_NETWORK_COMMANDS[target.id]?.[kind as 'merge' | 'connect'];
+      if (replacement) {
+        const session = createSession(original), rejected = editSession(session, oldCommand);
+        expect(rejected.ok).toBe(false); expect(rejected.session).toBe(session); expect(rejected.session.past).toHaveLength(0);
+        expect(rejected.issues.some(issue => issue.code === 'OWNER_ENTRANCE_REPOSITION_REQUIRED')).toBe(true);
+        assertTE01Equal(rejected.session.map, original, 'unsafe former probe cannot detach an entrance');
+      }
+      const command = replacement ?? oldCommand;
       const edited = singleTransaction(original, command);
       if (command.type === 'mergeNodes') {
         expect(edited.nodes[command.sourceNodeId]).toBeUndefined();

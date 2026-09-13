@@ -37,7 +37,7 @@ test('P2A original A: locate, path, hidden/locked inclusion, unchanged JSON and 
   await diagnose(page, hash);
   await expect(page.getByTestId('issue-panel')).toContainText('0 错误');
   await expect(page.getByTestId('diagnostic-controls')).toContainText('未检查');
-  await page.getByTestId('issue-panel').getByRole('button').filter({ hasText: 'P2A_FACILITY_NO_SERVICE' }).first().click();
+  await page.getByTestId('issue-panel').getByRole('button', { name: /^P2A_FACILITY_NO_SERVICE / }).first().click();
   await expect(page.getByTestId('diagnostic-marker')).toHaveAttribute('data-position', JSON.stringify(original.map.facilities.F_010!.boundary.outer[0]));
   await route(page);
   await expect(page.getByTestId('path-status')).toHaveText('在已声明条件下找到路径');
@@ -48,7 +48,7 @@ test('P2A original A: locate, path, hidden/locked inclusion, unchanged JSON and 
   await page.getByText('基础图层与标签', { exact: true }).click();
   await page.getByTestId('layer-visible-facilities').uncheck(); await page.getByTestId('layer-locked-facilities').check();
   await diagnose(page, hash);
-  await expect(page.getByTestId('issue-panel').getByRole('button').filter({ hasText: 'P2A_FACILITY_NO_SERVICE' })).toHaveCount(8);
+  await expect(page.getByTestId('issue-panel').getByRole('button', { name: /^P2A_FACILITY_NO_SERVICE / })).toHaveCount(8);
   expect(await exportMap(page, info, 'A-hidden-diagnosis.map.json')).toEqual(original.map);
   await page.getByLabel('地图名称', { exact: true }).fill(original.map.metadata.name + ' pending');
   await diagnose(page, hash); // Pending input remains pending, excluded from committed analysis.
@@ -99,8 +99,9 @@ test('P2A fault-injected A slot outside owner: precise issue location and no rep
   slots[0]!.boundary.outer = slots[0]!.boundary.outer.map(([x,y,z]) => [x - 1000,y,z]) as Polygon['outer'];
   await open(page, map); const hash = (await page.getByTestId('map-hash').textContent())!;
   await diagnose(page, hash);
-  const issue = page.getByTestId('issue-panel').getByRole('button').filter({ hasText: 'SPATIAL_SLOT_OUTSIDE_OWNER' });
-  await expect(issue).toContainText('/facilities/F_001/extensions/sr02.planning/slots/0/boundary'); await issue.click();
+  const issue = page.getByTestId('issue-panel').getByRole('button', { name: /^SPATIAL_SLOT_OUTSIDE_OWNER / });
+  const details = issue.locator('xpath=..').locator('details'); await details.locator('summary').click();
+  await expect(details).toContainText('/facilities/F_001/extensions/sr02.planning/slots/0/boundary'); await issue.click();
   await expect(page.getByTestId('diagnostic-marker')).toHaveAttribute('data-position', JSON.stringify(slots[0]!.boundary.outer[0]));
   await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
   await saveToBrowser(page);
