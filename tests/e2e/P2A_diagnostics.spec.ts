@@ -1,3 +1,4 @@
+import { fileAction, saveToBrowser, openChecks } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { Polygon, YardMap } from '../../src/domain/model';
@@ -9,11 +10,11 @@ async function open(page: Page, map: YardMap, path?: string) {
   await page.getByTestId('json-file-input').setInputFiles(path ?? { name: map.mapId + '.map.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(map)) });
   await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue(map.metadata.name, { timeout: 30000 });
   await page.getByRole('button', { name: '适应地图', exact: true }).click();
-  await page.getByTestId('diagnostic-controls').locator('summary').click();
+  await openChecks(page); await page.getByTestId('diagnostic-controls').locator('summary').click();
 }
 async function exportMap(page: Page, info: TestInfo, name: string) {
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(name); await (await download).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }
@@ -60,11 +61,11 @@ test('P2A original A: locate, path, hidden/locked inclusion, unchanged JSON and 
   await expect(page.getByTestId('diagnostic-marker')).toHaveAttribute('data-position', 'null');
   await undo.click(); await expect(page.getByTestId('map-hash')).toHaveText(hash);
   expect(await exportMap(page, info, 'A-diagnosis-undo.map.json')).toEqual(original.map);
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await expect(page.getByTestId('browser-save-status')).toContainText('已保存', { timeout: 30000 });
   await page.reload(); await expect(page.getByTestId('map-hash')).toHaveText(hash, { timeout: 30000 });
   expect(await exportMap(page, info, 'A-diagnosis-recovered.map.json')).toEqual(original.map);
-  await page.getByTestId('diagnostic-controls').locator('summary').click();
+  await openChecks(page); await page.getByTestId('diagnostic-controls').locator('summary').click();
   await expect(page.getByTestId('diagnostic-status')).toHaveText('尚未运行。');
   await diagnose(page, hash); await route(page);
   await page.getByRole('button', { name: '适应地图', exact: true }).click();
@@ -102,7 +103,7 @@ test('P2A fault-injected A slot outside owner: precise issue location and no rep
   await expect(issue).toContainText('/facilities/F_001/extensions/sr02.planning/slots/0/boundary'); await issue.click();
   await expect(page.getByTestId('diagnostic-marker')).toHaveAttribute('data-position', JSON.stringify(slots[0]!.boundary.outer[0]));
   await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await expect(page.getByTestId('browser-save-status')).toContainText('已保存', { timeout: 30000 });
   await page.reload(); await expect(page.getByTestId('map-hash')).toHaveText(hash, { timeout: 30000 });
   expect(await exportMap(page, info, 'P2A_fault_slot_outside-preserved.map.json')).toEqual(map);

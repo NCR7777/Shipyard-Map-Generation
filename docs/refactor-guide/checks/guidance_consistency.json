@@ -1,0 +1,11 @@
+{
+  "kind": "guidance_artifact_check_not_application_test",
+  "chapterCount": 10,
+  "requirements": 22,
+  "acceptanceCases": 56,
+  "implementationPhases": 8,
+  "promisedFilesExist": true,
+  "prototypeCheck": "19/19 passed in memory HTML only",
+  "nativeRepositoryTestsExecuted": false,
+  "noOriginalMapsOrFontFilesIncluded": true
+}

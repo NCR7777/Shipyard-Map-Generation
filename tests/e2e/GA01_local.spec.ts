@@ -1,3 +1,4 @@
+import { fileAction, drawingControl } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { Vec3, YardMap } from '../../src/domain/model';
@@ -5,7 +6,7 @@ import { GA01_TARGETS, readGA01Target, assertGA01Equal } from '../helpers/GA01_t
 
 async function exported(page: Page, info: TestInfo, name: string): Promise<YardMap> {
   const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(name + '.map.json'); await (await pending).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }
@@ -24,8 +25,8 @@ test('GA01 B real Hanwha leaf drag is one transaction; locked indirect junctions
   await page.getByTestId('node-item-' + target.nodeId).click();
   await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue(target.nodeId);
   await page.getByRole('button', { name: '定位 ' + target.nodeId, exact: true }).click();
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('0');
-  await page.getByLabel('节点吸附', { exact: true }).uncheck();
+  await (await drawingControl(page, '网格吸附')).selectOption('0');
+  await (await drawingControl(page, '节点吸附')).uncheck();
   const canvas = await page.getByTestId('map-canvas').locator('canvas').first().boundingBox();
   if (!canvas) throw new Error('canvas unavailable');
   const camera = page.getByTestId('camera-state');

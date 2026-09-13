@@ -3,11 +3,11 @@ import { validateMap } from '../validation/validate';
 import { inspectSpatialEdit } from '../validation/spatialDiagnostics';
 import { mapCapabilities } from './capabilities';
 import { contentHash, serializeMap } from './serialization';
-import { transformPolygon } from '../geometry/polygons';
+import { transformPolygon, normalizePolygonBetweenVertices } from '../geometry/polygons';
 import { polylineLength2D, roadPoints } from '../geometry/roads';
 import { newNode } from './factory';
 import { sameValue } from './value';
-import { recordGeometrySources, recordTopologySources } from './geometrySources';
+import { recordGeometrySources, recordTopologySources, recordSiteBoundaryNormalization } from './geometrySources';
 import { TopologyError, splitPosition, onlySubdivisionJunctions, checkSplitGeometry, remapSplitReferences, preserveSplitContinuation, rejectOpaqueTopologyReferences, runTopology, deleteNetwork, topologyChangedRefs, type TopologyCommand } from './topologyEditing';
 import { zoneServicePointIds } from '../topology/serviceConnections';
 import { inspectPlanning, PLANNING_NAMESPACE as PLANNING, type PlanningSlot } from './planning';
@@ -38,6 +38,7 @@ export type MapCommand =
   | { type: 'updateAccessPoint'; id: string; patch: Partial<Pick<AccessPoint, 'name' | 'facilityId' | 'nodeId'>>; newNode?: NewPointNode }
   | { type: 'addServicePoint'; id: string; servicePoint: ServicePoint; newNode?: NewPointNode }
   | { type: 'updateServicePoint'; id: string; patch: Partial<Pick<ServicePoint, 'name' | 'kind' | 'nodeId'>> & { facilityId?: string | null; accessPointId?: string | null; zoneId?: string | null; arrival?: ServiceArrival | null }; newNode?: NewPointNode }
+  | { type: 'normalizeSiteBoundary' }
   | { type: 'renameMap'; name: string }
   | { type: 'upgradeSchema'; targetVersion: '0.2.0' }
   | { type: 'translateSelection'; selection: Selection; delta: Vec3; facilityMovePolicy?: FacilityMovePolicy; zoneMovePolicy?: ZoneMovePolicy }
@@ -99,7 +100,7 @@ export function closureSelection(map: YardMap, selection: Selection): FullSelect
   for (const id of selected.roads) selected.nodes.push(map.roads[id]!.fromNodeId, map.roads[id]!.toNodeId);
   return normalizeSelection(selected);
 }
-export interface CommandAffectedRef { kind: SelectionKind | 'junctions' | 'movements' | 'resources' | 'slots' | 'sources' | 'extensions'; id: string; ownerId?: string }
+export interface CommandAffectedRef { kind: SelectionKind | 'junctions' | 'movements' | 'resources' | 'slots' | 'sources' | 'extensions' | 'siteBoundary'; id: string; ownerId?: string }
 export interface SelectionImpact {
   affectedRefs: CommandAffectedRef[];
   selection: FullSelection;
@@ -252,7 +253,7 @@ function dependencyRefs(map: YardMap, initial: CommandAffectedRef[], nodeIds: re
     { kind: 'extensions', id: '/' + slot.ownerKind + '/' + slot.ownerId + '/extensions/' + PLANNING },
   );
   const keys = new Set(refs.map(ref => ref.kind + '/' + ref.id));
-  const linked = new Set(refs.flatMap(ref => ref.kind === 'slots' || ref.kind === 'resources' || ref.kind === 'extensions' ? [] : (map[ref.kind][ref.id] as { resourceIds?: string[] } | undefined)?.resourceIds ?? []));
+  const linked = new Set(refs.flatMap(ref => ref.kind === 'slots' || ref.kind === 'resources' || ref.kind === 'extensions' || ref.kind === 'siteBoundary' ? [] : (map[ref.kind][ref.id] as { resourceIds?: string[] } | undefined)?.resourceIds ?? []));
   for (const [id, resource] of Object.entries(map.resources)) if (linked.has(id) || resource.appliesTo.some(target => keys.has(target.entityType + '/' + target.entityId))) refs.push({ kind: 'resources', id });
   return [...new Map(refs.map(ref => [ref.kind + '/' + ref.id, ref])).values()];
 }
@@ -297,6 +298,14 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
     if (command.type === 'upgradeSchema') return { allowed: true, issues: [], affectedRefs: [] };
     const capability = mapCapabilities(map);
     if (!capability.editable) return { allowed: false, issues: [problem('READ_ONLY_MAP', capability.reasons.join(' '))], affectedRefs: [] };
+    if (command.type === 'normalizeSiteBoundary') {
+      if (Object.keys(command).some(key => key !== 'type')) fail('INVALID_COMMAND', '厂界清理不接收几何或其他参数。', '/siteBoundary');
+      if (!map.siteBoundary) return { allowed: true, issues: [], affectedRefs: [] };
+      const boundary = normalizePolygonBetweenVertices(map.siteBoundary);
+      if (sameValue(boundary, map.siteBoundary)) return { allowed: true, issues: [], affectedRefs: [] };
+      const candidate = { ...map, siteBoundary: boundary, sources: { ...map.sources } };
+      return { allowed: true, issues: [], affectedRefs: [{ kind: 'siteBoundary', id: 'siteBoundary' }, ...recordSiteBoundaryNormalization(map, candidate)] };
+    }
     const advanced = advancedMap(map);
     if (command.type === 'translateSelection' || command.type === 'rotateSelection') {
       const selected = assertSelection(map, command.selection);
@@ -369,7 +378,7 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
         : command.type === 'splitRoad' || command.type === 'connectNodeToRoad' ? [command.nodeId] : [];
       const initial: CommandAffectedRef[] = [...changed, ...retainedNodes.map(id => ({ kind: 'nodes' as const, id }))];
       const collect = (state: YardMap) => {
-        const present = initial.filter(ref => ref.kind === 'extensions' || ref.kind === 'slots' || Object.hasOwn(state[ref.kind], ref.id));
+        const present = initial.filter(ref => ref.kind === 'extensions' || ref.kind === 'slots' || (ref.kind === 'siteBoundary' ? state.siteBoundary !== null : Object.hasOwn(state[ref.kind], ref.id)));
         const nodes = new Set(present.filter(ref => ref.kind === 'nodes').map(ref => ref.id));
         const roads = new Set(present.filter(ref => ref.kind === 'roads').map(ref => ref.id));
         for (const [id, road] of Object.entries(state.roads)) if (nodes.has(road.fromNodeId) || nodes.has(road.toNodeId)) roads.add(id);
@@ -704,6 +713,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'upgradeSchema':
         if (command.targetVersion !== '0.2.0') fail('UNSUPPORTED_MIGRATION', '只支持显式升级到 0.2.0。');
         next.schemaVersion = '0.2.0'; break;
+      case 'normalizeSiteBoundary': if (next.siteBoundary) next.siteBoundary = normalizePolygonBetweenVertices(next.siteBoundary); break;
       case 'renameMap': next.metadata.name = command.name; break;
       case 'translateSelection': case 'rotateSelection': {
         const selection = assertSelection(next, command.selection);
@@ -735,8 +745,9 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   const spatialIssues = inspectSpatialEdit(input, next, { geometryPreservedRoadIds: support.geometryPreservedRoadIds });
   if (spatialIssues.some(issue => issue.severity === 'error')) return { ok: false, issues: spatialIssues };
   const topologySources = isTopologyCommand(command) ? recordTopologySources(input, next, support.affectedRefs) : [];
+  const boundarySources = command.type === 'normalizeSiteBoundary' ? recordSiteBoundaryNormalization(input, next) : [];
   const sourceRefs = recordGeometrySources(input, next, support.affectedRefs, command.type === 'duplicateSelection' ? command.idMap : undefined);
-  const affectedRefs = [...new Map([...support.affectedRefs, ...topologySources, ...sourceRefs].map(ref => [ref.kind + '/' + ref.id, ref])).values()];
+  const affectedRefs = [...new Map([...support.affectedRefs, ...topologySources, ...sourceRefs, ...boundarySources].map(ref => [ref.kind + '/' + ref.id, ref])).values()];
   next.revision = input.revision + 1;
   const finalReport = validateMap(next); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };
   try { serializeMap(next); } catch (error) { return { ok: false, issues: [problem('JSON_SIZE_LIMIT', error instanceof Error ? error.message : '规范化 JSON 超过限制。')] }; }

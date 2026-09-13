@@ -1,3 +1,4 @@
+import { fileAction, openFileMenu } from '../helpers/workbenchUi';
 import { expect, test, type Page } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
 import { editorFixture } from '../helpers/M1_fixtures';
@@ -70,7 +71,7 @@ async function startLinked(page: Page) {
   await installOPFSPickers(page);
   await page.goto('/');
   await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
-  await page.getByRole('button', { name: '关联本地 JSON', exact: true }).click();
+  await fileAction(page, '关联本地 JSON');
   await expect(page.getByTestId('road-count')).toHaveText('1');
   await expect(page.getByTestId('local-save-status')).toContainText(linkedFile);
   await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
@@ -93,7 +94,7 @@ test('simulated picker + real OPFS: UI writes, detects unchanged-revision extern
 
   await editEndpoint(page, 110);
   await expect(page.getByTestId('local-save-status')).toContainText('有未写回变化');
-  await page.getByRole('button', { name: '写回关联文件', exact: true }).click();
+  await fileAction(page, '写回关联文件');
   await expect(page.getByTestId('local-save-status')).toContainText('本地文件已确认');
   const written = await readOPFS(page);
   expect(written.nodes.nB!.position[0]).toBe(110);
@@ -105,8 +106,12 @@ test('simulated picker + real OPFS: UI writes, detects unchanged-revision extern
   await page.getByTestId('node-item-nB').click();
   await page.getByLabel('X (m)', { exact: true }).fill('140');
   await expect(page.getByTestId('unapplied-inputs')).toBeVisible();
-  await page.getByRole('button', { name: '写回关联文件', exact: true }).click();
-  await expect(page.getByText('有未应用输入，请先应用属性；未写回文件。', { exact: true })).toBeVisible();
+  await fileAction(page, '写回关联文件');
+  const pendingSave = page.getByRole('dialog', { name: '有未应用输入', exact: true });
+  await expect(pendingSave).toBeVisible();
+  expect((await readOPFS(page)).nodes.nB!.position[0]).toBe(110);
+  await pendingSave.getByRole('button', { name: '取消，保留输入', exact: true }).click();
+  await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('140');
   expect((await readOPFS(page)).nodes.nB!.position[0]).toBe(110);
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   await page.getByTestId('road-item-rAB').click();
@@ -116,7 +121,7 @@ test('simulated picker + real OPFS: UI writes, detects unchanged-revision extern
   const unchangedRevision = await externalEdit(page, 120);
   expect(unchangedRevision).toBe(written.revision);
   expect((await readOPFS(page)).revision).toBe(written.revision);
-  await page.getByRole('button', { name: '检查外部变化', exact: true }).click();
+  await fileAction(page, '检查外部变化');
   const conflict = page.getByRole('dialog', { name: '外部文件内容已变化', exact: true });
   await expect(conflict).toBeVisible();
   await expect(page.getByTestId('map-hash')).toHaveText(currentHash ?? '');
@@ -132,7 +137,7 @@ test('simulated picker + real OPFS: UI writes, detects unchanged-revision extern
   expect((await readOPFS(page)).nodes.nB!.position[0]).toBe(140);
 
   await externalEdit(page, 130);
-  await page.getByRole('button', { name: '检查外部变化', exact: true }).click();
+  await fileAction(page, '检查外部变化');
   await expect(conflict).toBeVisible();
   await conflict.getByRole('button', { name: '重新载入文件', exact: true }).click();
   await expect(conflict).not.toBeVisible();
@@ -151,22 +156,22 @@ test('simulated picker + real OPFS: a new browser project does not inherit the o
   testInfo.annotations.push({ type: 'evidence-boundary', description: 'Real OPFS I/O with simulated pickers; no native OS file authorization claim.' });
   await startLinked(page);
   await editEndpoint(page, 125);
-  await page.getByRole('button', { name: '写回关联文件', exact: true }).click();
+  await fileAction(page, '写回关联文件');
   await expect(page.getByTestId('local-save-status')).toContainText('本地文件已确认');
   await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
   const original = await readOPFS(page);
 
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const dialog = page.getByRole('dialog', { name: '新建地图', exact: true });
   await dialog.getByLabel('新地图名称', { exact: true }).fill('独立的浏览器工程 B');
   await dialog.getByRole('button', { name: '创建地图', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByTestId('node-count')).toHaveText('0');
   await expect(page.getByTestId('local-save-status')).toHaveText('本地文件未关联');
-  await expect(page.getByRole('button', { name: '写回关联文件', exact: true })).toBeDisabled();
+  await openFileMenu(page); await expect(page.getByRole('button', { name: '写回关联文件', exact: true })).toBeDisabled();
   expect(await readOPFS(page)).toEqual(original);
 
-  await page.getByRole('button', { name: '文件另存为', exact: true }).click();
+  await fileAction(page, '文件另存为');
   await expect(page.getByTestId('local-save-status')).toContainText(copyFile);
   const savedCopy = await readOPFS(page, copyFile);
   expect(savedCopy.metadata.name).toBe('独立的浏览器工程 B');
@@ -179,7 +184,7 @@ test('simulated picker + real OPFS: a new browser project does not inherit the o
   await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
   await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue('独立的浏览器工程 B');
   await expect(page.getByTestId('local-save-status')).toHaveText('本地文件未关联');
-  await expect(page.getByRole('button', { name: '写回关联文件', exact: true })).toBeDisabled();
+  await openFileMenu(page); await expect(page.getByRole('button', { name: '写回关联文件', exact: true })).toBeDisabled();
   expect(await readOPFS(page)).toEqual(original);
   expect(await readOPFS(page, copyFile)).toEqual(savedCopy);
 });

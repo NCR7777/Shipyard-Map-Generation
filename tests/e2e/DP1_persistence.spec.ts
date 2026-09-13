@@ -1,3 +1,4 @@
+import { saveToBrowser, saveShortcutToBrowser } from '../helpers/workbenchUi';
 import { expect, test, type Page } from '@playwright/test';
 
 type Camera = { offsetX: number; offsetY: number; scale: number };
@@ -36,7 +37,7 @@ async function stored(page: Page, store: 'projects' | 'editorStates', replacemen
 }
 async function editor(page: Page) { return await stored(page, 'editorStates') as Editor; }
 async function mapJson(page: Page) { return (await stored(page, 'projects') as Project).draft.mapJson; }
-async function save(page: Page) { await page.getByRole('button', { name: '保存工程', exact: true }).click(); await saved(page); }
+async function save(page: Page) { await saveToBrowser(page); await saved(page); }
 
 test('DP1 S01 all four label modes persist without changing map JSON or camera', async ({ page }) => {
   await ready(page);
@@ -95,7 +96,7 @@ test('DP1 S02 real wheel inputs followed by Ctrl+S save the effective camera bef
       const ratio = nextScale / expected.scale;
       expected = { scale: nextScale, offsetX: input.x - (input.x - expected.offsetX) * ratio, offsetY: input.y - (input.y - expected.offsetY) * ratio };
     }
-    await page.keyboard.press('Control+s');
+    await saveShortcutToBrowser(page);
     await expect.poll(async () => (await editor(page)).camera.scale).toBeCloseTo(expected.scale, 10);
     const persisted = (await editor(page)).camera;
     expect(persisted.offsetX).toBeCloseTo(expected.offsetX, 8); expect(persisted.offsetY).toBeCloseTo(expected.offsetY, 8);

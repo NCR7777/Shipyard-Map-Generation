@@ -1,3 +1,4 @@
+import { fileAction } from '../helpers/workbenchUi';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -29,7 +30,7 @@ async function screen(page: Page, point: Vec3) {
 }
 async function download(page: Page, info: TestInfo, name: string): Promise<YardMap> {
   const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(name); await (await pending).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }

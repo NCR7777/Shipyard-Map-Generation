@@ -1,3 +1,4 @@
+import { fileAction, drawingControl, drawingAction } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { PhysicalValue, YardMap } from '../../src/domain/model';
@@ -26,10 +27,12 @@ async function importMap(page: Page, map: YardMap) {
   await expect(page.getByTestId('node-count')).toHaveText(String(Object.keys(map.nodes).length));
   await expect(page.getByTestId('readonly-notice')).not.toBeVisible();
   await saved(page);
+  // These metric pixel fixtures require the same declared scale after import-to-fit.
+  await presetScale(page, 4);
 }
 async function download(page: Page, info: TestInfo, filename: string): Promise<YardMap> {
   const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(filename); await (await pending).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }
@@ -47,7 +50,7 @@ async function clickWorld(page: Page, x: number, y: number) {
   const p = await screen(page, x, y); await page.mouse.click(p.x, p.y);
 }
 async function display(page: Page, values: { bands?: boolean; centers?: boolean; nodes?: boolean }) {
-  for (const key of Object.keys(values) as (keyof typeof labels)[]) await page.getByLabel(labels[key], { exact: true }).setChecked(values[key]!);
+  for (const key of Object.keys(values) as (keyof typeof labels)[]) await (await drawingControl(page, labels[key])).setChecked(values[key]!);
 }
 async function activeId(page: Page) {
   const id = await page.evaluate(() => sessionStorage.getItem('shipyard.activeProjectId'));
@@ -114,7 +117,7 @@ async function pixels(page: Page, point: readonly number[], halfWidth = 1, halfH
   }, { view, point: [...point], halfWidth, halfHeight });
 }
 async function openRecent(page: Page, id: string) {
-  await page.getByRole('button', { name: '最近项目', exact: true }).click();
+  await fileAction(page, '最近项目');
   await page.getByTestId('project-item-' + id).click();
   await expect(page.getByRole('dialog', { name: '最近项目', exact: true })).not.toBeVisible();
   await expect.poll(() => activeId(page)).toBe(id); await saved(page);
@@ -165,7 +168,10 @@ test('W02 narrow roads retain a minimum hit area and wide edges are selectable w
 
 test('W03 width editing records a design source, undoes atomically and reimports an external width change with stable IDs', async ({ page }, info) => {
   await ready(page); const original = roadFixture({ state: 'unknown' }); await importMap(page, original);
-  await page.getByTestId('road-item-rAB').click();
+  // Select on the canvas to retain this explicit 4 px/m measurement fixture.
+  await clickWorld(page, 37, 30);
+  await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue('rAB');
+  await expect(page.getByTestId('camera-state')).toHaveAttribute('data-scale', '4');
   await expect(page.getByLabel('道路宽度 (m) 状态', { exact: true })).toBeVisible();
   await page.getByLabel('道路宽度 (m) 状态', { exact: true }).selectOption('known');
   await page.getByLabel('道路宽度 (m) 数值', { exact: true }).fill('12');
@@ -216,7 +222,7 @@ test('W04 display choices persist per project without map/revision/hash/history 
   expect(await download(page, info, 'display-only.map.json')).toEqual(map);
   await page.reload(); await saved(page);
   for (const label of Object.values(labels)) await expect(page.getByLabel(label, { exact: true })).not.toBeChecked();
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const modal = page.getByRole('dialog', { name: '新建地图', exact: true });
   await modal.getByLabel('新地图名称', { exact: true }).fill('W04 display project B');
   await modal.getByRole('button', { name: '创建地图', exact: true }).click(); await saved(page);
@@ -342,14 +348,22 @@ test('W10 a wide-band edge is not an existing access/service node and dedicated 
   await expect.poll(async () => (await pixels(page, [80, 14], 1, 1)).band).toBeGreaterThan(0);
   const hash = await page.getByTestId('map-hash').textContent();
   for (const kind of ['accessPoints', 'servicePoints'] as const) {
-    await page.getByTestId('facilities-item-fA').click();
+    // Select inside the facility, above the road band, without directory auto-location.
+    await clickWorld(page, 30, 25);
+    await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue('fA');
+    await expect(page.getByTestId('camera-state')).toHaveAttribute('data-scale', '4');
     const title = kind === 'accessPoints' ? '添加入口' : '添加服务点';
     const create = kind === 'accessPoints' ? '创建入口' : '创建服务点';
-    await page.getByRole('button', { name: title, exact: true }).click();
+    await drawingAction(page, title);
     const modal = page.getByRole('dialog', { name: title, exact: true });
     await modal.getByLabel('名称', { exact: true }).fill('synthetic band-edge ' + kind);
     await modal.getByLabel('定位方式', { exact: true }).selectOption('existing');
     await modal.getByRole('button', { name: '在画布选择已有节点', exact: true }).click();
+    const edgePoint = await screen(page, 80, 14);
+    const canvas = await page.getByTestId('map-canvas').locator('canvas').first().boundingBox();
+    expect(edgePoint.x).toBeGreaterThan(canvas!.x); expect(edgePoint.x).toBeLessThan(canvas!.x + canvas!.width);
+    expect(edgePoint.y).toBeGreaterThan(canvas!.y); expect(edgePoint.y).toBeLessThan(canvas!.y + canvas!.height);
+    expect(await page.evaluate(point => document.elementFromPoint(point.x, point.y)?.tagName, edgePoint)).toBe('CANVAS');
     await clickWorld(page, 80, 14);
     await expect(page.getByRole('complementary', { name: '服务点画布定位' })).toBeVisible();
     await expect(page.locator('.point-pick-instruction')).toContainText('请选择已有节点或入口/服务点标记');

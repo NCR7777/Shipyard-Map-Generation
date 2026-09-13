@@ -1,0 +1,154 @@
+{
+  "target": "UI_BLUEPRINT.html only — a design prototype, NOT the original repository editor",
+  "originalRepositoryTestsExecuted": false,
+  "realMapsLoaded": false,
+  "geometricEditsPerformed": false,
+  "trueSaveOperationsPerformed": false,
+  "htmlSha256": "5fd1c1655e65ff6d126c8d5294535d4547eeffe786d2d9cc7004db15549896b7",
+  "browser": "system Chromium through Python Playwright, headless Linux; HTML loaded through set_content",
+  "fileUrlNavigation": "blocked_by_administrator_in_hosted_browser; no policy bypass attempted",
+  "total": 19,
+  "passed": 19,
+  "tests": [
+    {
+      "name": "1366_no_horizontal_document_overflow",
+      "passed": true,
+      "dimensions": {
+        "scrollWidth": 1366,
+        "innerWidth": 1366,
+        "canvas": {
+          "x": 240,
+          "y": 122,
+          "width": 826,
+          "height": 614,
+          "top": 122,
+          "right": 1066,
+          "bottom": 736,
+          "left": 240
+        }
+      }
+    },
+    {
+      "name": "1366_canvas_at_least_700x500",
+      "passed": true
+    },
+    {
+      "name": "object_select_updates_inspector",
+      "passed": true
+    },
+    {
+      "name": "selection_does_not_resize_canvas",
+      "passed": true
+    },
+    {
+      "name": "search_filters_objects",
+      "passed": true
+    },
+    {
+      "name": "search_has_explicit_empty_state",
+      "passed": true
+    },
+    {
+      "name": "diagnostics_drawer_opens",
+      "passed": true
+    },
+    {
+      "name": "diagnostics_labeled_mock",
+      "passed": true
+    },
+    {
+      "name": "diagnostics_drawer_closes",
+      "passed": true
+    },
+    {
+      "name": "save_is_explicit_placeholder_not_fake_write",
+      "passed": true
+    },
+    {
+      "name": "escape_closes_modal",
+      "passed": true
+    },
+    {
+      "name": "layer_toggle_changes_only_display",
+      "passed": true
+    },
+    {
+      "name": "text_input_does_not_trigger_tool_shortcut",
+      "passed": true
+    },
+    {
+      "name": "canvas_tool_shortcut_changes_mode",
+      "passed": true
+    },
+    {
+      "name": "1920x1080_no_horizontal_document_overflow",
+      "passed": true,
+      "dimensions": {
+        "scrollWidth": 1920,
+        "innerWidth": 1920,
+        "canvas": {
+          "x": 240,
+          "y": 122,
+          "width": 1380,
+          "height": 926,
+          "top": 122,
+          "right": 1620,
+          "bottom": 1048,
+          "left": 240
+        }
+      }
+    },
+    {
+      "name": "1093x614_no_horizontal_document_overflow",
+      "passed": true,
+      "dimensions": {
+        "scrollWidth": 1093,
+        "innerWidth": 1093,
+        "canvas": {
+          "x": 0,
+          "y": 122,
+          "width": 0,
+          "height": 460,
+          "top": 122,
+          "right": 0,
+          "bottom": 582,
+          "left": 0
+        }
+      }
+    },
+    {
+      "name": "683x384_no_horizontal_document_overflow",
+      "passed": true,
+      "dimensions": {
+        "scrollWidth": 683,
+        "innerWidth": 683,
+        "canvas": {
+          "x": 0,
+          "y": 122,
+          "width": 683,
+          "height": 266,
+          "top": 122,
+          "right": 683,
+          "bottom": 388,
+          "left": 0
+        }
+      }
+    },
+    {
+      "name": "javascript_no_uncaught_errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "no_external_network_requests",
+      "passed": true,
+      "requests": []
+    }
+  ],
+  "limitations": [
+    "托管浏览器拒绝file://导航；改为直接载入本轮自创HTML内容测试，不把它当作本机双击已验收。",
+    "截图来自自绘synthetic示意页面；不代表原应用或重构后应用。",
+    "683x384是窄视口近似检查，不等于浏览器真实200%缩放验收。",
+    "未执行实际业务编辑、原生文件保存、可访问性完整审核或性能基准。"
+  ]
+}

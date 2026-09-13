@@ -1,3 +1,4 @@
+import { fileAction, saveToBrowser, saveShortcutToBrowser, drawingControl } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
@@ -7,7 +8,7 @@ import { GA01_TARGETS, GA01Boundary, GA01Command, readGA01Target, assertGA01Chan
 const phase = process.env.GA01_PHASE ?? 'A';
 async function saved(page: Page) { await expect(page.getByTestId('browser-save-status')).toContainText('已保存', { timeout: 30000 }); }
 async function exportMap(page: Page, info: TestInfo, name: string) {
-  const event = page.waitForEvent('download'); await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  const event = page.waitForEvent('download'); await fileAction(page, '导出 JSON');
   const path = info.outputPath(name + '.map.json'); await (await event).saveAs(path);
   return { path, map: JSON.parse(await readFile(path, 'utf8')) as YardMap };
 }
@@ -92,8 +93,8 @@ for (const target of GA01_TARGETS) test('GA01 ' + phase + ' ' + target.id + ' ac
     assertGA01Equal((await exportMap(page, info, 'road-' + edit + '-redo')).map, changed.map);
     roadTransactions.push({ operation: edit, roadId: command.id, requestedPatch: command.patch, revisionBefore: before.revision, revisionAfter: changed.map.revision, exactFieldsAndAttribution: true, undoRedo: true, sourceMeaning: edit === 'parameters' ? 'explicit isolated test design assumptions; not measured values or vehicle requirements' : 'manual geometry design attribution' });
   }
-  const ctrlSReceipt = await confirmedSave(page, changed.map, () => page.keyboard.press('Control+s'));
-  const buttonSaveReceipt = await confirmedSave(page, changed.map, () => page.getByRole('button', { name: '保存工程', exact: true }).click());
+  const ctrlSReceipt = await confirmedSave(page, changed.map, () => saveShortcutToBrowser(page));
+  const buttonSaveReceipt = await confirmedSave(page, changed.map, () => saveToBrowser(page));
   await page.reload(); await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue(original.metadata.name, { timeout: 30000 }); await saved(page);
   assertGA01Equal((await exportMap(page, info, 'refreshed')).map, changed.map);
   const previousProjects = await projectKeys(page);
@@ -101,6 +102,18 @@ for (const target of GA01_TARGETS) test('GA01 ' + phase + ' ' + target.id + ' ac
   await expect.poll(() => projectKeys(page), { timeout: 30000 }).not.toEqual(previousProjects);
   await imported(page, original.metadata.name);
   assertGA01Equal((await exportMap(page, info, 'reimported')).map, changed.map);
+  // RF01: the ordinary reimport path must leave the real target visible without a corrective Fit.
+  const finalCanvas = await page.getByTestId('map-canvas').locator('canvas').first().boundingBox();
+  expect(finalCanvas).not.toBeNull();
+  const finalCamera = page.getByTestId('camera-state');
+  const finalScale = Number(await finalCamera.getAttribute('data-scale'));
+  const finalNode = changed.map.nodes[target.nodeId]!.position;
+  const projected = { x: Number(await finalCamera.getAttribute('data-offset-x')) + finalNode[0] * finalScale,
+    y: Number(await finalCamera.getAttribute('data-offset-y')) - finalNode[1] * finalScale };
+  expect(projected.x).toBeGreaterThan(0); expect(projected.x).toBeLessThan(finalCanvas!.width);
+  expect(projected.y).toBeGreaterThan(0); expect(projected.y).toBeLessThan(finalCanvas!.height);
+  expect(await page.evaluate(point => document.elementFromPoint(point.x, point.y)?.tagName,
+    { x: finalCanvas!.x + projected.x, y: finalCanvas!.y + projected.y })).toBe('CANVAS');
   await page.screenshot({ path: info.outputPath('GA01-' + target.id + '-final.png'), fullPage: true });
   expect(errors).toEqual([]); expect(await readGA01Target(target)).toEqual(original);
   await info.attach('GA01-receipt.json', { body: JSON.stringify({ phase, id: target.id, originalSHA256: target.sha256, entityId, realGeometryChanged: true, framePreserved: true, unmodifiedFieldsExact: true, sourceAttribution: true, roadTransactions, undoRedo: true, automaticSave: true, ctrlS: ctrlSReceipt, explicitSave: buttonSaveReceipt, refresh: true, reimport: true, originalUnchanged: true, numericEquality: 'exact ===; existing JSON -0 to 0 only, no rounding or tolerance', browser: browser.version() }, null, 2), contentType: 'application/json' });
@@ -116,8 +129,8 @@ if (phase === 'A') test('GA01 A large Hanwha V02 map commits 100 native corner p
   await page.getByTestId('object-search').fill(target.facilityId);
   await page.getByTestId('facilities-item-' + target.facilityId).click();
   await page.getByRole('button', { name: '定位 ' + target.facilityId, exact: true }).click();
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('0');
-  await page.getByLabel('节点吸附', { exact: true }).uncheck();
+  await (await drawingControl(page, '网格吸附')).selectOption('0');
+  await (await drawingControl(page, '节点吸附')).uncheck();
   const canvas = await page.getByTestId('map-canvas').locator('canvas').first().boundingBox();
   if (!canvas) throw new Error('canvas unavailable');
   const camera = page.getByTestId('camera-state');

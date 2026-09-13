@@ -3,9 +3,10 @@ import type { AccessPoint, ServicePoint, YardMap } from '../domain/model';
 import type { MapCommand } from '../domain/commands';
 import { inspectServiceConnection } from '../topology/serviceConnections';
 import { makeServiceArrivalDraft, parseServiceArrivalDraft, ServiceSemanticsFields } from './ServiceSemanticsFields';
+import { usePropertyDraft, type PropertyDraftProps } from '../editor/drafts';
 
 type PointSelection = { kind: 'accessPoint'; id: string; value: AccessPoint } | { kind: 'servicePoint'; id: string; value: ServicePoint };
-export function PointPropertyPanel({ selected, map, readonly, onApply, onDirtyChange }: {
+export function PointPropertyPanel({ selected, map, readonly, onApply, onDirtyChange, draftContext, onDraftChange }: PropertyDraftProps & {
   selected: PointSelection; map: YardMap; readonly: boolean;
   onApply: (command: MapCommand) => boolean; onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -23,16 +24,27 @@ export function PointPropertyPanel({ selected, map, readonly, onApply, onDirtyCh
   useEffect(() => { onDirtyChange?.(pending); return () => onDirtyChange?.(false); }, [pending, onDirtyChange]);
   const node = map.nodes[nodeId];
   const connection = selected.kind === 'servicePoint' ? inspectServiceConnection(map, selected.id) : null;
-  function apply() {
-    if (readonly) return;
-    if (selected.kind === 'accessPoint') { if (onApply({ type: 'updateAccessPoint', id: selected.id, patch: { name, nodeId, facilityId } })) setError(''); return; }
+  usePropertyDraft(draftContext, pending, apply, onDraftChange);
+  function apply(): boolean {
+    if (readonly) { setError('当前关联点不可编辑，未应用属性。'); return false; }
+    if (!nodeId || !node) { setError('请选择一个有效的权威位置节点。'); return false; }
+    if (selected.kind === 'accessPoint') {
+      if (!facilityId || !map.facilities[facilityId]) { setError('入口必须关联一个有效设施。'); return false; }
+      const accepted = onApply({ type: 'updateAccessPoint', id: selected.id, patch: { name, nodeId, facilityId } });
+      if (accepted) setError('');
+      return accepted;
+    }
+    if (ownerKind === 'zone' && (!zoneId || !map.zones[zoneId])) { setError('请选择服务点所属的有效区域。'); return false; }
+    if (ownerKind === 'facility' && (!facilityId || !map.facilities[facilityId])) { setError('请选择服务点所属的有效设施。'); return false; }
     const result = parseServiceArrivalDraft(ownerKind === 'facility' ? { ...arrival, entryNodeId: '' } : arrival);
-    if (!result.ok) { setError(result.message); return; }
-    if (onApply({ type: 'updateServicePoint', id: selected.id, patch: {
+    if (!result.ok) { setError(result.message); return false; }
+    const accepted = onApply({ type: 'updateServicePoint', id: selected.id, patch: {
       name, kind, nodeId, facilityId: ownerKind === 'facility' ? facilityId || null : null, accessPointId: ownerKind === 'facility' ? accessId || null : null,
       ...(map.schemaVersion === '0.1.0' ? {} : { zoneId: ownerKind === 'zone' ? zoneId || null : null }),
       ...(arrivalPending && map.schemaVersion !== '0.1.0' ? { arrival: result.arrival ?? null } : {}),
-    } })) setError('');
+    } });
+    if (accepted) setError('');
+    return accepted;
   }
   return <div className="property-content spatial-property">
     <div className="entity-kind">{selected.kind === 'accessPoint' ? '设施入口' : '服务点'}</div>

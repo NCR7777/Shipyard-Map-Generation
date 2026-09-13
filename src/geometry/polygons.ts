@@ -114,3 +114,24 @@ export function rectanglePolygon(origin: Vec3, widthM: number, heightM: number):
 export function transformPolygon(polygon: Polygon, transform: (point: Vec3) => Vec3): Polygon {
   return { outer: polygon.outer.map(transform) as Polygon['outer'], holes: polygon.holes.map(ring => ring.map(transform) as Polygon['outer']) };
 }
+
+/** Removes only exact planar between vertices; keeps every ring, bend and winding. */
+export function normalizePolygonBetweenVertices(polygon: Polygon): Polygon {
+  const clean = (ring: Polygon['outer']): Polygon['outer'] => {
+    const points = ring.slice(0, -1).map(point => [...point] as Vec3);
+    let changed = true;
+    while (changed && points.length > 3) {
+      changed = false;
+      for (let i = 0; i < points.length; i++) {
+        const a = points[(i + points.length - 1) % points.length]!, b = points[i]!, c = points[(i + 1) % points.length]!;
+        if (a[2] === b[2] && b[2] === c[2] && cross(a, b, c) === 0
+          && (b[0] - a[0]) * (b[0] - c[0]) + (b[1] - a[1]) * (b[1] - c[1]) < 0) {
+          points.splice(i, 1); changed = true; break;
+        }
+      }
+    }
+    points.push([...points[0]!] as Vec3);
+    return points as Polygon['outer'];
+  };
+  return { ...polygon, outer: clean(polygon.outer), holes: polygon.holes.map(clean) };
+}

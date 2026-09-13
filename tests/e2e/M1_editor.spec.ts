@@ -1,3 +1,4 @@
+import { fileAction } from '../helpers/workbenchUi';
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,7 @@ async function clickWorld(page: Page, x: number, y: number) {
 
 async function downloadMap(page: Page, testInfo: TestInfo, filename: string) {
   const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const download = await pending;
   const file = testInfo.outputPath(filename);
   await download.saveAs(file);
@@ -70,14 +71,14 @@ async function drawRoadWithMouse(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '船厂空间布局编辑器', exact: true })).toBeVisible();
+  await expect(page.getByTestId('workbench')).toBeVisible();
   await expect(page.getByTestId('map-canvas')).toBeVisible();
 });
 
 test('draws a true polyline, edits to 100m, exports, externally edits to 120m, validates and reloads with stable IDs', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const newDialog = page.getByRole('dialog', { name: '新建地图', exact: true });
   const newName = newDialog.getByLabel('新地图名称', { exact: true });
   await newName.fill('');

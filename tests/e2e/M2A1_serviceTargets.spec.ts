@@ -1,3 +1,4 @@
+import { fileAction, drawingControl, drawingAction, chooseBrowserSaveTarget } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
@@ -14,7 +15,7 @@ async function position(page: Page, x: number, y: number) {
 }
 async function clickWorld(page: Page, x: number, y: number) { const p = await position(page, x, y); await page.mouse.click(p.x, p.y); }
 async function download(page: Page, info: TestInfo, filename: string): Promise<YardMap> {
-  const pending = page.waitForEvent('download'); await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  const pending = page.waitForEvent('download'); await fileAction(page, '导出 JSON');
   const target = info.outputPath(filename); await (await pending).saveAs(target); return JSON.parse(await readFile(target, 'utf8')) as YardMap;
 }
 async function importMap(page: Page, map: YardMap) {
@@ -39,7 +40,7 @@ test('N02 an unloading target picked on an existing canvas node preserves its id
   const nodeId = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
   const before = await download(page, info, 'before-service.map.json');
   await page.getByTestId('facilities-item-' + facilityId).click();
-  await page.getByRole('button', { name: '添加服务点', exact: true }).click();
+  await drawingAction(page, '添加服务点');
   const modal = page.getByRole('dialog', { name: '添加服务点', exact: true });
   await expect.poll(() => modal.evaluate(element => element.scrollTop)).toBe(0);
   await expect(modal.getByRole('heading', { name: '添加服务点', exact: true })).toBeInViewport();
@@ -70,11 +71,11 @@ test('N02 an unloading target picked on an existing canvas node preserves its id
 test('N03 N05 a canvas-picked dedicated service node is one transaction and belongs to only the explicitly selected overlapping zone', async ({ page }, info) => {
   await ready(page);
   const firstZone = await rectangle(page, 'zone', [0, 0], [40, 40]);
-  await page.getByLabel('新建区域类型', { exact: true }).selectOption('buffer');
+  await (await drawingControl(page, '新建区域类型')).selectOption('buffer');
   const secondZone = await rectangle(page, 'zone', [10, 10], [50, 50]);
   await page.getByTestId('zones-item-' + firstZone).click();
   const before = await download(page, info, 'before-zone-target.map.json');
-  await page.getByRole('button', { name: '添加服务点', exact: true }).click();
+  await drawingAction(page, '添加服务点');
   const modal = page.getByRole('dialog', { name: '添加服务点', exact: true });
   await expect(modal.getByLabel('所属区域', { exact: true })).toHaveValue(firstZone);
   await modal.getByLabel('名称', { exact: true }).fill('synthetic 区域目标草稿');
@@ -126,7 +127,7 @@ test('N25 unapplied service properties block dragging and require explicit decis
   await page.screenshot({ path: info.outputPath('M2A1_unapplied_guard.png'), fullPage: true });
   await guard(page).getByRole('button', { name: '取消，保留输入', exact: true }).click();
   await expect(page.getByLabel('名称', { exact: true })).toHaveValue('未应用的服务名称');
-  await page.getByLabel('名称', { exact: true }).press('Control+s');
+  await page.getByLabel('名称', { exact: true }).press('Control+s'); await chooseBrowserSaveTarget(page);
   const saveModal = page.getByRole('dialog', { name: '有未应用输入', exact: true });
   await saveModal.getByRole('button', { name: '仅保存已提交地图', exact: true }).click();
   await expect(saveModal).not.toBeVisible();
@@ -287,9 +288,9 @@ test('N07 a zone drag, copy and explicit member deletion retain shared-road safe
 
 test('N06 a water-zone berth target remains a blocked draft and never changes the zone to ordinary land access', async ({ page }, info) => {
   await ready(page);
-  await page.getByLabel('新建区域类型', { exact: true }).selectOption('water');
+  await (await drawingControl(page, '新建区域类型')).selectOption('water');
   const zoneId = await rectangle(page, 'zone', [0, 0], [30, 20]);
-  await page.getByRole('button', { name: '添加服务点', exact: true }).click();
+  await drawingAction(page, '添加服务点');
   const modal = page.getByRole('dialog', { name: '添加服务点', exact: true });
   await expect(modal).toContainText('特殊业务尚不支持');
   await modal.getByLabel('服务类型', { exact: true }).selectOption('berth');

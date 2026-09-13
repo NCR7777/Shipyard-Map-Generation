@@ -1,3 +1,4 @@
+import { validateWorkbenchPreferences, type WorkbenchPreferences } from './workbench';
 import { sameValue } from '../domain/value';
 import { SCENE_KINDS, type SceneKind } from '../adapters/contracts';
 import type { Facility, Issue, YardMap, Zone } from '../domain/model';
@@ -29,9 +30,9 @@ export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
 });
-export interface EditorState { camera: Camera; drawing: DrawingConfig }
+export interface EditorState { camera: Camera; drawing: DrawingConfig; workbench?: WorkbenchPreferences }
 /** Legacy camera-only records and partial drawing settings are normalized at the storage boundary. */
-export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> & { showLabels?: boolean } }
+export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> & { showLabels?: boolean }; workbench?: Partial<WorkbenchPreferences> }
 export interface ProjectSnapshot { mapJson: string; contentHash: string; savedAt: number }
 export interface StoredProject {
   formatVersion: 1;
@@ -87,7 +88,7 @@ export function validateEditorState(value: unknown): EditorState {
     || typeof camera.offsetX !== 'number' || !Number.isFinite(camera.offsetX)
     || typeof camera.offsetY !== 'number' || !Number.isFinite(camera.offsetY)
     || typeof camera.scale !== 'number' || !Number.isFinite(camera.scale) || camera.scale <= 0
-    || Object.keys(value).some(key => !['camera', 'drawing'].includes(key)) || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
+    || Object.keys(value).some(key => !['camera', 'drawing', 'workbench'].includes(key)) || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '视窗偏移必须有限，比例必须为正的有限值；不能混入领域数据或临时交互。');
   }
   if ('drawing' in value && (!value.drawing || typeof value.drawing !== 'object' || Array.isArray(value.drawing)
@@ -113,7 +114,12 @@ export function validateEditorState(value: unknown): EditorState {
     || !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(drawing.zoneMovePolicy)) {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置的吸附数值、布尔值、对象类型或移动策略无效。');
   }
-  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing: { ...drawing, hiddenTypes: [...drawing.hiddenTypes], lockedTypes: [...drawing.lockedTypes] } };
+  let workbench: WorkbenchPreferences | undefined;
+  if ('workbench' in value) {
+    try { workbench = validateWorkbenchPreferences(value.workbench); }
+    catch { throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '工作台布局或保存目标设置无效。'); }
+  }
+  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing: { ...drawing, hiddenTypes: [...drawing.hiddenTypes], lockedTypes: [...drawing.lockedTypes] }, ...(workbench ? { workbench } : {}) };
 }
 
 export interface ActiveProject {

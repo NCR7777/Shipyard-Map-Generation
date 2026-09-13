@@ -1,3 +1,4 @@
+import { fileAction, chooseBrowserSaveTarget, drawingControl, drawingAction } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
@@ -23,7 +24,7 @@ async function clickWorld(page: Page, x: number, y: number) {
 }
 async function download(page: Page, info: TestInfo, filename: string): Promise<YardMap> {
   const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const file = info.outputPath(filename);
   await (await pending).saveAs(file);
   return JSON.parse(await readFile(file, 'utf8')) as YardMap;
@@ -87,7 +88,7 @@ test('G04 a 100-step real facility drag with associated nodes is one undo transa
   await ready(page);
   await importMap(page, associatedFixture());
   await page.getByTestId('facilities-item-fA').click();
-  await page.getByLabel('设施移动策略', { exact: true }).selectOption('withAssociatedNodes');
+  await (await drawingControl(page, '设施移动策略')).selectOption('withAssociatedNodes');
   const before = await download(page, info, 'drag-before.map.json');
   const from = await screenPoint(page, 30, 15);
   const to = await screenPoint(page, 40, 20);
@@ -137,7 +138,7 @@ test('G08 an absent background never removes rendered facilities, areas or autho
 test('G02 true facility entrance/service creation round-trips through JSON and stays editable with stable authoritative node links', async ({ page }, info) => {
   await ready(page);
   const facilityId = await drawFacility(page);
-  await page.getByRole('button', { name: '添加入口', exact: true }).click();
+  await drawingAction(page, '添加入口');
   const accessModal = page.getByRole('dialog', { name: '添加入口', exact: true });
   await accessModal.getByLabel('名称', { exact: true }).fill('synthetic 入口');
   await accessModal.getByLabel('所属设施', { exact: true }).selectOption(facilityId);
@@ -147,7 +148,7 @@ test('G02 true facility entrance/service creation round-trips through JSON and s
   await accessModal.getByRole('button', { name: '创建入口', exact: true }).click();
   await expect(accessModal).not.toBeVisible();
   const accessId = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
-  await page.getByRole('button', { name: '添加服务点', exact: true }).click();
+  await drawingAction(page, '添加服务点');
   const serviceModal = page.getByRole('dialog', { name: '添加服务点', exact: true });
   await serviceModal.getByLabel('名称', { exact: true }).fill('synthetic 装卸');
   await serviceModal.getByLabel('所属设施', { exact: true }).selectOption(facilityId);
@@ -178,7 +179,7 @@ test('G02 true facility entrance/service creation round-trips through JSON and s
   expect(Object.values(original.roads)[0]).toMatchObject({ fromNodeId: accessNode, toNodeId: serviceNode });
   expect(Object.hasOwn(original.accessPoints[accessId]!, 'position')).toBe(false);
   expect(Object.hasOwn(original.servicePoints[serviceId]!, 'position')).toBe(false);
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const newModal = page.getByRole('dialog', { name: '新建地图', exact: true });
   await newModal.getByLabel('新地图名称', { exact: true }).fill('G02 JSON重开载体');
   await newModal.getByRole('button', { name: '创建地图', exact: true }).click();
@@ -222,7 +223,7 @@ test('G06 G09 grid/node snapping never creates topology; explicit split preserve
   expect(physical.roads.rAB!.heightLimitM).toEqual({ state: 'unrestricted' });
   expect(physical.roads.rAB!.massLimitKg).toEqual({ state: 'not_applicable' });
   expect(physical.roads.rAB!.speedLimitMps).toEqual({ state: 'unknown' });
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('1');
+  await (await drawingControl(page, '网格吸附')).selectOption('1');
   await page.getByRole('button', { name: '节点', exact: true }).click();
   await clickWorld(page, 49.7, 0.2);
   const nearNodeId = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
@@ -234,8 +235,8 @@ test('G06 G09 grid/node snapping never creates topology; explicit split preserve
   expect(unsplit.roads.rAB!.fromNodeId).not.toBe(nearNodeId);
   expect(unsplit.roads.rAB!.toNodeId).not.toBe(nearNodeId);
   await expect(page.getByTestId('issue-panel')).toContainText('NEAR_ROAD_UNCONNECTED');
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('0');
-  await page.getByLabel('节点吸附', { exact: true }).check();
+  await (await drawingControl(page, '网格吸附')).selectOption('0');
+  await (await drawingControl(page, '节点吸附')).check();
   await page.getByRole('button', { name: '矩形区域', exact: true }).click();
   await clickWorld(page, 50.4, 0.4);
   await clickWorld(page, 65, 15);
@@ -342,7 +343,7 @@ test('G01 G05 requested area kinds are drawable and a facility rotation commits 
   await ready(page);
   const facilityId = await drawFacility(page);
   for (const kind of ['work', 'buffer', 'waiting', 'water', 'obstacle']) {
-    await page.getByLabel('新建区域类型', { exact: true }).selectOption(kind);
+    await (await drawingControl(page, '新建区域类型')).selectOption(kind);
     await page.getByRole('button', { name: '矩形区域', exact: true }).click();
     await clickWorld(page, 70, 40);
     await clickWorld(page, 90, 55);
@@ -377,11 +378,11 @@ test('S10 G02 Ctrl+S inside a pending spatial command saves only the committed m
   await drawFacility(page);
   await saved(page);
   const hash = await page.getByTestId('map-hash').textContent();
-  await page.getByRole('button', { name: '添加入口', exact: true }).click();
+  await drawingAction(page, '添加入口');
   const commandModal = page.getByRole('dialog', { name: '添加入口', exact: true });
   const name = commandModal.getByLabel('名称', { exact: true });
   await name.fill('尚未提交的入口');
-  await name.press('Control+s');
+  await name.press('Control+s'); await chooseBrowserSaveTarget(page);
   const saveModal = page.getByRole('dialog', { name: '有未应用输入', exact: true });
   await expect(saveModal).toBeVisible();
   await saveModal.getByRole('button', { name: '仅保存已提交地图', exact: true }).click();

@@ -1,3 +1,4 @@
+import { fileAction, saveToBrowser, drawingControl } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { cpus, platform, release } from 'node:os';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
@@ -40,7 +41,7 @@ async function importOriginal(page: Page, target: P1Target) {
 }
 async function download(page: Page, info: TestInfo, name: string) {
   const event = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(name); await (await event).saveAs(path);
   return { path, map: JSON.parse(await readFile(path, 'utf8')) as YardMap };
 }
@@ -134,7 +135,7 @@ for (const target of sr03) {
     const importedMs = performance.now() - started;
     await page.screenshot({ path: info.outputPath(target.id + '-complete.png'), fullPage: true });
     const hash = await page.getByTestId('map-hash').textContent();
-    await page.getByRole('button', { name: '保存工程', exact: true }).click(); await saved(page);
+    await saveToBrowser(page); await saved(page);
     await page.reload(); await expect(page.getByTestId('map-hash')).toHaveText(hash!, { timeout: 30000 });
     const exported = await download(page, info, target.id + '-roundtrip.map.json'); expect(exported.map).toEqual(original);
     await importFile(page, exported.path, original.metadata.name);
@@ -149,8 +150,8 @@ for (const target of sr03) {
 test('P1 A03 A06 real F_001 rigid contents drag and numeric rotation retain slots, anchors and declarations', async ({ page }, info) => {
   test.setTimeout(120000); await ready(page); const before = await importOriginal(page, sr03[0]!);
   await choose(page, 'facilities', 'F_001');
-  await page.getByLabel('设施移动策略', { exact: true }).selectOption('withStaticContents');
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('1');
+  await (await drawingControl(page, '设施移动策略')).selectOption('withStaticContents');
+  await (await drawingControl(page, '网格吸附')).selectOption('1');
   const hash = await page.getByTestId('map-hash').textContent();
   await drag(page, [78, 180, 0], [88, 185, 0], async () => {
     await expect(page.getByTestId('map-hash')).toHaveText(hash!);
@@ -184,8 +185,8 @@ test('P1 A03 A06 real F_001 rigid contents drag and numeric rotation retain slot
 test('P1 A03 A06 real Z_005 parking slots and service nodes move together with public anchors fixed', async ({ page }, info) => {
   await ready(page); const before = await importOriginal(page, sr03[0]!);
   await choose(page, 'zones', 'Z_005');
-  await page.getByLabel('区域移动策略', { exact: true }).selectOption('withStaticContents');
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('1');
+  await (await drawingControl(page, '区域移动策略')).selectOption('withStaticContents');
+  await (await drawingControl(page, '网格吸附')).selectOption('1');
   await drag(page, [459, 94, 0], [449, 99, 0]);
   const moved = (await download(page, info, 'Z005-moved.map.json')).map;
   const nodeIds = ['N_0031', 'N_0032', 'N_0033', 'N_0035', 'N_0036', 'N_0037', 'N_0038', 'N_0039'];
@@ -211,7 +212,7 @@ test('P1 A05 layer configuration survives reload without map history and locked 
   await expect(page.getByTestId('layer-visible-nodes')).not.toBeChecked(); await expect(page.getByTestId('layer-locked-nodes')).toBeChecked();
   await expect(page.getByTestId('label-mode')).toHaveValue('off'); await expect(page.getByTestId('object-search')).toHaveValue('F_001');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!); await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
-  await choose(page, 'facilities', 'F_001'); await page.getByLabel('设施移动策略', { exact: true }).selectOption('withStaticContents');
+  await choose(page, 'facilities', 'F_001'); await (await drawingControl(page, '设施移动策略')).selectOption('withStaticContents');
   await transforms(page);
   const delta = page.getByLabel('平移 X (m)', { exact: true });
   if (await delta.isEnabled()) {
@@ -275,8 +276,8 @@ test('P1 A03 A06 approved name edit preserves every geometry and pending input c
 test('P1 A05 locked indirect resources and slots guard both history buttons and keyboard without consuming history', async ({ page }, info) => {
   test.setTimeout(90000); await ready(page); const original = await importOriginal(page, sr03[0]!);
   await choose(page, 'facilities', 'F_001');
-  await page.getByLabel('设施移动策略', { exact: true }).selectOption('withStaticContents');
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('1');
+  await (await drawingControl(page, '设施移动策略')).selectOption('withStaticContents');
+  await (await drawingControl(page, '网格吸附')).selectOption('1');
   await drag(page, [78, 180, 0], [88, 185, 0]);
   const moved = (await download(page, info, 'history-moved.map.json')).map;
   expect(moved.revision).toBe(original.revision + 1);

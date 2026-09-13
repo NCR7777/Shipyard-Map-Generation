@@ -94,3 +94,18 @@ export function recordGeometrySources(before: YardMap, after: YardMap, refs: rea
   if (added) copiedRefs.push({ kind: 'sources', id });
   return copiedRefs;
 }
+
+/** The boundary has no provenance field in the schema; retain exact before/after in a source. */
+export function recordSiteBoundaryNormalization(before: YardMap, after: YardMap): CommandAffectedRef[] {
+  if (sameValue(before.siteBoundary, after.siteBoundary)) return [];
+  const source: Source = {
+    name: 'MQ01 厂界严格共线顶点表示清理', category: 'design_assumption',
+    description: JSON.stringify({ rule: 'MQ-P01', operation: 'normalizeSiteBoundary',
+      before: before.siteBoundary, after: after.siteBoundary,
+      meaning: '仅移除严格共线且位于相邻端点之间的顶点；孔洞、线形和原测绘来源保持，未重新测绘。' }),
+  };
+  const id = sourceId(after, 'source_mq01_site_boundary', source);
+  const added = !Object.hasOwn(after.sources, id);
+  if (added) after.sources[id] = source;
+  return added ? [{ kind: 'sources', id }] : [];
+}

@@ -1,3 +1,4 @@
+import { fileAction, saveToBrowser, saveShortcutToBrowser, drawingControl, openDrawingSettings, defaultWorkbench } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
@@ -11,7 +12,7 @@ type Drawing = {
   showRoadBands: boolean; showRoadCenterlines: boolean; showOrdinaryNodes: boolean;
 };
 type Camera = { offsetX: number; offsetY: number; scale: number };
-type Editor = { camera: Camera; drawing: Drawing };
+type Editor = { camera: Camera; drawing: Drawing; workbench?: typeof defaultWorkbench };
 type Stored = { draft: { mapJson: string }; checkpoint: { mapJson: string } | null };
 const defaults: Drawing = {
   hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
@@ -79,17 +80,17 @@ async function replaceEditorRecord(page: Page, value: unknown) {
 }
 async function configure(page: Page, drawing: Drawing) {
   for (const key of ['snapGrid', 'facilityKind', 'zoneKind', 'facilityMovePolicy', 'zoneMovePolicy'] as const) {
-    await page.getByLabel(labels[key], { exact: true }).selectOption(String(drawing[key]));
+    await (await drawingControl(page, labels[key])).selectOption(String(drawing[key]));
   }
   for (const key of ['snapNodes', 'showRoadBands', 'showRoadCenterlines', 'showOrdinaryNodes'] as const)
-    await page.getByLabel(labels[key], { exact: true }).setChecked(drawing[key]);
+    await (await drawingControl(page, labels[key])).setChecked(drawing[key]);
 }
 async function expectDrawing(page: Page, drawing: Drawing) {
   for (const key of ['snapGrid', 'facilityKind', 'zoneKind', 'facilityMovePolicy', 'zoneMovePolicy'] as const) {
-    await expect(page.getByLabel(labels[key], { exact: true })).toHaveValue(String(drawing[key]));
+    await expect((await drawingControl(page, labels[key]))).toHaveValue(String(drawing[key]));
   }
   for (const key of ['snapNodes', 'showRoadBands', 'showRoadCenterlines', 'showOrdinaryNodes'] as const)
-    await expect(page.getByLabel(labels[key], { exact: true })).toBeChecked({ checked: drawing[key] });
+    await expect((await drawingControl(page, labels[key]))).toBeChecked({ checked: drawing[key] });
 }
 async function savedDrawing(page: Page, drawing: Drawing) {
   await expect.poll(async () => (await editor(page))?.drawing).toEqual(drawing);
@@ -116,7 +117,7 @@ async function addNode(page: Page, x = 23, y = 27) {
 }
 async function download(page: Page, info: TestInfo, filename: string): Promise<YardMap> {
   const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(filename); await (await pending).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }
@@ -125,7 +126,7 @@ async function rename(page: Page, name: string) {
   await page.getByRole('button', { name: '应用地图名称', exact: true }).click();
 }
 async function create(page: Page, name: string) {
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const modal = page.getByRole('dialog', { name: '新建地图', exact: true });
   await modal.getByLabel('新地图名称', { exact: true }).fill(name);
   await modal.getByRole('button', { name: '创建地图', exact: true }).click();
@@ -133,7 +134,7 @@ async function create(page: Page, name: string) {
   await expect(modal).not.toBeVisible();
 }
 async function beginOpen(page: Page, id: string) {
-  await page.getByRole('button', { name: '最近项目', exact: true }).click();
+  await fileAction(page, '最近项目');
   await page.getByTestId('project-item-' + id).click();
 }
 async function open(page: Page, id: string) {
@@ -213,11 +214,11 @@ test('D03 camera and drawing writes retain each other and restoring drawing defa
   ...custom, snapGrid: 10, zoneKind: 'waiting' };
   await configure(page, changed);
   const movedCamera = await camera(page);
-  await expect.poll(() => editor(page)).toEqual({ camera: movedCamera, drawing: changed });
+  await expect.poll(() => editor(page)).toEqual({ camera: movedCamera, drawing: changed, workbench: defaultWorkbench });
   await saved(page); await page.reload(); await saved(page);
   expect(await camera(page)).toEqual(movedCamera); await expectDrawing(page, changed);
   const recoveredHistory = await undoCount(page);
-  await page.getByRole('button', { name: '恢复绘图默认配置', exact: true }).click();
+  await openDrawingSettings(page); await page.getByRole('button', { name: '恢复绘图默认配置', exact: true }).click();
   await expectDrawing(page, defaults); await savedDrawing(page, defaults);
   expect(await camera(page)).toEqual(movedCamera);
   expect(await download(page, info, 'reset-after.map.json')).toEqual(before);
@@ -332,14 +333,14 @@ test('D07 a simulated editorStates quota failure reports unsaved config while pr
       return put.apply(this, args);
     };
   });
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('5');
+  await (await drawingControl(page, '网格吸附')).selectOption('5');
   await expect(page.getByTestId('browser-save-status')).toContainText('绘图配置保存失败');
   await expect(page.getByTestId('browser-save-status')).not.toHaveText('浏览器草稿已保存');
   expect(await project(page)).toEqual(durable);
   await page.getByTestId('node-item-' + id).click();
   await page.getByLabel('X (m)', { exact: true }).fill('40');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await expect(page.getByTestId('browser-save-status')).toContainText('绘图配置保存失败');
   await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('40');
   const current = await download(page, info, 'quota-current-ram.map.json');
@@ -365,7 +366,8 @@ test('D08 refresh resets selection/tool/free-polygon mode and discards incomplet
   await clickWorld(page, 90, 10);
   await expect(page.getByTestId('unapplied-inputs')).toBeVisible();
   await page.waitForTimeout(750); // Cross the real debounce; incomplete geometry must not be a durable map edit.
-  expect(Object.keys(await editor(page)).sort()).toEqual(['camera', 'drawing']);
+  expect(Object.keys(await editor(page)).sort()).toEqual(['camera', 'drawing', 'workbench']);
+  expect((await editor(page)).workbench).toEqual(defaultWorkbench);
   expect((await editor(page)).drawing).toEqual(custom);
   expect(JSON.parse((await project(page)).draft.mapJson)).toEqual(before);
   page.on('dialog', dialog => dialog.accept());
@@ -404,14 +406,14 @@ test('D09 Save and Ctrl+S persist the current six choices with automatic debounc
   await page.waitForTimeout(750); // Prove the automatic path is paused, rather than racing its normal deadline.
   expect((await editor(page)).drawing).toEqual(defaults);
   await expect(page.getByTestId('browser-save-status')).toContainText('绘图配置未保存');
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await savedDrawing(page, custom);
   const next: Drawing = {
   ...defaults, snapGrid: 10, facilityKind: 'assembly', zoneKind: 'waiting', zoneMovePolicy: 'withAssociatedNodes' };
   await configure(page, next); await page.waitForTimeout(750);
   expect((await editor(page)).drawing).toEqual(custom);
-  await page.getByLabel('网格吸附', { exact: true }).focus();
-  await page.keyboard.press('Control+s'); await savedDrawing(page, next);
+  await (await drawingControl(page, '网格吸附')).focus();
+  await saveShortcutToBrowser(page); await savedDrawing(page, next);
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
   expect(await download(page, info, 'manual-after.map.json')).toEqual(before);
   expect(await undoCount(page)).toBe(history);
@@ -447,7 +449,7 @@ test('D10 a simulated editor-state read delay keeps defaults from overwriting th
   await expect.poll(() => page.evaluate(() => (window as unknown as { drawingRestoreFault: { pending: unknown[] } }).drawingRestoreFault.pending.length)).toBeGreaterThan(0);
   await expect(page.getByRole('button', { name: '保存工程', exact: true })).toBeDisabled();
   for (const label of Object.values(labels)) await expect(page.getByLabel(label, { exact: true })).toBeDisabled();
-  await page.keyboard.press('Control+s');
+  await saveShortcutToBrowser(page);
   await page.waitForTimeout(750);
   expect(await page.evaluate(() => (window as unknown as { drawingRestoreFault: { writes: number } }).drawingRestoreFault.writes)).toBe(0);
   await page.evaluate(() => {

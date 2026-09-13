@@ -86,8 +86,21 @@ try {
   await expect(page.getByTestId('scene-count-slots')).toHaveText('1108');
   await page.getByRole('button', { name: '适应地图', exact: true }).click(); await pause(1200);
   output.hash = await page.getByTestId('map-hash').textContent();
-  const editorInvariant = async () => ({ document: await page.locator('.document-meta').textContent(), history: await page.locator('.canvas-status span:last-child').textContent(), undoDisabled: await page.getByRole('button', { name: '撤销', exact: true }).isDisabled(), redoDisabled: await page.getByRole('button', { name: '重做', exact: true }).isDisabled() });
-  output.initialEditorInvariant = await editorInvariant();
+  // Read the same document metadata through the normal export UI, outside timed navigation.
+  const editorInvariant = async phase => {
+    const menu = page.locator('details.workbench-menu').filter({ has: page.locator('summary').filter({ hasText: /^文件$/ }) });
+    if (await menu.getAttribute('open') === null) await menu.locator('summary').click();
+    const download = page.waitForEvent('download');
+    await menu.getByRole('button', { name: '导出 JSON', exact: true }).click();
+    const exportPath = path.join(dir, 'document-' + phase + '.json');
+    await (await download).saveAs(exportPath);
+    const exported = JSON.parse(fs.readFileSync(exportPath)), original = JSON.parse(inputBytes);
+    expect(exported.schemaVersion).toBe(original.schemaVersion);
+    expect(exported.revision).toBe(original.revision);
+    expect(exported.coordinateFrame).toEqual(original.coordinateFrame);
+    return { document: { schemaVersion: exported.schemaVersion, revision: exported.revision, coordinateFrame: exported.coordinateFrame }, history: await page.locator('.canvas-status').textContent(), undoDisabled: await page.getByRole('button', { name: '撤销', exact: true }).isDisabled(), redoDisabled: await page.getByRole('button', { name: '重做', exact: true }).isDisabled() };
+  };
+  output.initialEditorInvariant = await editorInvariant('initial');
   output.script = await page.locator('script[src]').getAttribute('src');
   output.bundleSha256 = hash(await (await page.request.get(output.script)).body());
   const builtScript = path.join(dist, output.script.replace(/^\//, ''));
@@ -246,7 +259,7 @@ try {
     fs.writeFileSync(path.join(dir, 'checkpoint-save.cpuprofile'), JSON.stringify(result.profile));
     fs.writeFileSync(path.join(dir, 'checkpoint-save.json'), JSON.stringify({ elapsedMs, previous, checkpoint, instrumentation: await page.evaluate(() => window.__DPMeasurement?.snapshot?.() ?? null) }, null, 2));
   }
-  output.finalEditorInvariant = await editorInvariant(); output.editorInvariantUnchanged = JSON.stringify(output.initialEditorInvariant) === JSON.stringify(output.finalEditorInvariant);
+  output.finalEditorInvariant = await editorInvariant('final'); output.editorInvariantUnchanged = JSON.stringify(output.initialEditorInvariant) === JSON.stringify(output.finalEditorInvariant);
   output.finalHash = await page.getByTestId('map-hash').textContent(); output.mapHashUnchanged = output.finalHash === output.hash;
   output.originalBytesUnchanged = hash(fs.readFileSync(input)) === frozenSha; output.errors = errors;
   output.medians = modes.flatMap(labels => kinds.map(kind => {

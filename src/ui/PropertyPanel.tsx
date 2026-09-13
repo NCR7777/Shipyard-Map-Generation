@@ -3,11 +3,12 @@ import type { MapNode, MapRoad, Vec3, YardMap } from '../domain/model';
 import type { FacilityMovePolicy, ZoneMovePolicy, MapCommand } from '../domain/commands';
 import { SpatialPropertyPanel, type SpatialSelection } from './SpatialPropertyPanel';
 import { RoadPhysicalFields, makePhysicalDraft, parsePhysicalDraft, physicalFields, type PhysicalDraft } from './RoadPhysicalFields';
+import { usePropertyDraft, type PropertyDraftProps } from '../editor/drafts';
 
 export type RoadShapePreview = { roadId: string; shapePoints: Vec3[]; mapContentHash: string };
 
 type NetworkSelection = { kind: 'node'; id: string; value: MapNode } | { kind: 'road'; id: string; value: MapRoad; lengthM: number };
-type Props = {
+type Props = PropertyDraftProps & {
   map: YardMap;
   mapContentHash: string;
   onRoadPreviewChange?: (preview: RoadShapePreview | null) => void;
@@ -41,7 +42,7 @@ export function PropertyPanel(props: Props) {
 
 }
 
-function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChange, map, mapContentHash, onRoadPreviewChange }: Omit<Props, 'selected'> & { selected: NetworkSelection | null }) {
+function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChange, map, mapContentHash, onRoadPreviewChange, draftContext, onDraftChange }: Omit<Props, 'selected'> & { selected: NetworkSelection | null }) {
   const [physical, setPhysical] = useState<PhysicalDraft | null>(() => selected?.kind === 'road' ? makePhysicalDraft(selected.value) : null);
   const physicalPending = selected?.kind === 'road' && physical !== null && JSON.stringify(physical) !== JSON.stringify(makePhysicalDraft(selected.value));
   const [name, setName] = useState(selected?.value.name ?? '');
@@ -62,22 +63,25 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
       ? { roadId, shapePoints: points, mapContentHash } : null);
     return () => onRoadPreviewChange?.(null);
   }, [shapePoints, roadId, originalShapePoints, mapContentHash, onRoadPreviewChange]);
+  usePropertyDraft(selected ? draftContext : undefined, pending, apply, onDraftChange);
   if (!selected) return <div className="empty-properties"><div className="empty-glyph">↖</div><strong>{count > 1 ? `已选择 ${count} 个对象` : '选择对象查看属性'}</strong><p>{count > 1 ? '可一起移动、复制；道路包含显式端点，设施按移动策略处理关联节点。' : '点击节点、道路、设施、区域或关联点，也可使用左侧对象列表。Shift 点击可多选。'}</p></div>;
 
-  function apply() {
-    if (!selected || readonly) return;
+  function apply(): boolean {
+    if (!selected || readonly) { setError('请先选择一个可编辑对象，再应用属性。'); return false; }
     if (selected.kind === 'node') {
       const position = vec(coords);
-      if (!position) { setError('XYZ 必须为有限数值，单位为米。'); return; }
-      if (onApply({ type: 'updateNode', id: selected.id, patch: { name, position } })) setError('');
+      if (!position) { setError('XYZ 必须为有限数值，单位为米。'); return false; }
+      const accepted = onApply({ type: 'updateNode', id: selected.id, patch: { name, position } });
+      if (accepted) setError('');
+      return accepted;
     } else {
       const points = shapePoints.map(vec);
-      if (points.some(p => p === null)) { setError('所有折点 XYZ 必须为有限米制数值。'); return; }
+      if (points.some(p => p === null)) { setError('所有折点 XYZ 必须为有限米制数值。'); return false; }
       const physicalPatch: Partial<MapRoad> = {};
       let needsAssumption = false;
       if (physicalPending && physical) {
         const parsed = parsePhysicalDraft(physical);
-        if (!parsed.ok) { setError(parsed.message); return; }
+        if (!parsed.ok) { setError(parsed.message); return false; }
         const original = makePhysicalDraft(selected.value);
         for (const field of physicalFields) {
           if (JSON.stringify(physical[field]) === JSON.stringify(original[field])) continue;
@@ -90,9 +94,11 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
           if (after.state === 'known' && !after.sourceRef) needsAssumption = true;
         }
       }
-      if (onApply({ type: 'updateRoad', id: selected.id, patch: { name, shapePoints: points as Vec3[], direction, ...physicalPatch },
+      const accepted = onApply({ type: 'updateRoad', id: selected.id, patch: { name, shapePoints: points as Vec3[], direction, ...physicalPatch },
         ...(needsAssumption ? { designAssumption: { id: 'source_' + crypto.randomUUID(), name: '道路参数设计假设', description: '用户数值输入，未经现场核验' } } : {}),
-      })) setError('');
+      });
+      if (accepted) setError('');
+      return accepted;
     }
   }
   return <div className="property-content">

@@ -1,3 +1,4 @@
+import { fileAction } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
@@ -67,7 +68,7 @@ async function burst(page: Page, events: Wheel[], immediateClick?: { x: number; 
 }
 async function downloaded(page: Page, info: TestInfo, name: string): Promise<YardMap> {
   const event = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(name); await (await event).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }
@@ -88,9 +89,16 @@ test('DP07 same-task wheel increments and different anchors agree with sequentia
 
 test('DP08 wheel followed immediately by pointer down/up hits the newly projected node', async ({ page }) => {
   const map = await ready(page), before = await camera(page);
-  const events = [{ x: 50, y: 60, deltaY: -1 }, { x: 70, y: 90, deltaY: -1 }, { x: 100, y: 110, deltaY: -1 }];
-  const after = expectedCamera(before, events), target = map.nodes.nA!.position;
-  await burst(page, events, { x: after.offsetX + target[0] * after.scale, y: after.offsetY - target[1] * after.scale });
+  const target = map.nodes.nA!.position;
+  const anchor = { x: Math.round(before.offsetX + target[0] * before.scale), y: Math.round(before.offsetY - target[1] * before.scale) };
+  // Keep this same-task race on screen after the workbench changes the canvas aspect ratio.
+  const events = [{ x: anchor.x - 20, y: anchor.y - 20, deltaY: -1 }, { x: anchor.x + 20, y: anchor.y + 10, deltaY: -1 }, { x: anchor.x + 40, y: anchor.y + 30, deltaY: -1 }];
+  const after = expectedCamera(before, events);
+  const click = { x: after.offsetX + target[0] * after.scale, y: after.offsetY - target[1] * after.scale };
+  const canvas = await page.getByTestId('map-canvas').boundingBox();
+  expect(click.x).toBeGreaterThan(0); expect(click.x).toBeLessThan(canvas!.width);
+  expect(click.y).toBeGreaterThan(0); expect(click.y).toBeLessThan(canvas!.height);
+  await burst(page, events, click);
   await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue('nA');
   await expectCamera(page, after);
   await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();

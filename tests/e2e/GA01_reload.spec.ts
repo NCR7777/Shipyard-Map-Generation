@@ -1,3 +1,4 @@
+import { fileAction, openFileMenu } from '../helpers/workbenchUi';
 import { expect, test, type Page } from '@playwright/test';
 import { editorFixture } from '../helpers/M1_fixtures';
 
@@ -5,6 +6,18 @@ const map = editorFixture();
 map.coordinateFrame.geographicAnchor = { crs: 'EPSG:32652', coordinateOrder: 'easting,northing,height', origin: [400000, 3900000, 12], rotationRad: 0.3, method: 'GA01 test only' };
 const changed = structuredClone(map); changed.coordinateFrame.geographicAnchor!.origin[0] += 10;
 const filename = 'GA01_frame.map.json';
+// Obtain the external fixture hash through the same real import/serialization path in an isolated context.
+async function fixtureHash(page: Page, value: typeof changed): Promise<string> {
+  const context = await page.context().browser()!.newContext();
+  try {
+    const candidate = await context.newPage(); await candidate.goto(page.url());
+    await expect(candidate.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
+    await candidate.getByTestId('json-file-input').setInputFiles({ name: 'GA01-frame-candidate.map.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) });
+    await expect(candidate.getByLabel('地图名称', { exact: true })).toHaveValue(value.metadata.name);
+    await expect(candidate.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
+    return (await candidate.getByTestId('map-hash').textContent())!;
+  } finally { await context.close(); }
+}
 async function ready(page: Page) {
   await page.goto('/'); await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
 }
@@ -29,7 +42,7 @@ test('GA01 browser reload: frame replacement requires confirmation; cancellation
       }; open.onerror = () => reject(open.error);
     });
     window.dispatchEvent(new Event('focus'));
-  }, { id: projectId, text: JSON.stringify(changed), hash: await page.evaluate(async value => { const path = '/src/domain/serialization.ts'; return (await import(path)).contentHash(value) as string; }, changed) });
+  }, { id: projectId, text: JSON.stringify(changed), hash: await fixtureHash(page, changed) });
   await expect(page.getByTestId('browser-save-status')).toContainText('冲突');
   await page.getByRole('button', { name: '重新载入浏览器版本', exact: true }).click();
   await page.getByRole('button', { name: '明确放弃并重新载入', exact: true }).click();
@@ -56,7 +69,7 @@ test('GA01 linked-file reload: cancel keeps file baseline, explicit acceptance c
     });
     Object.defineProperty(window, 'showOpenFilePicker', { configurable: true, value: async () => [await ready] });
   }, { text: JSON.stringify(map), filename });
-  await ready(page); await page.getByRole('button', { name: '关联本地 JSON', exact: true }).click();
+  await ready(page); await fileAction(page, '关联本地 JSON');
   await expect(page.getByTestId('fixed-coordinate-frame')).toBeVisible();
   await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
   const beforeHash = await page.getByTestId('map-hash').textContent();
@@ -65,14 +78,14 @@ test('GA01 linked-file reload: cancel keeps file baseline, explicit acceptance c
     const file = await (await navigator.storage.getDirectory()).getFileHandle(filename);
     const stream = await file.createWritable(); await stream.write(text); await stream.close();
   }, { text: JSON.stringify(changed), filename });
-  await page.getByRole('button', { name: '重新载入文件', exact: true }).click();
+  await fileAction(page, '重新载入文件');
   const confirmation = page.getByRole('dialog', { name: '确认替换坐标框架' });
   await expect(confirmation).toBeVisible(); await confirmation.getByRole('button', { name: '取消', exact: true }).click();
   await expect(page.getByTestId('map-hash')).toHaveText(beforeHash!);
   expect(await page.evaluate(() => sessionStorage.getItem('shipyard.activeProjectId'))).toBe(projectId);
   await expect(page.getByTestId('local-save-status')).toContainText('冲突');
-  await expect(page.getByRole('button', { name: '重新载入文件', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: '重新载入文件', exact: true }).click();
+  await openFileMenu(page); await expect(page.getByRole('button', { name: '重新载入文件', exact: true })).toBeEnabled();
+  await fileAction(page, '重新载入文件');
   await confirmation.getByRole('button', { name: '明确接受候选坐标框架' }).click();
   await expect(page.getByTestId('map-hash')).not.toHaveText(beforeHash!);
   await expect(page.getByTestId('local-save-status')).toContainText('本地文件已确认');
@@ -87,7 +100,7 @@ test('GA01 selecting the active recent project preserves committed geometry and 
   await page.getByLabel('X (m)', { exact: true }).fill('110');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
   const editedHash = await page.getByTestId('map-hash').textContent();
-  await page.getByRole('button', { name: '最近项目', exact: true }).click();
+  await fileAction(page, '最近项目');
   await page.getByTestId('project-item-' + projectId).click();
   await expect(page.getByTestId('map-hash')).toHaveText(editedHash!);
   await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeEnabled();

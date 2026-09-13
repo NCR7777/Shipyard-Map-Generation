@@ -1,3 +1,4 @@
+import { fileAction, drawingControl, openFileMenu } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { Polygon, Vec3, YardMap } from '../../src/domain/model';
@@ -26,13 +27,14 @@ async function drag(page: Page, from: Vec3, to: Vec3, steps = 20) {
   await startDrag(page, from, to, steps); await page.mouse.up();
 }
 async function download(page: Page, info: TestInfo, filename: string): Promise<YardMap> {
-  const pending = page.waitForEvent('download'); await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  const pending = page.waitForEvent('download'); await fileAction(page, '导出 JSON');
   const path = info.outputPath(filename); await (await pending).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }
 async function importMap(page: Page, map: YardMap) {
   await page.getByTestId('json-file-input').setInputFiles({ name: 'synthetic-rectangle-input.map.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(map)) });
   const conflict = page.getByRole('dialog', { name: '未保存编辑冲突', exact: true });
+  await openFileMenu(page);
   await expect(page.getByRole('button', { name: '导入 JSON', exact: true })).toBeEnabled();
   if (await conflict.isVisible()) await conflict.getByRole('button', { name: '放弃编辑并重载', exact: true }).click();
   await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue(map.metadata.name);
@@ -292,7 +294,7 @@ for (const version of ['0.1.0', '0.2.0'] as const) {
     original.zones.zA!.boundary = { outer: [[10, 50, 0], [30, 50, 0], [25, 70, 0], [10, 70, 0], [10, 50, 0]], holes: [] };
     await importMap(page, original);
     expect(await download(page, info, 'legacy-original.map.json')).toEqual(original);
-    await page.getByLabel('设施移动策略', { exact: true }).selectOption('withAssociatedNodes');
+    await (await drawingControl(page, '设施移动策略')).selectOption('withAssociatedNodes');
     await drag(page, [60, 30, 0], [80, 45, 0]);
     const resized = await download(page, info, 'legacy-resized.map.json');
     expect(resized.schemaVersion).toBe(version); expect(resized.mapId).toBe(original.mapId);
@@ -312,8 +314,29 @@ for (const version of ['0.1.0', '0.2.0'] as const) {
 }
 
 test('R07 multi-selection keeps whole-object moves while readonly and unapplied numeric input cannot be bypassed by handles', async ({ page }, info) => {
+  // Keep the original corner drag fully on screen after ordinary directory selection locates fA.
+  const prepareOriginalDrag = async () => {
+    const box = (await page.getByTestId('map-canvas').locator('canvas').first().boundingBox())!;
+    const initial = Number(await page.getByTestId('camera-state').getAttribute('data-scale'));
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let step = 1; step <= 2; step++) {
+      await page.mouse.wheel(0, 100);
+      await expect.poll(async () => Number(await page.getByTestId('camera-state').getAttribute('data-scale'))).toBeCloseTo(initial / 1.15 ** step, 10);
+    }
+  };
+  const expectOriginalDragOnCanvas = async () => {
+    const box = (await page.getByTestId('map-canvas').locator('canvas').first().boundingBox())!;
+    for (const [x, y] of [[60, 30], [80, 45]] as const) {
+      const point = await screen(page, x, y);
+      expect(point.x).toBeGreaterThan(box.x); expect(point.x).toBeLessThan(box.x + box.width);
+      expect(point.y).toBeGreaterThan(box.y); expect(point.y).toBeLessThan(box.y + box.height);
+      expect(await page.evaluate(p => document.elementFromPoint(p.x, p.y)?.tagName, point)).toBe('CANVAS');
+    }
+  };
   await ready(page); const original = associatedFixture(); await importMap(page, original);
+  const cameraBeforeMultiSelection = await page.getByTestId('camera-state').textContent();
   await page.getByTestId('zones-item-zA').click({ modifiers: ['Shift'] });
+  await expect(page.getByTestId('camera-state')).toHaveText(cameraBeforeMultiSelection!);
   await expect(page.getByTestId('boundary-handles')).toHaveAttribute('data-count', '0');
   await expect(page.getByLabel('矩形宽 (m)', { exact: true })).not.toBeVisible();
   await drag(page, [30, 15, 0], [35, 20, 0]);
@@ -324,7 +347,9 @@ test('R07 multi-selection keeps whole-object moves while readonly and unapplied 
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   expect(await download(page, info, 'multi-undone.map.json')).toEqual(original);
   await page.getByTestId('facilities-item-fA').click();
+  await prepareOriginalDrag();
   await page.getByLabel('矩形宽 (m)', { exact: true }).fill('90');
+  await expectOriginalDragOnCanvas();
   const hash = await page.getByTestId('map-hash').textContent();
   await drag(page, [60, 30, 0], [80, 45, 0]);
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
@@ -346,6 +371,8 @@ test('R07 multi-selection keeps whole-object moves while readonly and unapplied 
   await expect(page.getByTestId('readonly-notice')).toBeVisible();
   await expect(page.getByLabel('矩形宽 (m)', { exact: true })).toBeDisabled();
   await expect(page.getByTestId('boundary-handles')).toHaveAttribute('data-count', '0');
+  await prepareOriginalDrag();
+  await expectOriginalDragOnCanvas();
   await drag(page, [60, 30, 0], [80, 45, 0]);
   await expect(preview(page)).not.toBeVisible();
   expect(await download(page, info, 'readonly-preserved.map.json')).toEqual(protectedMap);

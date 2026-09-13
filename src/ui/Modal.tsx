@@ -9,6 +9,7 @@ export function Modal({ title, children, onCancel }: { title: string; children: 
     const elements = () => Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? []);
     const initial = ref.current?.querySelector<HTMLElement>('[data-cancel]') ?? elements()[0]; initial?.focus({ preventScroll: true });
     function key(event: KeyboardEvent) {
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key === 'Escape') { event.preventDefault(); cancel.current(); return; }
       if (event.key !== 'Tab') return;
       const items = elements(); const first = items[0]; const last = items.at(-1);

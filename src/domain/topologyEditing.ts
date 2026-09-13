@@ -28,6 +28,7 @@ export type TopologyCommand = {
     type: 'suppressDegree2Node';
     nodeId: string;
     retainedRoadId: string;
+    metadataPolicy?: 'mq01_reference_corridor';
 };
 export class TopologyError extends Error {
     constructor(readonly code: string, message: string, readonly path = '') { super(message); }
@@ -258,7 +259,92 @@ export function mergeNodes(map: YardMap, sourceId: string, targetId: string, app
     }
     delete map.nodes[sourceId];
 }
-export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: string): void {
+/** Automatic A cleanup has stricter semantic retention than an explicit interactive edit. */
+export function checkMQ01AutomaticSuppression(map: YardMap, nodeId: string) {
+    const removedNode = node(map, nodeId);
+    const nodeDeclaration = removedNode.name + '\n' + (removedNode.provenance.note ?? '');
+    // Conservative retention of an explicitly labelled operational point, even if its kind stayed ordinary.
+    const operationalLabel = /等待|待命|排队|门禁|停车|属性边界|属性变化|\b(wait(?:ing)?|queue|holding|gate|parking|checkpoint|property boundary)\b/i.test(nodeDeclaration);
+    if (removedNode.kind !== 'ordinary' || Object.keys(removedNode.extensions ?? {}).length || operationalLabel)
+        fail('MQ01_NODE_SEMANTICS', '自动表示清理只接受无额外扩展的 ordinary 节点，不能删除业务或等待语义。', '/nodes/' + nodeId);
+    const junctions = Object.entries(map.junctions).filter(([, j]) => j.nodeIds.includes(nodeId));
+    for (const [id, j] of junctions) {
+        const extensions = j.extensions ?? {};
+        if (Object.keys(extensions).some(key => key !== PLANNING_NAMESPACE)
+            || extensions[PLANNING_NAMESPACE] !== undefined && !sameValue(extensions[PLANNING_NAMESPACE], { rotationSpaceStatus: 'not_continuously_swept' }))
+            fail('MQ01_NODE_SEMANTICS', '路口包含此表示清理规则不能移除的扩展声明。', '/junctions/' + id);
+    }
+    const movements = Object.entries(map.movements).filter(([, m]) => junctions.some(([id]) => id === m.junctionId));
+    for (const [id, movement] of movements) if (Object.keys(movement.extensions ?? {}).length)
+        fail('MQ01_NODE_SEMANTICS', '转向包含此规则不能移除的扩展声明。', '/movements/' + id + '/extensions');
+    return { removedNode, junctions, movements };
+}
+
+/** Narrow opt-in for the authored shipyard.reference corridor-segment metadata contract.
+ * It preserves the discarded declarations in a source record, never ignores opaque metadata.
+ */
+function mq01CorridorEvidence(map: YardMap, nodeId: string, ids: string[]): Record<string, unknown> {
+    const declaration = map.extensionNamespaces['shipyard.reference'];
+    if (declaration?.version !== '1.0' || declaration.category !== 'metadata')
+        fail('MQ01_REFERENCE_CONTRACT', '仅支持 shipyard.reference@1.0 的 metadata 走廊分段合同。');
+    const { removedNode, junctions, movements } = checkMQ01AutomaticSuppression(map, nodeId);
+    const references = ids.map(id => {
+        const extensions = road(map, id).extensions ?? {};
+        if (Object.keys(extensions).some(key => !['shipyard.reference', PLANNING_NAMESPACE].includes(key)))
+            fail('MQ01_REFERENCE_CONTRACT', '道路包含此规则未解释的元数据扩展。', '/roads/' + id + '/extensions');
+        const payload = extensions['shipyard.reference'];
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+            || Object.keys(payload).sort().join(',') !== 'corridorRef,roadClass,widthMeaning')
+            fail('MQ01_REFERENCE_CONTRACT', '走廊元数据必须只有 corridorRef、roadClass、widthMeaning。', '/roads/' + id + '/extensions/shipyard.reference');
+        const value = payload as Record<string, unknown>;
+        if (typeof value.roadClass !== 'string' || typeof value.widthMeaning !== 'string' || typeof value.corridorRef !== 'string')
+            return fail('MQ01_REFERENCE_CONTRACT', '走廊分段元数据必须为明确字符串。');
+        const match = /^(C_[A-Z]+_\d{3})_(\d{2})$/.exec(value.corridorRef);
+        if (!match) return fail('MQ01_CORRIDOR_ADJACENCY', '只支持已声明走廊及原顺序区间编号，不能推测独立车道。');
+        return { value, family: match[1]! };
+    });
+    if (references[0]!.family !== references[1]!.family
+        || references[0]!.value.roadClass !== references[1]!.value.roadClass
+        || references[0]!.value.widthMeaning !== references[1]!.value.widthMeaning)
+        fail('MQ01_CORRIDOR_ADJACENCY', '只合并同一已声明走廊的拓扑相邻道路，保留不同走廊及属性差异。');
+    const a = road(map, ids[0]!), b = road(map, ids[1]!);
+    const common = (r: MapRoad) => Object.fromEntries(Object.entries(r.extensions ?? {}).filter(([key]) => key !== 'shipyard.reference'));
+    if (!sameValue(common(a), common(b))) fail('TOPOLOGY_ROAD_CONFLICT', '走廊来源相邻不能覆盖规划或其他道路扩展差异。');
+    const firstLength = polylineLength2D(roadPoints(map, ids[0]!));
+    return {
+        ruleId: 'MQ-N01', ruleVersion: 'MQ01-reference-corridor-1', corridorFamily: references[0]!.family,
+        retainedRoadId: ids[0],
+        intervals: ids.map((id, index) => ({ roadId: id,
+            direction: (index === 0 ? road(map, id).toNodeId === nodeId : road(map, id).fromNodeId === nodeId) ? 'forward' : 'backward',
+            startM: index === 0 ? 0 : firstLength,
+            endM: index === 0 ? firstLength : firstLength + polylineLength2D(roadPoints(map, id)),
+            extensions: structuredClone(road(map, id).extensions), provenance: structuredClone(road(map, id).provenance),
+        })),
+        removedNode: { id: nodeId, ...structuredClone(removedNode) },
+        removedJunctions: junctions.map(([id, j]) => ({ id, ...structuredClone(j) })),
+        removedMovements: movements.map(([id, m]) => ({ id, ...structuredClone(m) })),
+        limitation: '表示清理；未新增许可，未测绘，原未连续扫掠和未知物理条件保持。',
+    };
+}
+
+/** Exact collinear between vertices only. Bends, backtracking and all Z values survive. */
+function removeExactBetweenVertices(points: Vec3[]): Vec3[] {
+    const result: Vec3[] = [];
+    for (const point of points) {
+        while (result.length > 1) {
+            const a = result[result.length - 2]!, b = result[result.length - 1]!;
+            if (a[2] !== b[2] || b[2] !== point[2]
+                || (b[0] - a[0]) * (point[1] - a[1]) !== (b[1] - a[1]) * (point[0] - a[0])
+                || b[0] < Math.min(a[0], point[0]) || b[0] > Math.max(a[0], point[0])
+                || b[1] < Math.min(a[1], point[1]) || b[1] > Math.max(a[1], point[1])) break;
+            result.pop();
+        }
+        result.push(point);
+    }
+    return result;
+}
+
+export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: string, metadataPolicy?: 'mq01_reference_corridor'): void {
     node(map, nodeId);
     const ids = incident(map, nodeId);
     if (ids.length !== 2 || !ids.includes(retainedId))
@@ -269,8 +355,11 @@ export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: st
         fail('TOPOLOGY_DIRECTION_UNKNOWN', '连续化简前必须明确道路方向。');
     const firstForward = first.toNodeId === nodeId, secondForward = second.fromNodeId === nodeId;
     const oriented = (r: MapRoad, forward: boolean) => r.direction === 'both' ? 'both' : (r.direction === 'forward') === forward ? 'forward' : 'backward';
-    const keys = ['widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps', 'resourceIds', 'extensions'] as const;
-    if (oriented(first, firstForward) !== oriented(second, secondForward) || keys.some(key => !sameValue(first[key], second[key])))
+    if (metadataPolicy !== undefined && metadataPolicy !== 'mq01_reference_corridor') fail('MQ01_REFERENCE_CONTRACT', '未知的元数据整理策略。');
+    const evidence = metadataPolicy ? mq01CorridorEvidence(map, nodeId, [retainedId, removedId]) : undefined;
+    const keys = ['widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps', 'resourceIds'] as const;
+    if (oriented(first, firstForward) !== oriented(second, secondForward) || keys.some(key => !sameValue(first[key], second[key]))
+        || !evidence && !sameValue(first.extensions, second.extensions))
         fail('TOPOLOGY_ROAD_CONFLICT', '两段道路的方向、物理值、资源或扩展不兼容，不能自动拼接。');
     for (const kind of ['accessPoints', 'servicePoints'] as const)
         for (const [id, p] of Object.entries(map[kind]))
@@ -335,7 +424,8 @@ export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: st
     first.fromNodeId = from;
     first.toNodeId = to;
     first.direction = oriented(first, firstForward);
-    first.shapePoints = [...pathA, ...pathB.slice(1)].slice(1, -1);
+    const joinedPoints = [...pathA, ...pathB.slice(1)];
+    first.shapePoints = (evidence ? removeExactBetweenVertices(joinedPoints) : joinedPoints).slice(1, -1);
     first.provenance.sourceRefs = [...new Set([...(first.provenance.sourceRefs ?? []), ...(second.provenance.sourceRefs ?? []), ...Object.values(second.provenance.fieldSources ?? {})])];
     rejectOpaqueTopologyReferences(map, [removedId, nodeId, ...junctionIds, ...internalMovements.map(([id]) => id)]);
     delete map.roads[removedId];
@@ -344,6 +434,11 @@ export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: st
         delete map.junctions[id];
     for (const [id] of internalMovements)
         delete map.movements[id];
+    if (evidence) {
+        const sourceId = allocate(map, 'source_mq01_corridor_lineage');
+        map.sources[sourceId] = { name: 'MQ01 同走廊相邻区间表示整理', category: 'design_assumption', description: JSON.stringify(evidence) };
+        first.provenance.sourceRefs = [...new Set([...(first.provenance.sourceRefs ?? []), sourceId])];
+    }
 }
 export function runTopology(map: YardMap, command: TopologyCommand, split: (map: YardMap, command: Extract<MapCommand, {
     type: 'splitRoad';
@@ -353,7 +448,7 @@ export function runTopology(map: YardMap, command: TopologyCommand, split: (map:
         return;
     }
     if (command.type === 'suppressDegree2Node') {
-        suppressDegree2Node(map, command.nodeId, command.retainedRoadId);
+        suppressDegree2Node(map, command.nodeId, command.retainedRoadId, command.metadataPolicy);
         return;
     }
     const moving = node(map, command.nodeId), target = road(map, command.roadId);

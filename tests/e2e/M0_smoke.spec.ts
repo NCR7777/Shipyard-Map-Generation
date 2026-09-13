@@ -3,7 +3,7 @@ test('React and Konva load in a real browser without runtime errors', async ({ p
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '船厂空间布局编辑器', exact: true })).toBeVisible();
+  await expect(page.getByTestId('workbench')).toBeVisible();
   await expect(page.locator('canvas').first()).toBeVisible();
   expect(errors).toEqual([]);
 });

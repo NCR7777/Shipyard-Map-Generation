@@ -1,3 +1,4 @@
+import { fileAction } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { test, expect, type Locator, type Page, type TestInfo } from '@playwright/test';
@@ -5,7 +6,7 @@ import type { YardMap } from '../../src/domain/model';
 
 async function download(page: Page, info: TestInfo, filename: string, button?: Locator): Promise<YardMap> {
   const pending = page.waitForEvent('download');
-  await (button ?? page.getByRole('button', { name: '导出 JSON', exact: true })).click();
+  if (button) await button.click(); else await fileAction(page, '导出 JSON');
   const path = info.outputPath(filename);
   await (await pending).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
@@ -71,7 +72,7 @@ test('N01 N26 explicit upgrade preserves the old JSON backup, cancels pending-in
   expect(await download(page, info, 'M2A1-upgrade-redone.map.json')).toEqual(migrated);
   await saved(page);
 
-  await page.getByRole('button', { name: '最近项目', exact: true }).click();
+  await fileAction(page, '最近项目');
   const recent = page.getByRole('dialog', { name: '最近项目', exact: true });
   const backup = recent.getByRole('button').filter({ has: page.getByText(original.metadata.name + '（恢复副本）', { exact: true }) });
   await expect(backup).toHaveCount(1);

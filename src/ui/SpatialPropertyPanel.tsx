@@ -6,12 +6,13 @@ import { MIN_RECTANGLE_SIZE_M, rectangleFrame, resizeRectangleDimensions, type R
 import './spatial.css';
 import { PointPropertyPanel } from './PointPropertyPanel';
 import { zoneServicePointIds } from '../topology/serviceConnections';
+import { usePropertyDraft, type PropertyDraftProps } from '../editor/drafts';
 export type SpatialSelection =
   | { kind: 'facility'; id: string; value: Facility }
   | { kind: 'zone'; id: string; value: Zone }
   | { kind: 'accessPoint'; id: string; value: AccessPoint }
   | { kind: 'servicePoint'; id: string; value: ServicePoint };
-export interface SpatialPanelProps {
+export interface SpatialPanelProps extends PropertyDraftProps {
   selected: SpatialSelection; map: YardMap; readonly: boolean;
   boundaryEditMode?: 'auto' | 'polygon'; onBoundaryModeChange?: (mode: 'auto' | 'polygon') => void;
   onApply: (command: MapCommand) => boolean; onDirtyChange?: (dirty: boolean) => void;
@@ -27,7 +28,7 @@ export function SpatialPropertyPanel(props: SpatialPanelProps) {
   return props.selected.kind === 'facility' || props.selected.kind === 'zone'
     ? <PolygonPanel {...props} selected={props.selected} /> : <PointPropertyPanel {...props} selected={props.selected} />;
 }
-function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilityMovePolicy, onMovePolicyChange, zoneMovePolicy = 'boundaryOnly', onZoneMovePolicyChange, boundaryEditMode = 'auto', onBoundaryModeChange }: SpatialPanelProps & { selected: Extract<SpatialSelection, { kind: 'facility' | 'zone' }> }) {
+function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilityMovePolicy, onMovePolicyChange, zoneMovePolicy = 'boundaryOnly', onZoneMovePolicyChange, boundaryEditMode = 'auto', onBoundaryModeChange, draftContext, onDraftChange }: SpatialPanelProps & { selected: Extract<SpatialSelection, { kind: 'facility' | 'zone' }> }) {
   const [name, setName] = useState(selected.value.name); const [kind, setKind] = useState(selected.value.kind);
   const [passability, setPassability] = useState<Zone['passability']>(selected.kind === 'zone' ? selected.value.passability : 'unknown');
   const [rings, setRings] = useState(() => makeRings(selected.value.boundary));
@@ -65,40 +66,51 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
   }, [map, selected.kind, selected.id, selected.value]);
   const boundaryReadonly = readonly || !permissions.boundary;
   const classificationReadonly = readonly || !permissions.classification;
-  function apply() {
-    if (readonly) return;
-    if (moving || rotating || pivotPending) { setError('另有未执行的平移/旋转参数，请先重置变换参数，再提交边界属性。'); return; }
+  usePropertyDraft(draftContext, basePending || moving || rotating || pivotPending, applyDraft, onDraftChange);
+  function applyDraft(): boolean {
+    if (moving && rotating) { setError('平移和旋转都有未应用参数，请先完成其中一种变换，再保存。'); return false; }
+    if (moving) return transform('translateSelection');
+    if (rotating) return transform('rotateSelection');
+    return apply();
+  }
+  function apply(): boolean {
+    if (readonly) { setError('当前对象不可编辑，未应用属性。'); return false; }
+    if (moving || rotating || pivotPending) { setError('另有未执行的平移/旋转参数，请先重置变换参数，再提交边界属性。'); return false; }
     let boundary = selected.value.boundary;
     if (rectangular) {
       if (dimensionsPending) {
-        if (dimensions.some(value => !value.trim())) { setError('矩形宽高不能为空，单位为米。'); return; }
+        if (dimensions.some(value => !value.trim())) { setError('矩形宽高不能为空，单位为米。'); return false; }
         try { boundary = resizeRectangleDimensions(rectangle, Number(dimensions[0]), Number(dimensions[1]), ((fixedCorner + 2) % 4) as RectangleCorner); }
-        catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return; }
+        catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return false; }
       }
     } else {
       const parsed = rings.map(ring => ring.map(numberVector));
-      if (!parsed.length || parsed.some(ring => ring.length < 3 || ring.some(point => !point))) { setError('每个环至少三个顶点；XYZ 都必须是有限米制数值。'); return; }
+      if (!parsed.length || parsed.some(ring => ring.length < 3 || ring.some(point => !point))) { setError('每个环至少三个顶点；XYZ 都必须是有限米制数值。'); return false; }
       const closed = parsed.map(ring => [...ring as Vec3[], [...ring[0]!] as Vec3] as unknown as Polygon['outer']);
       boundary = { outer: closed[0]!, holes: closed.slice(1) };
     }
     const command: MapCommand = selected.kind === 'facility'
       ? { type: 'updateFacility', id: selected.id, patch: { name, kind: kind as Facility['kind'], boundary } }
       : { type: 'updateZone', id: selected.id, patch: { name, kind: kind as Zone['kind'], boundary, passability } };
-    if (onApply(command)) {
+    const accepted = onApply(command);
+    if (accepted) {
       const acceptedRectangle = rectangleFrame(boundary);
       setDimensions([String(acceptedRectangle?.widthM ?? ''), String(acceptedRectangle?.heightM ?? '')]);
       setRings(makeRings(boundary)); setError('');
     }
+    return accepted;
   }
-  function transform(type: 'translateSelection' | 'rotateSelection') {
-    if (readonly) return;
-    if (basePending || (type === 'rotateSelection' ? moving : rotating)) { setError('请先应用边界属性，或重置另一组变换参数；每次只提交一个完整事务。'); return; }
+  function transform(type: 'translateSelection' | 'rotateSelection'): boolean {
+    if (readonly) { setError('当前对象不可编辑，未应用变换。'); return false; }
+    if (basePending || (type === 'rotateSelection' ? moving : rotating)) { setError('请先应用边界属性，或重置另一组变换参数；每次只提交一个完整事务。'); return false; }
     const vector = numberVector(type === 'translateSelection' ? delta : pivot);
-    if (!vector || !angle.trim() || !Number.isFinite(Number(angle))) { setError('平移/旋转参数必须是有限数值；角度为弧度。'); return; }
+    if (!vector || !angle.trim() || !Number.isFinite(Number(angle))) { setError('平移/旋转参数必须是有限数值；角度为弧度。'); return false; }
     const command: MapCommand = type === 'translateSelection'
       ? { type, selection, delta: vector, facilityMovePolicy, zoneMovePolicy }
       : { type, selection, pivot: vector, angleRad: Number(angle), facilityMovePolicy, zoneMovePolicy };
-    if (onApply(command)) { setDelta(['0', '0', '0']); setAngle('0'); setPivot(initialPivot); setError(''); }
+    const accepted = onApply(command);
+    if (accepted) { setDelta(['0', '0', '0']); setAngle('0'); setPivot(initialPivot); setError(''); }
+    return accepted;
   }
   function addVertex(ringIndex: number) {
     setRings(current => current.map((ring, index) => {

@@ -1,3 +1,4 @@
+import { fileAction, drawingControl } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { newMap, newNode, newRoad, newServicePoint } from '../../src/domain/factory';
@@ -5,7 +6,7 @@ import type { YardMap } from '../../src/domain/model';
 
 async function exported(page: Page, info: TestInfo, name: string): Promise<YardMap> {
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(name + '.map.json'); await (await download).saveAs(path);
   return JSON.parse(await readFile(path, 'utf8')) as YardMap;
 }
@@ -32,9 +33,9 @@ test('a selected service node can preview a topology connection; a drop without 
   await page.getByTestId('json-file-input').setInputFiles({ name: 'TE01-linked.synthetic.map.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(map)) });
   await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue(map.metadata.name);
   await page.getByTestId('node-item-sp').click();
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('0');
-  await page.getByLabel('节点吸附', { exact: true }).uncheck();
-  await page.getByLabel('拓扑吸附', { exact: true }).check();
+  await (await drawingControl(page, '网格吸附')).selectOption('0');
+  await (await drawingControl(page, '节点吸附')).uncheck();
+  await (await drawingControl(page, '拓扑吸附')).check();
   await page.getByRole('button', { name: '适应地图', exact: true }).click();
   const hash = await page.getByTestId('map-hash').textContent();
   await drag(page, [50, 40], [56, 40]);

@@ -1,3 +1,4 @@
+import { fileAction, saveToBrowser, saveShortcutToBrowser, drawingControl } from '../helpers/workbenchUi';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { readonlyFixture } from '../helpers/M1_fixtures';
@@ -7,7 +8,7 @@ import type { StoredProject } from '../../src/editor/projectController';
 import { TE01_TARGETS, TE01_HANWHA, readTE01Target, assertTE01Equal, assertTE01HanwhaDeletion } from '../helpers/TE01_targets';
 
 async function exported(page: Page, info: TestInfo, name: string) {
-  const event = page.waitForEvent('download'); await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  const event = page.waitForEvent('download'); await fileAction(page, '导出 JSON');
   const path = info.outputPath(name + '.map.json'); await (await event).saveAs(path);
   return { path, map: JSON.parse(await readFile(path, 'utf8')) as YardMap };
 }
@@ -33,7 +34,7 @@ async function savedRoundtrip(page: Page, info: TestInfo, expected: YardMap, fil
   const receipts = [];
   for (const action of ['ctrlS', 'button']) {
     const before = await project(page), hash = await page.getByTestId('map-hash').textContent();
-    if (action === 'ctrlS') await page.keyboard.press('Control+s'); else await page.getByRole('button', { name: '保存工程', exact: true }).click();
+    if (action === 'ctrlS') await saveShortcutToBrowser(page); else await saveToBrowser(page);
     await expect.poll(async () => { const after = await project(page); return after.projectId === before.projectId && after.storageVersion > before.storageVersion && after.checkpoint?.contentHash === hash; }, { timeout: 60000 }).toBe(true);
     const after = await project(page); assertTE01Equal(JSON.parse(after.checkpoint!.mapJson), expected);
     receipts.push({ action, before: before.storageVersion, after: after.storageVersion, checkpointHash: after.checkpoint!.contentHash });
@@ -140,8 +141,8 @@ test('TE01 synthetic split, degree-two suppression and explicit node merge are s
 test('TE01 topology snapping requires opt-in and confirmation; ordinary overlap and cancel create no graph links', async ({ page }, info) => {
   test.setTimeout(120000); const original = TE01Synthetic(); await imported(page, original);
   await page.getByRole('button', { name: '适应地图', exact: true }).click();
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('0'); await page.getByLabel('节点吸附', { exact: true }).uncheck();
-  const topology = page.getByLabel('拓扑吸附', { exact: true }); await expect(topology).not.toBeChecked();
+  await (await drawingControl(page, '网格吸附')).selectOption('0'); await (await drawingControl(page, '节点吸附')).uncheck();
+  const topology = (await drawingControl(page, '拓扑吸附')); await expect(topology).not.toBeChecked();
   await selectNode(page, 'nC'); await dragWorld(page, [50, 25, 0], [50, 0, 0]);
   const overlap = await exported(page, info, 'overlap-only'); expect(overlap.map.roads.rAB).toBeDefined(); expect(Object.keys(overlap.map.roads)).toHaveLength(2); expect(Object.keys(overlap.map.junctions)).toHaveLength(0);
   await page.getByRole('button', { name: '撤销', exact: true }).click(); assertTE01Equal((await exported(page, info, 'overlap-undone')).map, original);

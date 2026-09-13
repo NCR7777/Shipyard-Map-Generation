@@ -1,3 +1,4 @@
+import { fileAction, saveToBrowser, chooseBrowserSaveTarget, saveShortcutToBrowser } from '../helpers/workbenchUi';
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 
 // These tests use the real browser IndexedDB adapter and real pointer/keyboard edits.
@@ -37,7 +38,7 @@ async function editX(page: Page, value: string) {
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
 }
 async function recent(page: Page, name: string) {
-  await page.getByRole('button', { name: '最近项目', exact: true }).click();
+  await fileAction(page, '最近项目');
   const modal = page.getByRole('dialog', { name: '最近项目', exact: true });
   await modal.getByRole('button').filter({ has: page.getByText(name, { exact: true }) }).click();
   await expect(modal).not.toBeVisible();
@@ -75,7 +76,7 @@ test('S02 two named browser projects retain independent IDs, maps and subsequent
   await renameMap(page, 'S02 工程甲');
   await saved(page);
   const firstHash = await page.getByTestId('map-hash').textContent();
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const modal = page.getByRole('dialog', { name: '新建地图', exact: true });
   await modal.getByLabel('新地图名称', { exact: true }).fill('S02 工程乙');
   await modal.getByRole('button', { name: '创建地图', exact: true }).click();
@@ -161,7 +162,7 @@ test('S04 an earlier real IDB commit acknowledgement cannot mark a newer edit sa
   await expect(page.getByTestId('browser-save-status')).not.toContainText('已保存');
   await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('60');
   await page.evaluate(() => { const s = (window as unknown as { m11CommitTest: { enabled: boolean; pending: (() => void)[] } }).m11CommitTest; s.enabled = false; s.pending.splice(0).forEach(callback => callback()); });
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await saved(page);
   await page.reload();
   await selectNode(page, id);
@@ -178,7 +179,7 @@ test('S05 simulated quota failure keeps the preceding durable map and does not r
   });
   await selectNode(page, id);
   await editX(page, '99');
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await expect(page.getByTestId('browser-save-status')).toContainText('失败');
   await expect(page.getByTestId('browser-save-status')).not.toContainText('已保存');
   await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('99');
@@ -200,7 +201,7 @@ test('S06 two real pages detect a stale storage version and preserve the losing 
   await editX(page, '80');
   await saved(page);
   await editX(other, '120');
-  await other.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(other);
   await expect(other.getByTestId('browser-save-status')).toContainText('冲突');
   await expect(other.getByLabel('X (m)', { exact: true })).toHaveValue('120');
   await other.getByRole('button', { name: '保留当前恢复副本', exact: true }).click();
@@ -225,10 +226,10 @@ test('S08 S10 save shortcut inside an unapplied field is explicit and leaves nat
   await name.press('End');
   await name.pressSequentially(' pending');
   await expect(page.getByTestId('unapplied-inputs')).toBeVisible();
-  await name.press('Control+s');
+  await name.press('Control+s'); await chooseBrowserSaveTarget(page);
   const modal = page.getByRole('dialog', { name: '有未应用输入', exact: true });
   await expect(modal).toBeVisible();
-  await expect(modal.getByRole('button', { name: '返回应用属性', exact: true })).toBeFocused();
+  await expect(modal.getByRole('button', { name: '取消，保留输入', exact: true })).toBeFocused();
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Delete');
   await expect(page.getByTestId('map-hash')).toHaveText(hash!);
@@ -257,12 +258,12 @@ test('S09 exporting is a download notification and cannot acknowledge browser or
   });
   await selectNode(page, id);
   await editX(page, '42');
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await expect(page.getByTestId('browser-save-status')).toContainText('失败');
   const before = await page.getByTestId('browser-save-status').textContent();
   const localBefore = await page.getByTestId('local-save-status').textContent();
   const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   await pending;
   await expect(page.getByTestId('browser-save-status')).toHaveText(before!);
   await expect(page.getByTestId('local-save-status')).toHaveText(localBefore!);
@@ -289,7 +290,7 @@ test('S04 navigation checkpoint delay blocks undo/delete until the old project h
       },
     });
   });
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const modal = page.getByRole('dialog', { name: '新建地图', exact: true });
   await modal.getByLabel('新地图名称', { exact: true }).fill('S04 导航新工程');
   await modal.getByRole('button', { name: '创建地图', exact: true }).click();
@@ -314,7 +315,7 @@ test('S03 a one-shot native freeze fault during UI recovery cannot save the old 
   await renameMap(page, '恢复故障 工程A');
   await saved(page);
   const hashA = await page.getByTestId('map-hash').textContent();
-  await page.getByRole('button', { name: '新建地图', exact: true }).click();
+  await fileAction(page, '新建地图');
   const newModal = page.getByRole('dialog', { name: '新建地图', exact: true });
   await newModal.getByLabel('新地图名称', { exact: true }).fill('恢复故障 工程B');
   await newModal.getByRole('button', { name: '创建地图', exact: true }).click();
@@ -340,13 +341,14 @@ test('S03 a one-shot native freeze fault during UI recovery cannot save the old 
       return freeze(value);
     }) as typeof Object.freeze;
   });
-  await page.getByRole('button', { name: '最近项目', exact: true }).click();
+  await fileAction(page, '最近项目');
   const recentModal = page.getByRole('dialog', { name: '最近项目', exact: true });
   await recentModal.getByRole('button').filter({ has: page.getByText('恢复故障 工程B', { exact: true }) }).click();
   const recoveryModal = page.getByRole('dialog', { name: '恢复浏览器工程', exact: true });
   await expect(recoveryModal).toContainText('S03 simulated UI restore callback failure');
+  await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(page.getByRole('button', { name: '保存工程', exact: true })).toBeDisabled();
-  await page.keyboard.press('Control+s');
+  await saveShortcutToBrowser(page);
   await expect(page.getByTestId('map-hash')).toHaveText(hashA!);
   await page.waitForTimeout(900); // Cross the real 600ms debounce: a forbidden A->B write must not occur.
   await recoveryModal.getByRole('button', { name: '重试恢复', exact: true }).click();

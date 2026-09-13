@@ -1,3 +1,4 @@
+import { fileAction, saveToBrowser, drawingControl } from '../helpers/workbenchUi';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { cpus, platform, release, totalmem } from 'node:os';
@@ -24,7 +25,7 @@ async function project(page: Page): Promise<StoredProject | undefined> {
 }
 async function save(page: Page) {
   const before = await project(page); const hash = (await page.getByTestId('map-hash').textContent())!;
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
+  await saveToBrowser(page);
   await expect.poll(async () => {
     const current = await project(page);
     return !!current && current.storageVersion > (before?.storageVersion ?? 0) && current.checkpoint?.contentHash === hash;
@@ -37,7 +38,7 @@ async function save(page: Page) {
 }
 async function download(page: Page, info: TestInfo, name: string) {
   const event = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click();
+  await fileAction(page, '导出 JSON');
   const path = info.outputPath(name); await (await event).saveAs(path);
   const bytes = await readFile(path); const map = JSON.parse(bytes.toString('utf8')) as YardMap;
   return { path, map, sha256: sha(bytes), contentHash: (await page.getByTestId('map-hash').textContent())! };
@@ -89,8 +90,8 @@ async function drag100(page: Page, from: Vec3, to: Vec3) {
 async function choose(page: Page, kind: 'facilities' | 'zones', id: string) {
   await page.getByTestId('object-search').fill(id); await page.getByTestId(kind + '-item-' + id).click();
   await expect(page.getByLabel('稳定 ID', { exact: true })).toHaveValue(id);
-  await page.getByLabel(kind === 'facilities' ? '设施移动策略' : '区域移动策略', { exact: true }).selectOption('withStaticContents');
-  await page.getByLabel('网格吸附', { exact: true }).selectOption('1');
+  await (await drawingControl(page, kind === 'facilities' ? '设施移动策略' : '区域移动策略')).selectOption('withStaticContents');
+  await (await drawingControl(page, '网格吸附')).selectOption('1');
 }
 function translated(original: YardMap, kind: 'facilities' | 'zones', id: string, nodes: string[], delta: Vec3) {
   const after = structuredClone(original); after.revision++;
