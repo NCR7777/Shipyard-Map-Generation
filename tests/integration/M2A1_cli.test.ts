@@ -63,7 +63,7 @@ describe('M2A.1 CLI dual-version validation and explicit no-overwrite migration'
     expect(result.report.changes).toEqual([{ path: '/schemaVersion', before: '0.1.0', after: '0.2.0' }, { path: '/revision', before: map.revision, after: map.revision + 1 }]);
     const validated = run('map-validate', [output]);
     expect(validated.exit).toBe(0);
-    expect(validated.report.capabilities!.editable).toBe(false);
+    expect(validated.report.capabilities!.editable).toBe(true); // BG01: supported raster metadata survives the same migration.
   });
   it('refuses in-place migration without changing the input', () => {
     const raw = serializeMap(associatedFixture());

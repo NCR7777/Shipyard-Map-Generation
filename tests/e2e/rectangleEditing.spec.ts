@@ -52,7 +52,7 @@ async function numericSize(page: Page, width: number, height: number) {
 }
 async function storedProjects(page: Page): Promise<string> {
   return page.evaluate(() => new Promise<string>((resolve, reject) => {
-    const opened = indexedDB.open('shipyard-map-projects', 1);
+    const opened = indexedDB.open('shipyard-map-projects');
     opened.onerror = () => reject(opened.error);
     opened.onsuccess = () => {
       const db = opened.result; const transaction = db.transaction('projects', 'readonly');
@@ -66,8 +66,8 @@ async function labelInk(page: Page): Promise<{ width: number; height: number; co
   // DP1 places text inside the current polygon. Check fixed CSS glyph size, not the old corner anchor.
   return page.getByTestId('map-canvas').evaluate(element => {
     const points: number[][] = [];
-    // Third canvas is the non-listening overlay; handles occupy their own later canvas.
-    for (const canvas of Array.from(element.querySelectorAll('canvas')).slice(2, 3)) {
+    // BG01 adds a raster canvas below vectors; the fourth canvas is the non-listening label overlay, before handles.
+    for (const canvas of Array.from(element.querySelectorAll('canvas')).slice(3, 4)) {
       const dpr = canvas.width / canvas.getBoundingClientRect().width;
       const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
       for (let i = 0; i < pixels.length; i += 4) if (pixels[i] === 154 && pixels[i + 1] === 76 && pixels[i + 2] === 13 && pixels[i + 3] === 255) points.push([(i / 4 % canvas.width) / dpr, Math.floor(i / 4 / canvas.width) / dpr]);

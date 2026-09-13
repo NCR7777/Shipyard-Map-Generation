@@ -51,7 +51,7 @@ export async function exportMapUI(page: Page, info: TestInfo, name: string) {
 
 export async function storedWorkspace(page: Page, projectId?: string): Promise<{ record: StoredProject | undefined; editor: EditorState | undefined }> {
   return page.evaluate((requestedProjectId: string | undefined) => new Promise<{ record: StoredProject | undefined; editor: EditorState | undefined }>((resolve, reject) => {
-    const open = indexedDB.open('shipyard-map-projects', 1);
+    const open = indexedDB.open('shipyard-map-projects');
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
       const db = open.result;

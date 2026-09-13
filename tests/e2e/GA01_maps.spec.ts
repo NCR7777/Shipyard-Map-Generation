@@ -164,7 +164,7 @@ if (phase === 'A') test('GA01 A large Hanwha V02 map commits 100 native corner p
 
 async function projectKeys(page: Page): Promise<string[]> {
   return page.evaluate(() => new Promise<string[]>((resolve, reject) => {
-    const request = indexedDB.open('shipyard-map-projects', 1);
+    const request = indexedDB.open('shipyard-map-projects');
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result; const transaction = db.transaction('projects', 'readonly');
@@ -176,7 +176,7 @@ async function projectKeys(page: Page): Promise<string[]> {
 }
 async function activeProject(page: Page): Promise<StoredProject | undefined> {
   return page.evaluate(() => new Promise<StoredProject | undefined>((resolve, reject) => {
-    const request = indexedDB.open('shipyard-map-projects', 1);
+    const request = indexedDB.open('shipyard-map-projects');
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result; const transaction = db.transaction('projects', 'readonly');

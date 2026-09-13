@@ -20,7 +20,7 @@ async function imported(page: Page, map: YardMap, bytes?: Buffer) {
 }
 async function project(page: Page): Promise<StoredProject> {
   return page.evaluate(() => new Promise<StoredProject>((resolve, reject) => {
-    const request = indexedDB.open('shipyard-map-projects', 1); request.onerror = () => reject(request.error);
+    const request = indexedDB.open('shipyard-map-projects'); request.onerror = () => reject(request.error);
     request.onsuccess = () => { const db = request.result, tx = db.transaction('projects', 'readonly');
       const row = tx.objectStore('projects').get(sessionStorage.getItem('shipyard.activeProjectId')!);
       tx.oncomplete = () => { db.close(); resolve(row.result as StoredProject); };

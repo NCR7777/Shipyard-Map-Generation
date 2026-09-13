@@ -16,6 +16,7 @@
     "test:integration": "vitest run tests/integration --exclude .cache/**",
     "test:e2e": "playwright test",
     "test:production": "playwright test -c playwright.production.config.ts",
+    "test:bg01": "playwright test -c playwright.bg01.config.ts",
     "map:diagnose": "tsx scripts/map-diagnose.ts",
     "map:validate": "tsx scripts/map-validate.ts",
     "map:migrate": "tsx scripts/map-migrate.ts"

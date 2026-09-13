@@ -128,7 +128,7 @@ test('G08 an absent background never removes rendered facilities, areas or autho
   await ready(page);
   const map = missingBackgroundFixture();
   await importMap(page, map);
-  await expect(page.getByTestId('readonly-notice')).toBeVisible();
+  await expect(page.getByTestId('readonly-notice')).not.toBeVisible(); // BG01 missing bytes do not lock supported vector editing.
   await page.getByTestId('facilities-item-fA').click();
   await dimensions(page, 60, 30, 1800);
   await expect(page.getByTestId('issue-panel')).toContainText('asset_availability');

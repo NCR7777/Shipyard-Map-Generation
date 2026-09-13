@@ -62,7 +62,7 @@ describe('GA01 fixed coordinate frame and atomic geometry provenance', () => {
     expect(result.map.sources.image).toEqual(map.sources.image);
     expect(result.map.sources.source_editor_geometry?.category).toBe('design_assumption');
   });
-  it('retains behavior, visual, unsupported planning, asset and background blocks with an anchor', () => {
+  it('retains unsupported guards while BG01 permits declared raster backgrounds with an anchor', () => {
     for (const category of ['behavior', 'visual'] as const) {
       const map = fixture(); map.extensionNamespaces.future = { category, version: '1' };
       expect(mapCapabilities(map).editable).toBe(false);
@@ -70,6 +70,9 @@ describe('GA01 fixed coordinate frame and atomic geometry provenance', () => {
     const planning = fixture(); planning.extensionNamespaces['sr02.planning'] = { category: 'behavior', version: 'unknown' };
     expect(mapCapabilities(planning).editable).toBe(false);
     const assets = missingBackgroundFixture(); assets.coordinateFrame = fixture().coordinateFrame;
+    expect(mapCapabilities(assets).editable).toBe(true);
+    expect(commandSupport(assets, { type: 'renameMap', name: 'supported raster' }).allowed).toBe(true);
+    delete assets.assets.imgA!.widthPx;
     expect(mapCapabilities(assets).reasons).toEqual(expect.arrayContaining([expect.stringContaining('assets'), expect.stringContaining('backgroundLayers')]));
     expect(commandSupport(assets, { type: 'renameMap', name: 'blocked' }).allowed).toBe(false);
   });

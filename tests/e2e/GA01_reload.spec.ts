@@ -22,7 +22,7 @@ async function ready(page: Page) {
   await page.goto('/'); await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
 }
 async function importMap(page: Page) {
-  await page.locator('input[type=file]').setInputFiles({ name: filename, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(map)) });
+  await page.getByTestId('json-file-input').setInputFiles({ name: filename, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(map)) });
   await expect(page.getByTestId('fixed-coordinate-frame')).toBeVisible();
   await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
 }
@@ -33,7 +33,7 @@ test('GA01 browser reload: frame replacement requires confirmation; cancellation
   const projectId = await page.evaluate(() => sessionStorage.getItem('shipyard.activeProjectId'));
   await page.evaluate(async ({ id, text, hash }) => {
     await new Promise<void>((resolve, reject) => {
-      const open = indexedDB.open('shipyard-map-projects', 1);
+      const open = indexedDB.open('shipyard-map-projects');
       open.onsuccess = () => {
         const db = open.result; const tx = db.transaction('projects', 'readwrite'); const store = tx.objectStore('projects');
         const read = store.get(id!);

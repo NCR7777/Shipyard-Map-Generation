@@ -242,7 +242,7 @@ try {
   }
   if (values.profile) {
     const storedVersion = () => page.evaluate(() => new Promise((resolve, reject) => {
-      const request = indexedDB.open('shipyard-map-projects', 1);
+      const request = indexedDB.open('shipyard-map-projects');
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const db = request.result, read = db.transaction('projects', 'readonly').objectStore('projects').get(sessionStorage.getItem('shipyard.activeProjectId'));

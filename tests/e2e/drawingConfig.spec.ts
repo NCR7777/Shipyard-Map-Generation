@@ -47,7 +47,7 @@ async function activeId(page: Page) {
 }
 async function readStored(page: Page, store: 'projects' | 'editorStates', id: string): Promise<unknown> {
   return page.evaluate(({ store, id }) => new Promise<unknown>((resolve, reject) => {
-    const request = indexedDB.open('shipyard-map-projects', 1);
+    const request = indexedDB.open('shipyard-map-projects');
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result; const transaction = db.transaction(store, 'readonly');
@@ -68,7 +68,7 @@ async function project(page: Page, id = '') {
 async function replaceEditorRecord(page: Page, value: unknown) {
   const id = await activeId(page);
   await page.evaluate(({ id, value }) => new Promise<void>((resolve, reject) => {
-    const request = indexedDB.open('shipyard-map-projects', 1);
+    const request = indexedDB.open('shipyard-map-projects');
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result; const transaction = db.transaction('editorStates', 'readwrite');

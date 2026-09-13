@@ -22,7 +22,7 @@ npm run dev -- --host 127.0.0.1
 npm run map:validate -- examples/M2A1_synthetic_service_targets.map.json
 ```
 
-浏览器支持多工程保存恢复、撤销重做、JSON 导入导出和外部修改冲突保护。新地图为 Schema 0.2.0，0.1.0 原样兼容；升级必须显式执行并保留原件。底图/ZIP 尚未实现，单 JSON 已包含全部矢量语义几何。
+浏览器支持多工程保存恢复、撤销重做、JSON 导入导出和外部修改冲突保护。新地图为 Schema 0.2.0，0.1.0 原样兼容；升级必须显式执行并保留原件。本地 PNG/JPEG/WebP 底图已支持校准导入、变换调整、对照及保存恢复，见 [BG01 使用与验收](docs/BG01_COMPLETION.md)。ZIP 尚未实现；单 JSON 包含矢量和底图资产索引，图片字节需另外保留。
 
 ## 绘图配置恢复
 

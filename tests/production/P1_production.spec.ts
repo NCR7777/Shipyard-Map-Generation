@@ -13,7 +13,7 @@ const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const painted = (page: Page) => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 async function project(page: Page): Promise<StoredProject | undefined> {
   return page.evaluate(() => new Promise<StoredProject | undefined>((resolve, reject) => {
-    const open = indexedDB.open('shipyard-map-projects', 1);
+    const open = indexedDB.open('shipyard-map-projects');
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
       const db = open.result; const tx = db.transaction('projects', 'readonly');

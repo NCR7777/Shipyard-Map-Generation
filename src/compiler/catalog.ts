@@ -1,3 +1,5 @@
+import { inspectAsset, inspectBackground } from '../domain/backgrounds';
+import { backgroundFrame } from '../geometry/backgrounds';
 import type { SceneItem, SceneKind } from '../adapters/contracts';
 import type { Vec3, YardMap } from '../domain/model';
 import { inspectPlanning, PLANNING_NAMESPACE } from '../domain/planning';
@@ -40,8 +42,16 @@ export function sceneCatalog(map: YardMap): SceneItem[] {
     item.owner = { kind: slot.ownerKind, id: slot.ownerId };
   }
   for (const [id, source] of Object.entries(map.sources)) add('sources', id, source.name, '/sources/' + pointer(id), {}, '来源声明，P1 只读。');
-  for (const kind of ['assets', 'backgroundLayers'] as const) for (const [id] of Object.entries(map[kind])) {
-    const item = add(kind, id, id, '/' + kind + '/' + pointer(id), {}, 'P1 未加载底图二进制或实现标定；声明完整保留。'); item.status = 'unsupported';
+  for (const [id, asset] of Object.entries(map.assets)) {
+    const support = inspectAsset(asset);
+    const item = add('assets', id, asset.path, '/assets/' + pointer(id), {}, support.supported ? '本地栅格资产索引；图片字节可用性在底图面板单独核对。单 JSON 不包含图片字节。' : support.reasons.join('；'));
+    if (!support.supported) item.status = 'unsupported';
+  }
+  for (const [id, layer] of Object.entries(map.backgroundLayers)) {
+    const support = inspectBackground(map, id), asset = map.assets[layer.assetId];
+    const points: Vec3[] = support.supported && asset?.widthPx && asset.heightPx ? backgroundFrame(layer.imageToWorld, asset.widthPx, asset.heightPx).corners.map(p => [p[0], p[1], 0]) : [];
+    const item = add('backgroundLayers', id, layer.name, '/backgroundLayers/' + pointer(id), { lines: points.length ? [[...points, points[0]!]] : [] }, support.supported ? '范围从 imageToWorld 和实际像素尺寸派生；请在底图面板调整。不会改变矢量或坐标框架，配准精度未独立核验。' : support.reasons.join('；'));
+    if (!support.supported) item.status = 'unsupported';
   }
   for (const [id, declaration] of Object.entries(map.extensionNamespaces)) {
     const item = add('extensions', id, id + ' @' + declaration.version, '/extensionNamespaces/' + pointer(id), {}, '命名空间声明，原样保留。');

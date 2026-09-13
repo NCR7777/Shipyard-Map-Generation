@@ -59,7 +59,7 @@ async function activeId(page: Page) {
 }
 async function record(page: Page, store: 'projects' | 'editorStates', id = '') {
   return page.evaluate(({ store, id }) => new Promise<unknown>((resolve, reject) => {
-    const opened = indexedDB.open('shipyard-map-projects', 1);
+    const opened = indexedDB.open('shipyard-map-projects');
     opened.onerror = () => reject(opened.error);
     opened.onsuccess = () => {
       const db = opened.result; const tx = db.transaction(store, 'readonly'); const request = tx.objectStore(store).get(id);
@@ -72,7 +72,7 @@ async function presetScale(page: Page, scale: number) {
   await saved(page);
   // Valid persisted-camera fixture, through the real IDB store. No application method or render metadata injection.
   await page.evaluate(({ id, scale }) => new Promise<void>((resolve, reject) => {
-    const opened = indexedDB.open('shipyard-map-projects', 1);
+    const opened = indexedDB.open('shipyard-map-projects');
     opened.onerror = () => reject(opened.error);
     opened.onsuccess = () => {
       const db = opened.result; const tx = db.transaction('editorStates', 'readwrite'); const store = tx.objectStore('editorStates');

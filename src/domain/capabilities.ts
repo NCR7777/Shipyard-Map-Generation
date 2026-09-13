@@ -1,13 +1,17 @@
 import type { CapabilityReport, YardMap } from './model';
 import { inspectPlanning } from './planning';
+import { inspectAsset, inspectBackground } from './backgrounds';
 
 /** Global protection only. Individual commands still need commandSupport. */
 export function mapCapabilities(map: YardMap, planning = inspectPlanning(map)): CapabilityReport {
   const unrendered: string[] = [];
   const reasons: string[] = [];
   const unchecked = ['crossing_classification', 'turn_reachability', 'resource_execution', 'physical_clearance', 'asset_availability', 'source_authenticity'];
-  for (const key of ['assets', 'backgroundLayers'] as const) {
-    if (Object.keys(map[key]).length > 0) { unrendered.push(key); reasons.push(`尚不支持 ${key} 的同步编辑，原始数据完整保留。`); }
+  if (Object.values(map.assets).some(asset => !inspectAsset(asset).supported)) {
+    unrendered.push('assets'); reasons.push('存在未支持的 assets 声明，原始数据完整保留。');
+  }
+  if (Object.keys(map.backgroundLayers).some(id => !inspectBackground(map, id).supported)) {
+    unrendered.push('backgroundLayers'); reasons.push('存在未支持的 backgroundLayers 变换或像素约定，原始数据完整保留。');
   }
   if (Object.keys(map.movements).length) unrendered.push('movements_without_display_geometry');
   if (map.coordinateFrame.geographicAnchor) unchecked.push('geographic_anchor_accuracy', 'geographic_reprojection');

@@ -360,7 +360,8 @@ describe('M0 core: independent domain contract', () => {
     const loaded = loadMap(serializeMap(map));
     expect(loaded.ok).toBe(true);
     if (!loaded.ok) throw new Error('An unavailable binary must not discard vectors.');
-    expect(loaded.capabilities.editable).toBe(false);
+    expect(loaded.capabilities.editable).toBe(true); // BG01 supports the declaration; missing bytes do not lock vectors.
+    expect(loaded.capabilities.unchecked).toContain('asset_availability');
     expect(loaded.map.nodes).toEqual(map.nodes);
     expect(loaded.map.roads).toEqual(map.roads);
     expect(roadLength(loaded.map, 'road_AB')).toBe(100);

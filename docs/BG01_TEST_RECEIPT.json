@@ -1,0 +1,362 @@
+{
+  "format": "BG01_test_receipt_v1",
+  "baselineCommit": "4d938c97aa7e7cbe3b990bd5f03909a8fa0cf733",
+  "branch": "codex/rf00-rf01",
+  "productBuild": {
+    "path": "dist/assets/index-BVGtgQTl.js",
+    "sha256": "0a41be83c20c1dfde94879f11243cd489989397672f78119084121b2305478d9"
+  },
+  "sourceSHA256NormalizedLF": {
+    "README.md": "9179394ded6d7b1baed6dc4c0e42f9ce90b186c8b4e18cda030e9bdbf0380faa",
+    "docs/BG01_CALIBRATION.md": "db0dfb8da16f89e04267ca9a1728c7f062386ca36099014b606e37108a02cf9c",
+    "docs/BG01_COMPLETION.md": "7382d652eb883b28cfa883e21f27086f12e8406533bcd40a2ec8b5fc21350c39",
+    "docs/CURRENT_SCOPE.md": "a71b1073c180815cb502d36351c8c086bb1ca1a967b48f3c0ce6642af17ada32",
+    "docs/M11_PERSISTENCE_CONTRACT.md": "86e63fa9048c2c1b6048487e2f8f587b5a55f3ba45d227c28aa085d556cbc3fe",
+    "package.json": "a9d8849c496135766529b8423b65e8cb5d256732f2da309b83fbb185c05f637f",
+    "playwright.bg01.config.ts": "289b79fe69de14026c24d0502e4f65e6d6dbc4cf108591e4ddfbc180b59539e0",
+    "scripts/BG01-display-performance.mjs": "44ce72da0cf86df779d29af79ff70371c0f278b36ae41b70003811eac540ba85",
+    "scripts/BG01_prepare_raster.py": "544c191f01cf8001fe3da306f8689ecd92ed520996917c69bc5fca4e44bd9ea8",
+    "scripts/DP-performance.mjs": "1591fc3494fd1463eec3e1294418c115cf72eb7cd59a0f8833167de60433f448",
+    "src/adapters/backgroundCalibration.ts": "78bb02ba4ab1d9d0c0288c48a708ae295957f2f4e91ab6343cc8f3d83629c830",
+    "src/adapters/projectStore.ts": "afee121ab0275ae8a31c8665f4fbe4c653979cd58beef496e1ea43b6055c57ef",
+    "src/adapters/rasterFiles.ts": "ff8c2be1b05e644c41887a41c1404151f6b7c9e339450e4f4b180c36af48abf8",
+    "src/compiler/catalog.ts": "e048ee8b6a002be8a58c1b03709245515fa2fa691bc00d45804db7036b87b858",
+    "src/domain/backgrounds.ts": "512415dbbdf27c015ca5d5472e2a494b422ba16aacfd797cb0db3cda3a2392e7",
+    "src/domain/capabilities.ts": "a955f0ca0524ad14e9de7fcdf05d3d07af98c8615c320738b0e43f33111de78c",
+    "src/domain/commands.ts": "11b8f813d107a72dee943911ece1282266aecfe6445df578c61522e886e7d965",
+    "src/editor/projectController.ts": "3c75f2aee5113c5fdd9548abbc293cae26308f383d32eb1ea87f54f20a2c0565",
+    "src/geometry/backgrounds.ts": "d958bd8c76ae4e029a4df61fdf056bb1ecb3ebd484629ed7a25e2ff8340de4c5",
+    "src/renderers/2d/BackgroundCanvas.tsx": "e5bec3d0dd2fca83375775c9a2c13b149917a3b67666d70f44d02329bd9fd21d",
+    "src/renderers/2d/MapCanvas.tsx": "3c0174a2e1c3d662ba6c75ac0852c383ee3f7c45c84f460bd57b0de3274b049a",
+    "src/renderers/2d/SpatialLayer.tsx": "140bd1ecf9a40ddaa23eb77c3bf32df49381854ff24a9bfa838da0f3d0a0438b",
+    "src/ui/App.tsx": "6a4b430f7703a048dddb821cab79816bbb17d72bbe8efcad3832649f2fc6ca85",
+    "src/ui/BackgroundPanel.tsx": "f64bc7192a776502b7a0097c4e6f66d2a1c96bfd52c566617478a088542d4e66",
+    "src/ui/useBackgroundAssets.ts": "10fcffa9b2c33046814417bc60f21db355bf616c56d0319cb96c3956ac21bd9c",
+    "src/validation/validate.ts": "57adca5e48e109ade40e080fe460c385e96ff55c8619ac3c723406831d2adb1e",
+    "tests/e2e/BG01_assets.spec.ts": "fbc97e198c745a773f1c856480aa426c2b0a390645dedc86f6e18ab35f31e177",
+    "tests/e2e/BG01_editor.spec.ts": "c09158bcaf2036df5048213b06bd785234af7a32977c5b22b4418f35ee8b295b",
+    "tests/e2e/DP1_persistence.spec.ts": "43a6799548c6dbfab8d4bc44e134f33311b0ee82712c76c6ad2569df98d215c4",
+    "tests/e2e/GA01_maps.spec.ts": "1b5103555ea20b0c44e67de9b3a69c2041d172fad4dca80b9658672b61c6a0da",
+    "tests/e2e/GA01_reload.spec.ts": "c449f7b5cd7f1d6f97379e08289bf866a26e8b1ce868002b6c8a57631c8e7bf9",
+    "tests/e2e/M11_localFileFlow.spec.ts": "9620473b22179782600c6b56bf79ca4e7d15a7b814ac7a7c4d4301f2e12b2604",
+    "tests/e2e/M2A_spatial.spec.ts": "310a0d923c73dd3d03ea14c4360387d4a38446b14f9e6f128ac16be75a26e915",
+    "tests/e2e/P1_completion.spec.ts": "96c87ed8200d05b7ad4302ca07b7d4116228dd13267d8dc16ae5ca3819807464",
+    "tests/e2e/TE01_topology.spec.ts": "cb29ab67b2b6b5a4c640af620d6b9f4dcc037c343b12ec5bd2e0dda7164cbe47",
+    "tests/e2e/drawingConfig.spec.ts": "e70a10f6c96fddc7e9b0a0288268a1d12c1411d73a376fcc41d24b8065f3d490",
+    "tests/e2e/rectangleEditing.spec.ts": "5a615d37830ed82567f683576bbe90d65f6e50c554fadded97d4dcc7ac4553cb",
+    "tests/e2e/roadWidth.spec.ts": "6a3a2751562d8875690ac5f6612f07029baa1772d4212892d1f9d83b47cd5661",
+    "tests/fixtures/BG01/README.md": "a93f45340eca5ae65e43c1681f185a13758b865ccf1d7440eba76f7fb8191adb",
+    "tests/fixtures/BG01/rotated-exif.jpg": "edf23a264cc7b55a9e2eeaea71894e61d01d673ed49fbd4fb886cdf979f54272",
+    "tests/fixtures/BG01/small.jpg": "a901c73170c2f0b01cc756c3c3433e93cf2997785b4220efde763d65db82abce",
+    "tests/fixtures/BG01/small.png": "48d8fbae44d99d55f96be933589c8fdd80017879952befbc6988dfbac6e416d1",
+    "tests/fixtures/BG01/small.webp": "3464925311bbb6bff8d1a5f93d1361e78390b402c1ff350ff7287727b3fa9f17",
+    "tests/helpers/BG01_hookHarness.ts": "420ce2c9333c88c31a2b3d126808b165eec2cd1f4c35aa37b50038fc56df79b3",
+    "tests/helpers/RF01_workbench.ts": "f7c448b6a47b8ab70af2172f0a35d8089067219c2779cf23eb42d22e0621f4ea",
+    "tests/integration/M2A1_cli.test.ts": "7b6b70c958f1b91154db167e6dd2bf70e76de663850658d3908f84073b333b6a",
+    "tests/production/P1_production.spec.ts": "d1a9db661a13b9928bf77bb8839152d0ba6474050700d6ff5b9594f0bb5fa32a",
+    "tests/python/test_BG01_prepare_raster.py": "0dd251c61be84a670ce1b62da46a66a64ca58d7811bc251aad8e2da1beeae7c4",
+    "tests/unit/BG01_assets.test.ts": "92631399492d1dad6024e953fde5cf1e51121a2c08d5b59b3b7a787f63d360b7",
+    "tests/unit/BG01_backgrounds.test.ts": "f1d6430cd77364bd1e56645602db6a37ae016e07ca89f821f5bf43a98c43b866",
+    "tests/unit/BG01_calibration.test.ts": "6f045ff6f144151fc758a32cd4c2a26b4e9181e08d223849f21ac3f23bffbf1f",
+    "tests/unit/GA01_anchor.test.ts": "672417052524dca6b7adf915caef59bc599d26fe9ac0153ee1d70c5b311dd65a",
+    "tests/unit/M0_core.test.ts": "548b37967f1a5b0ce81e7675b1745332c5e17bc84c62c6493348e4742fa869f3"
+  },
+  "commands": [
+    {
+      "command": "npm run schema:check",
+      "exitCode": 0,
+      "log": ".cache/BG01/schema-check.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "log": ".cache/BG01/typecheck-recheck.log"
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0,
+      "log": ".cache/BG01/lint-recheck.log"
+    },
+    {
+      "command": "npm run test",
+      "exitCode": 1,
+      "passed": 618,
+      "failed": 4,
+      "reason": "blocked_input: frozen SR02 A-D missing",
+      "dataRoot": ".cache/BG01/data-root",
+      "log": ".cache/BG01/unit-final.log"
+    },
+    {
+      "command": "npm run test:integration",
+      "exitCode": 1,
+      "passed": 86,
+      "failed": 4,
+      "reason": "blocked_input: frozen SR02 A-D missing",
+      "dataRoot": ".cache/GA01/data-root",
+      "log": ".cache/BG01/integration-frozen-root.log"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "warning": "existing large bundle warning remains",
+      "log": ".cache/BG01/build-sixth.log"
+    },
+    {
+      "command": "npx playwright test --config .cache/BG01/playwright.assets.config.ts",
+      "exitCode": 0,
+      "passed": 5,
+      "kind": "development adapter/hook tests",
+      "log": ".cache/BG01/assets-browser-complete.log"
+    },
+    {
+      "command": "npx playwright test --config .cache/BG01/playwright.regression.config.ts",
+      "exitCode": 1,
+      "passed": 142,
+      "failed": 3,
+      "log": ".cache/BG01/regression.log"
+    },
+    {
+      "command": "npx playwright test --config .cache/BG01/playwright.recheck.config.ts BG01_editor.spec.ts GA01_reload.spec.ts rectangleEditing.spec.ts",
+      "exitCode": 0,
+      "passed": 20,
+      "failed": 0,
+      "log": ".cache/BG01/regression-recheck.log"
+    },
+    {
+      "command": "python -m unittest discover -s tests/python -p test_BG01_prepare_raster.py -v",
+      "environment": "paper",
+      "exitCode": 0,
+      "passed": 5,
+      "log": ".cache/BG01/raster-tests-frozen.log"
+    },
+    {
+      "command": "npm run map:validate -- ../../projects/BG01_Background_Ready_20260914/cimc_v02/map.json",
+      "exitCode": 0,
+      "log": ".cache/BG01/cli-calibrated-cimc.log"
+    },
+    {
+      "command": "node scripts/BG01-display-performance.mjs --output .cache/BG01/performance-production-02 --start-signal .cache/BG01/performance-start-20260914.txt",
+      "exitCode": 0,
+      "receipt": ".cache/BG01/performance-receipt.json"
+    }
+  ],
+  "productionCasesLatestResult": {
+    "passed": 146,
+    "failed": 0,
+    "basis": "union by file and title: initial 145, targeted 20 after test locator corrections plus 1 added recovery case; not a single 146-case execution",
+    "BG01": 6
+  },
+  "regressionExclusions": {
+    "MQ01_repaired.spec.ts": "separate historical map-repair artifact batch, not affected product regression",
+    "BG01_assets.spec.ts": "executed separately on development server for adapter imports"
+  },
+  "failuresClosed": [
+    {
+      "file": "tests/e2e/GA01_reload.spec.ts",
+      "count": 2,
+      "cause": "ambiguous generic file input after supported background inputs added",
+      "fix": "existing json-file-input selector; all geometry/frame/history assertions retained"
+    },
+    {
+      "file": "tests/e2e/rectangleEditing.spec.ts",
+      "count": 1,
+      "cause": "label sampling canvas index shifted by raster canvas",
+      "fix": "sample existing label overlay at updated index; same glyph color/size and geometry/history assertions retained"
+    }
+  ],
+  "originalProtection": {
+    "matches": 37,
+    "changed": 0,
+    "checks": [
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\cimc_v02\\map.json",
+        "sha256": "0eda616cf8bef738d7e099eb2870ef2698ec0c6378c4f1d2452f0845ac4fe5af"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\cimc_v02\\reference\\satellite_local.jpg",
+        "sha256": "8ec6e74a72c9757f7113a440832dc9d9166518fe7f9da75979629a2cdb2ef713"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\cimc_v02\\reference\\georeference.json",
+        "sha256": "32bce9355958f148376d538d1c832497900442c393ff747a723a2b84e2cbb833"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\cimc_v01\\manifest.json",
+        "sha256": "1c3d8c10ecbf03427b31932af4653c33cc15b658f855107961da0252116ca823"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\cimc_v01\\map.json",
+        "sha256": "93f4ef7c79286a2748649b4e9a901462bbf631e117931341f2b4b8b8cb8f85a1"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\dalian_v02\\map.json",
+        "sha256": "a06fa3910079d74e3e90f1b23fd840c64640500097d7ae8a057ad82293187656"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\dalian_v02\\reference\\satellite_local.jpg",
+        "sha256": "aee4ac3f98aa00caf4bf4cf1137916ccf5dc089058991e9d0ae83c271127a3ac"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\dalian_v02\\reference\\georeference.json",
+        "sha256": "50c5ad82ec961b1c2dded4beca95a9b1dc610b7267e2ec1995517b5b681d4aed"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\geoje_v02\\map.json",
+        "sha256": "6313e6cff2bda3fe418d3cf9b51c0fe413495f088d882892c58ac60ef827e0e9"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\geoje_v02\\reference\\satellite_local.jpg",
+        "sha256": "74f987a52cc79cde95010b0c12badbbadb8f8f987588327f808786f5fa4094ec"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\geoje_v02\\reference\\georeference.json",
+        "sha256": "e70312c98896869d399a63c008193200913e2462583f590ede16fde6833f33da"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\hanwha_v02\\map.json",
+        "sha256": "d9b3b76bf075e3e802088231b4af0c17d48dd8751c1c89bb1a66f82feada7d1d"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\hanwha_v02\\reference\\satellite_local.jpg",
+        "sha256": "30b360bbdbc0723efdcd754a1d14d218ed7d44bfbd40fbfc6f7e7f3a45bfd1b7"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\hanwha_v02\\reference\\georeference.json",
+        "sha256": "4b9c50eec4981ab7a9e394b0686ad83ac638f0896f661303dcf42e8571d57c72"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\hanwha_v01\\manifest.json",
+        "sha256": "861b95693b9d4fc7c3b9f7361a995513dd36c2a42bdc104fb739d01d53c63502"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\hanwha_v01\\map.json",
+        "sha256": "095c6553c437bb9e5b6df7cafe2e2e04a8061c3aec0db4b739104a2cd0f2a3f9"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\hudong_v02\\map.json",
+        "sha256": "7f0cfb8a235830c7d42e5cd807a9d5f85fd87a57063484c65568617ac5a71cd1"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\hudong_v02\\reference\\satellite_local.jpg",
+        "sha256": "94e399114c3f57892b7b6c15da176da82c953f3be9627dac16a93e8d1885274a"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\hudong_v02\\reference\\georeference.json",
+        "sha256": "26b145278d287f703d0a293b0de145436642b774282d3ad1555958149a105e81"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\hudong_v01\\manifest.json",
+        "sha256": "b2e323cd83857f49a67c27fa068b47146fdc9b936f585a72867cb5b1150499d9"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\hudong_v01\\map.json",
+        "sha256": "4ca9e2ea2e58b9e720dac9cc3800bdaddeee3bb464cd3fec79be1b4e95f269ba"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\newtimes_v02\\map.json",
+        "sha256": "101d6882283caa6af8c5afde0b3173f7fc47ebd8189cdb6dcea6a2a6be39fff1"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\newtimes_v02\\reference\\satellite_local.jpg",
+        "sha256": "0fa808ab28b66fda2dc877bd87c80d66551cc33396ad8f8df6272357d37140cc"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\newtimes_v02\\reference\\georeference.json",
+        "sha256": "1dda406312920c4b6ba3b708433fc85eefd3474f50be7a14048a9fc9bccc0a6e"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\newtimes_v01\\manifest.json",
+        "sha256": "5d0c3128272857522c2314db35ed09516ce1136c8697827c582dec854a8c5e2d"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\newtimes_v01\\map.json",
+        "sha256": "5cfc58038be77059bca888232fb72a788e7a06748b674c9105e589d9d32bbb60"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\samho_v02\\map.json",
+        "sha256": "bfd98ddde9da61625e85e43b54805d146a8c8f6ceba543043b172550fea1463e"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\samho_v02\\reference\\satellite_local.jpg",
+        "sha256": "c60326fdcd94ecb8917e3a47ed2f251715a807d0573cd9798719c62d11dbf58a"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\samho_v02\\reference\\georeference.json",
+        "sha256": "38e9dcc79f21a33e2bcb729cec0ffb341c5d37d6ea00ff07f1a863a3f67b06aa"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\samho_v01\\manifest.json",
+        "sha256": "ed5c0632229790d7eed7c69827963a69b7c09668339f3777a3bfabc59e3df7d0"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\samho_v01\\map.json",
+        "sha256": "283b1f88257b56bde37161f0a726fbbd766a5a166502da2a9a5c3638801dbb59"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\weihai_v02\\map.json",
+        "sha256": "420dcf275a16664a34d68bc8371ddce8012954eb5ce6a28c29a6793e7a28e545"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\xinyangzi_v02\\map.json",
+        "sha256": "8679a1b5807351f2a7d1c5e6c7ec3dbe5338a751932522df6a924104ae7a3fbd"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\xinyangzi_v02\\reference\\satellite_local.jpg",
+        "sha256": "53ca28aba9b44873af1155275bf0a9b9ed7f0f1c4ad7436b643f5cf0817e49d3"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\Map_Refinement_20260912\\xinyangzi_v02\\reference\\georeference.json",
+        "sha256": "eaf41355ba802c03fd394397cb91510766fb14cf6d514c7598f62c7780a791fd"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\xinyangzi_v01\\manifest.json",
+        "sha256": "f9f93992b2feefba1c6d366bc8826df76189c2a02883f82bb3e79183a7b28203"
+      },
+      {
+        "path": "E:\\00.资料\\00.博士课题\\00..小论文\\Path Planing and Scheduling\\projects\\xinyangzi_v01\\map.json",
+        "sha256": "9576f15e37ad3e680fd34f88c14d8997628d08b585f89a43190ff10d347dc6a5"
+      }
+    ]
+  },
+  "screenshotsAndRecording": {
+    ".cache/BG01/delivery/01-calibrated-overlay.png": "b48fbd59628a037017aa1a9392a94f2a2955d1d68404dc8ed97e1993f8ceb884",
+    ".cache/BG01/delivery/02-image-comparison.png": "77af6566f5b593d69e05af562ef6a646ca397380f6d2f2c53e3338a3bca0ba57",
+    ".cache/BG01/delivery/03-restored-image-and-map.png": "f44e93f0487ff2f741daf1c62ef3e4d1b2ef2f42614081661d2f99ba1f7e44c8",
+    ".cache/BG01/delivery/04-vector-editing.png": "c9122d70b8efc723b4826cc6a51f967443c0de1b59ad0f5a5d6e3ec7825d7b61",
+    ".cache/BG01/delivery/06-affine-controls.png": "51ec4436a370d900f31c570e0f36932815fbf82850a81af4a8981a5287b65352",
+    ".cache/BG01/delivery/07-relinked-and-reopened.png": "5793d08dc66bc07eb4bc2f1e1b3341efb21c7eb9122f4de13dc60643c3113ad1",
+    ".cache/BG01/delivery/hidden-same-camera.png": "14008bbcf1de2abb05eda88b51d104667736530a7cf40539dee7922c05159f0a",
+    ".cache/BG01/delivery/real-editor-workflow.webm": "452e290a0ab4d37aed27904d3f3915732dc60f0b38a42dd437e4f12b559f69df",
+    ".cache/BG01/delivery/visible-same-camera.png": "ee517b80e0d4ef5c305834a0b656cd4ed5dec05b55b94a7b60bac81c63a95784"
+  },
+  "limitations": [
+    "four frozen SR02 maps missing; suites remain exit 1",
+    "actual GeoTIFF source unavailable and optional rasterio absent; no runtime success claim",
+    "ZIP not implemented; JSON contains no image bytes",
+    "performance scope single Dalian raster and measured track; 196.1 ms visible warmup stall remains unexplained",
+    "no push"
+  ],
+  "sourceHashNote": "Text SHA normalized to LF to match Git checkout; synthetic binary fixtures hashed as raw bytes. Receipt does not hash itself.",
+  "reviews": [
+    {
+      "path": ".cache/BG01/correctness-domain-storage.json",
+      "sha256": "031382f5bcab1cbc39f48297d3c1051f0ca61c56086f37f77ec375603f6f75cf"
+    },
+    {
+      "path": ".cache/BG01/inputs-final-handoff.json",
+      "sha256": "543922dc236a3b196b07d34ebabff4cc2f26c6e2dcc3a8e9a165b57fa2158d17"
+    },
+    {
+      "path": ".cache/BG01/acceptance-closure.json",
+      "sha256": "a36bd2e519041d00eb6af225e62c8ac5c891e0bbb34181dd94484f3c6639de0a"
+    },
+    {
+      "path": ".cache/BG01/regression-review.json",
+      "sha256": "60a5150323fdabe34a42c0c5cb7a0c254561dcbe1585497a5dcecfe93cadaca4"
+    },
+    {
+      "path": ".cache/BG01/ponytail-final-review.json",
+      "sha256": "574ef1c383fe0fe6cb8d78748ceeda685890d654b584ef444d27f7aa2fc203a2"
+    }
+  ]
+}

@@ -1,14 +1,16 @@
+import { rasterBytes } from './rasterFiles';
 import {
   ProjectPersistenceError, persistenceError, validateEditorState,
-  type EditorState, type EditorStateInput, type ProjectStorePort, type ProjectSummary, type StoredProject,
+  type EditorState, type EditorStateInput, type ProjectStorePort, type ProjectSummary, type StoredProject, type RasterAssetBytes, type RasterAssetStorePort,
 } from '../editor/projectController';
 
 const PROJECTS = 'projects';
 const META = 'metadata';
 const VIEWS = 'editorStates';
+const ASSETS = 'assetBlobs';
 
 /** Browser-only adapter. Map JSON, viewport records and future binary assets are separate stores. */
-export class IndexedDBProjectStore implements ProjectStorePort {
+export class IndexedDBProjectStore implements ProjectStorePort, RasterAssetStorePort {
   private connection: Promise<IDBDatabase> | null = null;
   constructor(readonly databaseName = 'shipyard-map-projects') {}
 
@@ -16,13 +18,16 @@ export class IndexedDBProjectStore implements ProjectStorePort {
     if (!this.connection) this.connection = new Promise((resolve, reject) => {
       if (typeof indexedDB === 'undefined') { reject(new ProjectPersistenceError('PROJECT_STORAGE_UNAVAILABLE', '当前浏览器不支持 IndexedDB；仍可编辑与导出 JSON。')); return; }
       let failed = false;
-      const request = indexedDB.open(this.databaseName, 1);
+      const request = indexedDB.open(this.databaseName, 2);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(PROJECTS)) db.createObjectStore(PROJECTS, { keyPath: 'projectId' });
         if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
         if (!db.objectStoreNames.contains(VIEWS)) db.createObjectStore(VIEWS);
-        // No binary-asset support is claimed in M1.1. Future assets must get their own store/version.
+        if (!db.objectStoreNames.contains(ASSETS)) {
+          const assets = db.createObjectStore(ASSETS, { keyPath: ['projectId', 'sha256'] });
+          assets.createIndex('sha256', 'sha256', { unique: false });
+        }
       };
       request.onerror = () => { failed = true; this.connection = null; reject(persistenceError(request.error)); };
       request.onblocked = () => {
@@ -111,5 +116,56 @@ export class IndexedDBProjectStore implements ProjectStorePort {
   setLastProject(projectId: string): Promise<void> { return this.write(META, 'lastProjectId', projectId); }
   readEditorState(projectId: string): Promise<EditorStateInput | null> { return this.read(VIEWS, projectId); }
   writeEditorState(projectId: string, state: EditorState): Promise<void> { return this.write(VIEWS, projectId, validateEditorState(state)); }
+  async putAssetBytes(projectId: string, asset: RasterAssetBytes): Promise<void> {
+    this.checkAssetKey(projectId, asset.sha256);
+    const checked = await rasterBytes(asset.bytes);
+    if (checked.sha256 !== asset.sha256 || checked.width !== asset.width || checked.height !== asset.height || checked.mimeType !== asset.mimeType) {
+      throw new ProjectPersistenceError('ASSET_HASH_MISMATCH', '底图字节、摘要或尺寸不匹配，未保存。');
+    }
+    const db = await this.database();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(ASSETS, 'readwrite');
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(persistenceError(transaction.error));
+      transaction.onerror = () => { /* Completion, not request success, confirms durable bytes. */ };
+      try { transaction.objectStore(ASSETS).put({ projectId, ...checked }); }
+      catch (error) { transaction.abort(); reject(persistenceError(error)); }
+    });
+  }
+
+  async getAssetBytes(projectId: string, sha256: string): Promise<RasterAssetBytes | null> {
+    this.checkAssetKey(projectId, sha256);
+    const db = await this.database();
+    const found = await new Promise<(RasterAssetBytes & { projectId: string }) | null>((resolve, reject) => {
+      const transaction = db.transaction(ASSETS, 'readonly'), store = transaction.objectStore(ASSETS);
+      let result: (RasterAssetBytes & { projectId: string }) | null = null;
+      const own = store.get([projectId, sha256]);
+      own.onsuccess = () => {
+        if (own.result) result = own.result;
+        else {
+          const shared = store.index('sha256').get(sha256);
+          shared.onsuccess = () => { result = shared.result ?? null; };
+        }
+      };
+      transaction.oncomplete = () => resolve(result);
+      transaction.onabort = () => reject(persistenceError(transaction.error));
+      transaction.onerror = () => { /* Await abort. */ };
+    });
+    if (!found) return null;
+    const checked = await rasterBytes(found.bytes);
+    if (found.sha256 !== sha256 || checked.sha256 !== sha256 || checked.width !== found.width || checked.height !== found.height || checked.mimeType !== found.mimeType) {
+      throw new ProjectPersistenceError('ASSET_HASH_MISMATCH', '已存底图校验失败；未使用错误图片，可重新选择原始文件。');
+    }
+    // Reimport into another project reuses only bytes validated against the declared hash.
+    if (found.projectId !== projectId) await this.putAssetBytes(projectId, checked);
+    return checked;
+  }
+
+  private checkAssetKey(projectId: string, sha256: string): void {
+    if (typeof projectId !== 'string' || !projectId || projectId.length > 200 || !/^[a-f0-9]{64}$/.test(sha256)) {
+      throw new ProjectPersistenceError('ASSET_KEY_INVALID', '底图存储需要有效工程 ID 和 SHA-256 摘要。');
+    }
+  }
+
   async close(): Promise<void> { if (this.connection) (await this.connection).close(); this.connection = null; }
 }

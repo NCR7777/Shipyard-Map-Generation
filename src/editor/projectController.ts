@@ -30,9 +30,39 @@ export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
 });
-export interface EditorState { camera: Camera; drawing: DrawingConfig; workbench?: WorkbenchPreferences }
+export interface BackgroundLayerPreference { visible: boolean; opacity: number; locked: boolean }
+export interface BackgroundPreferences { comparisonMode: boolean; layers: Record<string, BackgroundLayerPreference> }
+export const DEFAULT_BACKGROUND_LAYER_PREFERENCE: Readonly<BackgroundLayerPreference> = Object.freeze({ visible: true, opacity: 1, locked: true });
+export interface EditorState { camera: Camera; drawing: DrawingConfig; workbench?: WorkbenchPreferences; backgrounds?: BackgroundPreferences }
 /** Legacy camera-only records and partial drawing settings are normalized at the storage boundary. */
-export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> & { showLabels?: boolean }; workbench?: Partial<WorkbenchPreferences> }
+export interface EditorStateInput { camera: Camera; drawing?: Partial<DrawingConfig> & { showLabels?: boolean }; workbench?: Partial<WorkbenchPreferences>; backgrounds?: { comparisonMode?: boolean; layers?: Record<string, Partial<BackgroundLayerPreference>> } }
+export interface RasterAssetBytes { sha256: string; mimeType: 'image/png' | 'image/jpeg' | 'image/webp'; width: number; height: number; bytes: ArrayBuffer }
+/** Binary storage is separate from the map CAS queue and works without DOM types. */
+export interface RasterAssetStorePort {
+  putAssetBytes(projectId: string, asset: RasterAssetBytes): Promise<void>;
+  getAssetBytes(projectId: string, sha256: string): Promise<RasterAssetBytes | null>;
+}
+export function validateBackgroundPreferences(value: unknown): BackgroundPreferences {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['comparisonMode', 'layers'].includes(key))) {
+    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '底图设置只能包含 comparisonMode 和 layers。');
+  }
+  const input = value as Record<string, unknown>;
+  if ('comparisonMode' in input && typeof input.comparisonMode !== 'boolean') throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '底图对比模式必须是布尔值。');
+  const supplied = input.layers ?? {};
+  if ('layers' in input && (!input.layers || typeof input.layers !== 'object' || Array.isArray(input.layers))) throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '底图图层设置必须是字典。');
+  const layers: Record<string, BackgroundLayerPreference> = {};
+  const entries = Object.entries(supplied);
+  if (entries.length > 2048) throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '底图图层设置数量超出限制。');
+  for (const [id, candidate] of entries) {
+    if (!id || id.length > 200 || !candidate || typeof candidate !== 'object' || Array.isArray(candidate)
+      || Object.keys(candidate).some(key => !['visible', 'opacity', 'locked'].includes(key))) throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '底图设置 ID 或字段无效。');
+    const preference = { ...DEFAULT_BACKGROUND_LAYER_PREFERENCE, ...candidate };
+    if (typeof preference.visible !== 'boolean' || typeof preference.locked !== 'boolean' || typeof preference.opacity !== 'number'
+      || !Number.isFinite(preference.opacity) || preference.opacity < 0 || preference.opacity > 1) throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '底图显隐、锁定或透明度无效。');
+    Object.defineProperty(layers, id, { value: preference, enumerable: true, configurable: true, writable: true });
+  }
+  return { comparisonMode: input.comparisonMode === true, layers };
+}
 export interface ProjectSnapshot { mapJson: string; contentHash: string; savedAt: number }
 export interface StoredProject {
   formatVersion: 1;
@@ -88,7 +118,7 @@ export function validateEditorState(value: unknown): EditorState {
     || typeof camera.offsetX !== 'number' || !Number.isFinite(camera.offsetX)
     || typeof camera.offsetY !== 'number' || !Number.isFinite(camera.offsetY)
     || typeof camera.scale !== 'number' || !Number.isFinite(camera.scale) || camera.scale <= 0
-    || Object.keys(value).some(key => !['camera', 'drawing', 'workbench'].includes(key)) || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
+    || Object.keys(value).some(key => !['camera', 'drawing', 'workbench', 'backgrounds'].includes(key)) || Object.keys(camera).some(key => !['offsetX', 'offsetY', 'scale'].includes(key))) {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '视窗偏移必须有限，比例必须为正的有限值；不能混入领域数据或临时交互。');
   }
   if ('drawing' in value && (!value.drawing || typeof value.drawing !== 'object' || Array.isArray(value.drawing)
@@ -119,7 +149,7 @@ export function validateEditorState(value: unknown): EditorState {
     try { workbench = validateWorkbenchPreferences(value.workbench); }
     catch { throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '工作台布局或保存目标设置无效。'); }
   }
-  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing: { ...drawing, hiddenTypes: [...drawing.hiddenTypes], lockedTypes: [...drawing.lockedTypes] }, ...(workbench ? { workbench } : {}) };
+  return { camera: { offsetX: camera.offsetX, offsetY: camera.offsetY, scale: camera.scale }, drawing: { ...drawing, hiddenTypes: [...drawing.hiddenTypes], lockedTypes: [...drawing.lockedTypes] }, ...(workbench ? { workbench } : {}), ...('backgrounds' in value ? { backgrounds: validateBackgroundPreferences(value.backgrounds) } : {}) };
 }
 
 export interface ActiveProject {

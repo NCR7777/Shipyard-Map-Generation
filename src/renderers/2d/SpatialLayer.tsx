@@ -9,6 +9,7 @@ import type { BoundaryPreview } from './BoundaryHandles';
 import { useCurrentCallback } from '../../ui/useCurrentCallback';
 
 export interface SpatialLayerProps {
+  comparisonMode?: boolean;
   hiddenTypes?: readonly SceneKind[]; canDrag?: (kind: keyof Selection, id: string) => boolean;
   visibleKeys?: ReadonlySet<string>; onHover?: (key: string | null) => void;
   scene: SceneSnapshot; camera: Camera; selection: Selection; previewDelta: Vec3 | null; boundaryPreview?: BoundaryPreview | null;
@@ -86,7 +87,7 @@ export function SpatialLayer(props: SpatialLayerProps) {
     const fill = item.entityType === 'facilities' ? '#c7e3df' : item.kind === 'water' ? '#bad8ef' : item.kind === 'obstacle' || item.kind === 'forbidden' ? '#ead0cc' : '#e8e3c6';
     return <Group _useStrictMode key={item.entityType + item.id} x={anchor[0]} y={anchor[1]} draggable={!props.disableDrag && props.selecting && !props.readonly && (props.canDrag?.(item.entityType, item.id) ?? true)}
       entityKind={item.entityType} entityId={item.id} {...events}>
-      <Shape fill={fill} stroke={selected ? '#d57921' : item.entityType === 'facilities' ? '#497e75' : '#929174'} strokeWidth={selected ? 3 : 1.5} fillRule="evenodd"
+      <Shape fill={props.comparisonMode ? fill + '24' : fill} stroke={selected ? '#d57921' : item.entityType === 'facilities' ? '#497e75' : '#929174'} strokeWidth={selected ? 3 : 1.5} fillRule="evenodd"
         sceneFunc={(context, shape) => { context.beginPath(); for (const ring of rings) { ring.forEach((point, index) => { if (!index) context.moveTo(point[0]!, point[1]!); else context.lineTo(point[0]!, point[1]!); }); context.closePath(); } context.fillStrokeShape(shape); }} />
     </Group>;
   })}</>;

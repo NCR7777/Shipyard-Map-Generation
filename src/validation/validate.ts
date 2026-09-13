@@ -183,7 +183,7 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
     const segments = asset.path.split('/');
     if (!asset.path.startsWith('assets/') || segments.length < 2 || segments.some(s => s === '' || s === '.' || s === '..') || /[\\:]/.test(asset.path) || [...asset.path].some(char => char.charCodeAt(0) < 32))
       issues.push(issue('UNSAFE_ASSET_PATH', path + '/path', '资源必须为 assets/ 下相对路径，禁止空路径段、点段、盘符、反斜杠及控制字符。'));
-    issues.push(issue('ASSET_NOT_RESOLVED', path, 'M2A 仅保留资源引用，未读取或校验二进制资源；矢量地图仍然可用。', 'warning'));
+    issues.push(issue('ASSET_NOT_RESOLVED', path, '结构校验未读取图片二进制；图片加载状态与 SHA 校验由当前本地项目另行确认。', 'warning'));
   }
   for (const [id, background] of Object.entries(map.backgroundLayers)) {
     const path = '/backgroundLayers/' + pointer(id);

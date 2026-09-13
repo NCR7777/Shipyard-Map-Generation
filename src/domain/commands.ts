@@ -2,6 +2,7 @@ import type { AccessPoint, Facility, Issue, MapNode, MapRoad, PhysicalValue, Ser
 import { validateMap } from '../validation/validate';
 import { inspectSpatialEdit } from '../validation/spatialDiagnostics';
 import { mapCapabilities } from './capabilities';
+import { BackgroundError, isBackgroundCommand, runBackgroundCommand, type BackgroundCommand } from './backgrounds';
 import { contentHash, serializeMap } from './serialization';
 import { transformPolygon, normalizePolygonBetweenVertices } from '../geometry/polygons';
 import { polylineLength2D, roadPoints } from '../geometry/roads';
@@ -45,6 +46,7 @@ export type MapCommand =
   | { type: 'rotateSelection'; selection: Selection; pivot: Vec3; angleRad: number; facilityMovePolicy?: FacilityMovePolicy; zoneMovePolicy?: ZoneMovePolicy }
   | { type: 'duplicateSelection'; selection: Selection; delta: Vec3; idMap: Record<string, string>; associationPolicy?: 'retainFacility' | 'retainOwner' | 'rejectExternal' }
   | TopologyCommand
+  | BackgroundCommand
   | { type: 'deleteSelection'; topologyPolicy?: 'reject' | 'cascade'; selection: Selection; facilityPolicy?: 'reject' | 'withAssociatedPoints'; zonePolicy?: 'reject' | 'withAssociatedPoints'; orphanNodes?: 'keep' | 'deleteUnused' }
   | { type: 'splitRoad'; id: string; distanceM: number; nodeId: string; existingNode?: boolean; newRoadIds: [string, string] };
 
@@ -100,7 +102,7 @@ export function closureSelection(map: YardMap, selection: Selection): FullSelect
   for (const id of selected.roads) selected.nodes.push(map.roads[id]!.fromNodeId, map.roads[id]!.toNodeId);
   return normalizeSelection(selected);
 }
-export interface CommandAffectedRef { kind: SelectionKind | 'junctions' | 'movements' | 'resources' | 'slots' | 'sources' | 'extensions' | 'siteBoundary'; id: string; ownerId?: string }
+export interface CommandAffectedRef { kind: SelectionKind | 'junctions' | 'movements' | 'resources' | 'slots' | 'sources' | 'extensions' | 'siteBoundary' | 'assets' | 'backgroundLayers'; id: string; ownerId?: string }
 export interface SelectionImpact {
   affectedRefs: CommandAffectedRef[];
   selection: FullSelection;
@@ -298,6 +300,11 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
     if (command.type === 'upgradeSchema') return { allowed: true, issues: [], affectedRefs: [] };
     const capability = mapCapabilities(map);
     if (!capability.editable) return { allowed: false, issues: [problem('READ_ONLY_MAP', capability.reasons.join(' '))], affectedRefs: [] };
+    if (isBackgroundCommand(command)) {
+      const candidate = { ...map, assets: { ...map.assets }, backgroundLayers: structuredClone(map.backgroundLayers), sources: { ...map.sources } };
+      const affectedRefs = runBackgroundCommand(candidate, command);
+      return { allowed: true, issues: [], affectedRefs };
+    }
     if (command.type === 'normalizeSiteBoundary') {
       if (Object.keys(command).some(key => key !== 'type')) fail('INVALID_COMMAND', '厂界清理不接收几何或其他参数。', '/siteBoundary');
       if (!map.siteBoundary) return { allowed: true, issues: [], affectedRefs: [] };
@@ -432,7 +439,7 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
     }
     return { allowed: true, issues: [], affectedRefs: [] };
   } catch (error) {
-    return { allowed: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '无法检查操作依赖。', error instanceof CommandError || error instanceof TopologyError ? error.path : '')], affectedRefs: [] };
+    return { allowed: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '无法检查操作依赖。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError ? error.path : '')], affectedRefs: [] };
   }
 }
 export function freezeMap(map: YardMap): YardMap {
@@ -676,6 +683,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   const next = structuredClone(input); let mapping: SplitMapping | undefined;
   try {
     switch (command.type) {
+      case 'addBackground': case 'updateBackgroundTransform': case 'deleteBackground': case 'replaceBackgroundAsset': runBackgroundCommand(next, command); break;
       case 'addNode': put(next, next.nodes, command.id, command.node); break;
       case 'addRoad': put(next, next.roads, command.id, command.road); break;
       case 'updateNode':
@@ -733,7 +741,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'mergeNodes': case 'connectNodeToRoad': case 'suppressDegree2Node': mapping = executeTopology(next, command); break;
       default: return { ok: false, issues: [problem('UNKNOWN_COMMAND', '未支持的领域命令。')] };
     }
-  } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError || error instanceof TopologyError ? error.path : '')] }; }
+  } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError ? error.path : '')] }; }
   if (!sameValue(input.coordinateFrame, next.coordinateFrame)) return { ok: false, issues: [problem('COORDINATE_FRAME_LOCKED', '普通本地编辑不得改变坐标框架；请通过显式文档替换操作打开另一框架。', '/coordinateFrame')] };
   const report = validateMap(next);
   if (!report.ok) return { ok: false, issues: report.issues };

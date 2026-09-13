@@ -14,7 +14,7 @@ async function ready(page: Page) {
 async function saved(page: Page) { await expect(page.getByTestId('browser-save-status')).toContainText('已保存', { timeout: 30000 }); }
 async function projectKeys(page: Page): Promise<string[]> {
   return page.evaluate(() => new Promise<string[]>((resolve, reject) => {
-    const request = indexedDB.open('shipyard-map-projects', 1);
+    const request = indexedDB.open('shipyard-map-projects');
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result; const tx = db.transaction('projects', 'readonly');

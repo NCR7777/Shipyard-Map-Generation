@@ -1,3 +1,4 @@
+import { BackgroundImages, BackgroundControls, type BackgroundCanvasProps } from './BackgroundCanvas';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { useFrameCamera } from '../../ui/useFrameCamera';
@@ -27,6 +28,7 @@ export interface PointPick { mode: 'existing' | 'new'; nodeId?: string; position
 export type TopologyTarget = { kind: 'nodes'; id: string; position: Vec3 } | { kind: 'roads'; id: string; position: Vec3; distanceM: number };
 export interface DraftRoad { fromNodeId: string; points: Vec3[] }
 interface Props {
+  backgrounds?: Omit<BackgroundCanvasProps, 'camera' | 'readCamera'>; comparisonMode?: boolean;
   routePreview?: { mapContentHash: string; points: Vec3[]; confirmed: boolean } | null;
   diagnosticPosition?: Vec3 | null;
   scene: SceneSnapshot;
@@ -81,6 +83,7 @@ function tickStep(scale: number): number {
 function roundTick(value: number): string { return Number(value.toPrecision(8)).toString(); }
 
 export function MapCanvas(props: Props) {
+  const [backgroundPreview, setBackgroundPreview] = useState<{ id: string; transform: import('../../geometry/backgrounds').BackgroundTransform } | null>(null);
   const wrapper = useRef<HTMLDivElement>(null);
   const stage = useRef<KonvaStage>(null);
   const pan = useRef<{ pointer: Vec2 } | null>(null);
@@ -249,7 +252,7 @@ export function MapCanvas(props: Props) {
     }
   }
   function handleStageClick(event: KonvaEventObject<MouseEvent>) {
-    if (boundaryActiveRef.current || event.target !== event.target.getStage() || event.evt.button !== 0) return;
+    if (props.backgrounds?.adjustingId || boundaryActiveRef.current || event.target !== event.target.getStage() || event.evt.button !== 0) return;
     const screen = pointer(); if (!screen) return;
     if (props.splitPickRoadId) { pickSplit(screen); return; }
     drawAt(screen);
@@ -263,7 +266,7 @@ export function MapCanvas(props: Props) {
     }
   }
   function drawAt(screen: Vec2) {
-    if (boundaryActiveRef.current) return;
+    if (props.backgrounds?.adjustingId || boundaryActiveRef.current) return;
     if (props.pointPick) {
       if (props.readonly) return;
       if (props.pointPick.mode === 'new') props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, props.snap).world });
@@ -410,7 +413,7 @@ export function MapCanvas(props: Props) {
     props.onTranslate([value[0] - origin[0], value[1] - origin[1], 0]);
   });
   const spatialProps: SpatialLayerProps = {
-    hiddenTypes: props.hiddenTypes, visibleKeys: display.keys, onHover: hover, canDrag: props.canDrag,
+    comparisonMode: props.comparisonMode, hiddenTypes: props.hiddenTypes, visibleKeys: display.keys, onHover: hover, canDrag: props.canDrag,
     scene: props.scene, camera: props.camera, selection: props.selection, previewDelta, boundaryPreview,
     snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && props.tool === 'road', movingNodeIds: selectedNodeIds,
     disableDrag: !!props.splitPickRoadId || props.hasUnappliedInput || boundaryActive, pickingPoint: !!props.pointPick, onPickNode: pickNode,
@@ -447,11 +450,12 @@ export function MapCanvas(props: Props) {
         const point = pointer(); if (!point) return;
         props.frameCamera.queue(current => zoomAt(current, point, Math.min(100, Math.max(Number.MIN_VALUE, current.scale * (event.evt.deltaY < 0 ? 1.15 : 1 / 1.15)))));
       }}>
-      <Layer listening={false}>
+      {props.backgrounds && <BackgroundImages items={props.backgrounds.items} camera={props.camera} preview={backgroundPreview}/>}
+      <Layer listening={false} opacity={props.backgrounds?.items.length ? 0.3 : 1}>
         {grid.filter(tick => Number.isFinite(tick.pixel)).map((tick, index) => <Line key={'grid-' + index} points={tick.axis === 'x' ? [tick.pixel, 0, tick.pixel, size.height] : [0, tick.pixel, size.width, tick.pixel]} stroke={Math.abs(tick.value) < 1e-9 ? '#8ba6b4' : '#e5edf1'} strokeWidth={Math.abs(tick.value) < 1e-9 ? 1.5 : 1} />)}
         {grid.filter(tick => Number.isFinite(tick.pixel)).map((tick, index) => <Text key={'label-' + index} x={tick.axis === 'x' ? tick.pixel + 4 : 5} y={tick.axis === 'x' ? 6 : tick.pixel + 4} text={roundTick(tick.value)} fill="#7b8f9d" fontSize={10} />)}
       </Layer>
-      <Layer listening={!boundaryActive}>
+      <Layer listening={!boundaryActive && !props.backgrounds?.adjustingId}>
         <DeclaredLayer backdrop items={props.scene.items} visibleKeys={display.keys} onHover={hover} camera={props.camera} hiddenTypes={props.hiddenTypes ?? []} selectedKey={focusKey} onSelect={item => props.onInspect?.(item)} selection={props.selection} previewDelta={previewDelta} movingJunctionIds={props.movingJunctionIds ?? []}/>
         <SpatialLayer {...spatialProps} />
         {/* All bands precede all auxiliary lines, then nodes/associated points and edit handles.
@@ -459,7 +463,7 @@ export function MapCanvas(props: Props) {
         {props.roadDisplay.showRoadBands && visibleRoads.map(road => road.bandWidthPx !== null &&
           <Line key={road.id} roadId={road.id} name="road-band" points={road.screenPoints}
             stroke={props.selection.roads.includes(road.id) ? '#efbb82' : '#b7d0db'}
-            strokeWidth={road.bandWidthPx} hitStrokeWidth={Math.max(14, road.bandWidthPx)} lineCap="round" lineJoin="round"
+            opacity={props.comparisonMode ? 0.25 : 1} strokeWidth={road.bandWidthPx} hitStrokeWidth={Math.max(14, road.bandWidthPx)} lineCap="round" lineJoin="round"
             onMouseEnter={onRoadEnter} onMouseLeave={onShapeLeave} onClick={onRoadClick} />)}
         {visibleRoads.map(road => {
           // Unknown/unrestricted/not-applicable (or unprojectable) never become a fabricated band.
@@ -492,10 +496,12 @@ export function MapCanvas(props: Props) {
         {spatialPreview.length > 1 && <Line points={spatialPreview.flatMap(point => worldToScreen(point, props.camera))} stroke="#bd741d" strokeWidth={2} dash={[7, 5]} />}
         {drawing.vertices.map((point, index) => { const p = worldToScreen(point, props.camera); return <Circle key={index} x={p[0]} y={p[1]} radius={4} fill="#bd741d" />; })}
       </Layer>
+      {props.backgrounds && <BackgroundControls key={props.backgrounds.contextKey + '/' + props.backgrounds.adjustingId} {...props.backgrounds} camera={props.camera} readCamera={props.frameCamera.read} preview={backgroundPreview} onPreview={setBackgroundPreview}/>}
       <BoundaryHandles target={boundaryTarget} mode={props.boundaryEditMode} preview={boundaryPreview} camera={props.camera}
         mapHash={props.scene.mapContentHash} changeToken={props.boundaryChangeToken} contextKey={boundaryContextKey}
         onPreview={setBoundaryPreview} onActive={boundaryInteraction} onError={setBoundaryError} onCommit={props.onBoundaryCommit} />
     </Stage>
+    <output className="sr-only" data-testid="background-render-state" data-adjusting={props.backgrounds?.adjustingId ?? ''} data-loaded={props.backgrounds?.items.length ?? 0} data-preview={backgroundPreview ? JSON.stringify(backgroundPreview.transform) : ''} />
     {boundaryPreview && <output data-testid="boundary-edit-preview" data-width-m={boundaryPreview.widthM} data-height-m={boundaryPreview.heightM} data-clamped={boundaryPreview.clamped ?? false}
       style={{ position: 'absolute', top: 34, left: 14, padding: 8, background: '#fff', border: '1px solid #c9d6d8', borderRadius: 6, pointerEvents: 'none' }}>
       {boundaryPreview.widthM === undefined ? '顶点预览' : '局部宽 ' + roundTick(boundaryPreview.widthM) + ' m × 高 ' + roundTick(boundaryPreview.heightM!) + ' m'}

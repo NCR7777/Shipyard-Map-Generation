@@ -50,7 +50,7 @@ async function externalEdit(page: Page, x: number) {
 
 async function persistedMaps(page: Page): Promise<YardMap[]> {
   const texts = await page.evaluate(() => new Promise<string[]>((resolve, reject) => {
-    const request = indexedDB.open('shipyard-map-projects', 1);
+    const request = indexedDB.open('shipyard-map-projects');
     request.onerror = () => reject(new Error('Cannot inspect real project storage'));
     request.onsuccess = () => {
       const database = request.result;

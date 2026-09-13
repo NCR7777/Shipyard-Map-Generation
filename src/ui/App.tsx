@@ -1,3 +1,9 @@
+import { BackgroundPanel } from './BackgroundPanel';
+import { useBackgroundAssets } from './useBackgroundAssets';
+import { backgroundFrame, translateBackground } from '../geometry/backgrounds';
+import { inspectBackground, isBackgroundCommand } from '../domain/backgrounds';
+import type { BackgroundPreferences } from '../editor/projectController';
+import type { BackgroundVisual } from '../renderers/2d/BackgroundCanvas';
 import { enumerateConnectionTurns, enumerateMergeTurns, type TopologyCommand } from '../domain/topologyEditing';
 import { sameValue } from '../domain/value';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
@@ -68,8 +74,18 @@ export function App() {
   const [workbench, setWorkbench] = useState<WorkbenchPreferences>({ ...DEFAULT_WORKBENCH_PREFERENCES });
   const workbenchRef = useRef(workbench); workbenchRef.current = workbench;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const editorState = useMemo(() => ({ camera, drawing: drawingConfig, workbench }), [camera, drawingConfig, workbench]);
-  const getEditorState = useCallback(() => ({ camera: frameCamera.read(), drawing: drawingRef.current, workbench: workbenchRef.current }), [frameCamera.read]);
+  const [backgroundPreferences, setBackgroundPreferences] = useState<BackgroundPreferences | undefined>();
+  const backgroundRef = useRef(backgroundPreferences); backgroundRef.current = backgroundPreferences;
+  const [backgroundAdjustId, setBackgroundAdjustId] = useState<string | null>(null);
+  const [backgroundDirty, setBackgroundDirty] = useState(false);
+  const [backgroundKeepAspect, setBackgroundKeepAspect] = useState(true);
+  const backgroundActive = useRef(false);
+  const [backgroundPanelOpen, setBackgroundPanelOpen] = useState(false);
+  const resolvedBackgroundPreferences = useMemo(() => backgroundPreferences ?? { comparisonMode: false, layers: {} }, [backgroundPreferences]);
+  const onBackgroundDirty = useCallback((dirty: boolean) => setBackgroundDirty(dirty), []);
+  const onBackgroundActive = useCallback((active: boolean) => { backgroundActive.current = active; }, []);
+  const editorState = useMemo(() => ({ camera, drawing: drawingConfig, workbench, ...(backgroundPreferences ? { backgrounds: backgroundPreferences } : {}) }), [camera, drawingConfig, workbench, backgroundPreferences]);
+  const getEditorState = useCallback(() => ({ camera: frameCamera.read(), drawing: drawingRef.current, workbench: workbenchRef.current, ...(backgroundRef.current ? { backgrounds: backgroundRef.current } : {}) }), [frameCamera.read]);
   function updateWorkbench(patch: Partial<WorkbenchPreferences>) {
     if (!projects.ready || projects.isNavigating()) return;
     const next = { ...workbenchRef.current, ...patch }; workbenchRef.current = next; setWorkbench(next);
@@ -155,6 +171,7 @@ export function App() {
       const restoredWorkbench = { ...DEFAULT_WORKBENCH_PREFERENCES, ...recovery.editorState?.workbench };
       workbenchRef.current = restoredWorkbench; setWorkbench(restoredWorkbench);
       interaction.reset(); activePropertyDraft.current = null; setDrawerOpen(false);
+      backgroundRef.current = recovery.editorState?.backgrounds; setBackgroundPreferences(recovery.editorState?.backgrounds); setBackgroundAdjustId(null); setBackgroundDirty(false); backgroundActive.current = false;
       if (!preserveNative.current) { setLocalState(local.snapshot()); setLocalMessage(''); }
       setExportMessage('尚未导出 JSON');
       setStatus(recovery.source === 'new' ? '新工程已打开；浏览器草稿将自动保存。' : '已恢复浏览器工程，地图经共同校验与派生路径重建。');
@@ -162,16 +179,24 @@ export function App() {
   });
   function currentDraftContext(): DraftContext { return { projectId: projects.activeProjectId() ?? null, changeToken: sessionRef.current.changeToken, mapContentHash: contentHash(sessionRef.current.map) }; }
   const draftContext = useMemo(() => currentDraftContext(), [projects.state.active?.projectId, session.changeToken, session.map]);
-  const unapplied = propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDraft !== null || copyDialog || rotateDialog || splitDialog || splitPicking || topologyDraft !== null;
+  const unapplied = backgroundDirty || propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDraft !== null || copyDialog || rotateDialog || splitDialog || splitPicking || topologyDraft !== null;
   const scene = useMemo(() => toSceneSnapshot(session.map), [session.map]);
   const saveGuard = useRef({ browserDirty: true, unapplied: false });
   saveGuard.current = { browserDirty: projects.editorDirty || projects.state.active?.draftHash !== scene.mapContentHash, unapplied: unapplied || boundaryEditing };
   useEffect(() => setMapName(session.map.metadata.name), [session.map.metadata.name]);
+  const visibleBackgroundLayers = useMemo(() => Object.fromEntries(Object.entries(session.map.backgroundLayers).filter(([id]) => !drawingConfig.hiddenTypes.includes('backgroundLayers') && resolvedBackgroundPreferences.layers[id]?.visible !== false)), [session.map.backgroundLayers, resolvedBackgroundPreferences, drawingConfig.hiddenTypes]);
+  const backgroundAssets = useBackgroundAssets({ projectId: projects.activeProjectId() ?? null, assets: session.map.assets, layers: visibleBackgroundLayers });
+  const backgroundVisuals = useMemo<BackgroundVisual[]>(() => backgroundAssets.items.flatMap(item => {
+    const layer = session.map.backgroundLayers[item.id], asset = layer && session.map.assets[layer.assetId];
+    if (!item.image || !layer || !asset?.widthPx || !asset.heightPx || !inspectBackground(session.map, item.id).supported) return [];
+    return [{ id: item.id, image: item.image, transform: layer.imageToWorld, width: asset.widthPx, height: asset.heightPx, opacity: resolvedBackgroundPreferences.layers[item.id]?.opacity ?? 1 }];
+  }), [backgroundAssets.items, session.map, resolvedBackgroundPreferences]);
   const capabilities = useMemo(() => mapCapabilities(session.map), [session.map]);
   const report = useMemo(() => validateMap(session.map), [session.map]);
   const domainReadonly = !capabilities.editable;
-  const readonly = domainReadonly || !projects.ready || projects.transitioning || localState.busy || schemaUpgrading || saveRunning;
+  const backgroundDisabled = domainReadonly || !projects.ready || projects.transitioning || localState.busy || schemaUpgrading || saveRunning;
   usePropertyDraft(mapName !== session.map.metadata.name ? draftContext : undefined, mapName !== session.map.metadata.name, applyMapName, registerPropertyDraft);
+  const readonly = backgroundDisabled || !!backgroundAdjustId || backgroundDirty;
   const dirty = session.acknowledgedHash !== scene.mapContentHash;
   const validSelection = useMemo(() => {
     const current = normalizeSelection(selection);
@@ -224,7 +249,8 @@ export function App() {
   }
   function apply(command: MapCommand): boolean {
     if (operationsBlocked()) { setStatus('工程或文件操作进行中，暂不接受地图修改。'); return false; }
-    if (inspectionKeys.length) { setOperationIssues([localIssue('INSPECTION_SELECTION_READ_ONLY', '所选厂界、资源或扩展对象仅可检查；请先取消检查选择，不能混入编辑事务。')]); return false; }
+    if (!isBackgroundCommand(command) && (backgroundAdjustId || backgroundDirty)) { setStatus('请先完成底图调整或处理底图候选，再编辑矢量。'); return false; }
+    if (!isBackgroundCommand(command) && inspectionKeys.length) { setOperationIssues([localIssue('INSPECTION_SELECTION_READ_ONLY', '所选厂界、资源或扩展对象仅可检查；请先取消检查选择，不能混入编辑事务。')]); return false; }
     const state = interaction.read();
     if ((state.dialog && !sameDraftContext(state.dialog.context, currentDraftContext())) || ('context' in state.activity && !sameDraftContext(state.activity.context, currentDraftContext()))) {
       setOperationIssues([localIssue('STALE_EDIT_CONTEXT', '工程或地图已变化，请取消旧草稿后重新编辑。')]); return false;
@@ -237,6 +263,7 @@ export function App() {
     updateSession(result.session); setStatus('编辑已提交为一个可撤销事务。'); return true;
   }
   function cancelBoundaryInteraction() {
+    if (backgroundActive.current) { backgroundActive.current = false; setDraftResetToken(value => value + 1); }
     if (!boundaryInteraction.current) return;
     onBoundaryInteractionChange(false); setDraftResetToken(value => value + 1);
   }
@@ -260,13 +287,14 @@ export function App() {
   function discardAndContinue() {
     const intent = leaveIntent;
     if (!intent || operationsBlocked()) return;
-    setLeaveIntent(null); setPropertyDirty(false); setMapName(sessionRef.current.map.metadata.name);
+    setLeaveIntent(null); setBackgroundDirty(false); setPropertyDirty(false); setMapName(sessionRef.current.map.metadata.name);
     setFormEpoch(value => value + 1); setDraftResetToken(value => value + 1); setRoadShapePreview(null);
     setDraftRoad(null); setPolygonDraftDirty(false); setPointDraft(null);
     setCopyDialog(false); setDeleteDialog(false); setRotateDialog(false); setSplitDialog(false); setSplitPicking(false); setTopologyDraft(null);
     setStatus('已明确丢弃未应用输入，继续所选操作。'); intent.action();
   }
   function choose(kind: SelectionKind, id: string, additive: boolean, protect = unapplied) {
+    if (backgroundAdjustId) { setStatus('底图调整期间暂停矢量选择；请完成调整并锁定。'); return false; }
     return requestLeave('切换所选对象', () => {
       setLocatedKey(null);
       if (additive || selectedCount !== 1 || validSelection[kind][0] !== id) setBoundaryEditMode('auto');
@@ -279,7 +307,7 @@ export function App() {
       setTool('select'); updateWorkbench({ rightCollapsed: false });
     }, protect);
   }
-  function changeTool(value: Tool) { requestLeave('切换绘制工具', () => { setInspectionKeys([]); setTool(value); setDraftRoad(null); }); }
+  function changeTool(value: Tool) { if (backgroundAdjustId) { setStatus('请先完成底图调整并锁定。'); return; } requestLeave('切换绘制工具', () => { setInspectionKeys([]); setTool(value); setDraftRoad(null); }); }
   async function upgradeSchema() {
     if (operationsBlocked() || unapplied || sessionRef.current.map.schemaVersion !== '0.1.0') return;
     const before = sessionRef.current;
@@ -330,7 +358,7 @@ export function App() {
     if (draftRoad || polygonDraftDirty || pointDraft || splitPicking || boundaryEditing) { setStatus('请先完成当前绘制；不会自动闭合或补造节点。'); return; }
     const draft = activePropertyDraft.current;
     const request = saveIntent;
-    if (propertyDirty || mapName !== sessionRef.current.map.metadata.name) {
+    if (backgroundDirty || propertyDirty || mapName !== sessionRef.current.map.metadata.name) {
       if (!draft || !sameDraftContext(draft.context, currentDraftContext())) { setStatus('属性输入已过期，请重新选择对象。'); return; }
       if (!draft.apply()) { setSaveIntent(null); return; }
     }
@@ -656,6 +684,18 @@ export function App() {
     }
     if (modifier && event.key.toLowerCase() === 's') { event.preventDefault(); saveProject(); return; }
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (backgroundAdjustId && !modifier) {
+      if (event.key === 'Escape') { event.preventDefault(); if (backgroundActive.current) cancelBoundaryInteraction(); else adjustBackground(null); return; }
+      const delta: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+      if (delta[event.key]) {
+        event.preventDefault(); const layer = sessionRef.current.map.backgroundLayers[backgroundAdjustId];
+        if (layer && !backgroundDirty && !backgroundActive.current && !resolvedBackgroundPreferences.layers[backgroundAdjustId]?.locked) {
+          const step = event.shiftKey ? 1 : 0.1; const d = delta[event.key]!;
+          applyBackground({ type: 'updateBackgroundTransform', id: backgroundAdjustId, imageToWorld: translateBackground(layer.imageToWorld, [d[0] * step, d[1] * step]) }, currentDraftContext());
+        } return;
+      }
+      if (!['f'].includes(event.key.toLowerCase())) { event.preventDefault(); return; }
+    }
     if (modifier && event.key.toLowerCase() === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
     else if (modifier && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); }
     else if (modifier && event.key.toLowerCase() === 'k') { event.preventDefault(); updateWorkbench({ leftCollapsed: false }); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-testid="object-search"]')?.focus()); }
@@ -695,6 +735,37 @@ export function App() {
   });
   const directoryLocate = useCurrentCallback(locateItem);
   const directorySelected = useCallback((item: SceneItem) => selectionKinds.includes(item.kind as SelectionKind) ? validSelection[item.kind as SelectionKind].includes(item.id) : inspectionKeys.includes(item.key), [validSelection, inspectionKeys]);
+  function updateBackgroundPreferences(value: BackgroundPreferences) {
+    if (!projects.ready || projects.isNavigating()) return;
+    backgroundRef.current = value; setBackgroundPreferences(value);
+  }
+  function adjustBackground(id: string | null) {
+    requestLeave('切换底图调整', () => {
+      const target = id ?? backgroundAdjustId;
+      if (id && (backgroundDisabled || !inspectBackground(sessionRef.current.map, id).supported)) return;
+      if (id && drawingRef.current.lockedTypes.includes('backgroundLayers')) { setStatus('底图类型已锁定，请先在基础图层解除该类型锁定。'); return; }
+      if (target) { const current = backgroundRef.current ?? resolvedBackgroundPreferences; updateBackgroundPreferences({ ...current, layers: { ...current.layers, [target]: { visible: true, opacity: 1, ...current.layers[target], locked: !id } } }); }
+      setBackgroundAdjustId(id); setBackgroundKeepAspect(true); setFormEpoch(value => value + 1);
+      setSelection(emptySelection()); setInspectionKeys([]); setTool('select'); setDraftRoad(null); setDraftResetToken(value => value + 1);
+    });
+  }
+  function applyBackground(command: MapCommand, context: DraftContext): boolean {
+    if (!sameDraftContext(context, currentDraftContext()) || backgroundDisabled || !isBackgroundCommand(command)) { setStatus('底图候选已过期或当前地图受保护，未提交。'); return false; }
+    return apply(command);
+  }
+  function fitBackground(id: string) {
+    const layer = sessionRef.current.map.backgroundLayers[id], asset = layer && sessionRef.current.map.assets[layer.assetId];
+    if (!layer || !asset?.widthPx || !asset.heightPx || !inspectBackground(sessionRef.current.map, id).supported) return;
+    const points = backgroundFrame(layer.imageToWorld, asset.widthPx, asset.heightPx).corners;
+    const next = fitCamera({ min: [Math.min(...points.map(p => p[0])), Math.min(...points.map(p => p[1])), 0], max: [Math.max(...points.map(p => p[0])), Math.max(...points.map(p => p[1])), 0] }, canvasSize.width, canvasSize.height);
+    if (next) setCamera(next);
+  }
+  const backgroundContextKey = [draftContext.projectId, session.changeToken, draftResetToken, backgroundDisabled, !!interaction.state.dialog, backgroundDirty].join('/');
+  const backgroundError = useCurrentCallback((message: string) => { if (message) setStatus(message); });
+  const backgroundCommit = useCurrentCallback((id: string, transform: import('../geometry/backgrounds').BackgroundTransform, context: string) => {
+    if (context !== backgroundContextKey || id !== backgroundAdjustId || resolvedBackgroundPreferences.layers[id]?.locked || !resolvedBackgroundPreferences.layers[id]?.visible || backgroundDirty || backgroundDisabled) return false;
+    return applyBackground({ type: 'updateBackgroundTransform', id, imageToWorld: transform }, currentDraftContext());
+  });
   const propertyApply = useCurrentCallback(apply);
   const propertyBoundaryMode = useCurrentCallback(changeBoundaryMode);
   const propertyFacilityPolicy = useCurrentCallback((value: DrawingConfig['facilityMovePolicy']) => updateDrawingConfig({ facilityMovePolicy: value }));
@@ -708,7 +779,7 @@ export function App() {
     return { id: item.id, name: item.name, source: provenance ? [provenance.category, ...(provenance.sourceRefs ?? [])].filter(Boolean).join(' · ') : item.reason || '未单独声明来源；完整声明见属性与引用。' };
   }, [scene.items, session.map]);
   const focusKey = locatedKey ?? inspected?.key ?? selectionKinds.flatMap(kind => validSelection[kind].map(id => kind + '/' + id))[0];
-  const hint = readonly ? '只读检查：可查看、定位并原样导出 JSON。'
+  const hint = backgroundAdjustId ? '底图调整：矢量编辑暂停。左上为位置锚点，拖角固定对角；完成后锁定。' : readonly ? '只读检查：可查看、定位并原样导出 JSON。'
     : tool === 'node' ? '点击空白位置创建节点。坐标可在右侧精确修改。'
     : tool === 'road' ? (draftRoad ? '点击空白处添加内部折点，再点击目标节点完成道路。Esc 取消。' : '先点击已有起点节点；道路交叉不会自动连接。')
     : tool === 'facilityRect' || tool === 'zoneRect' ? '依次点击矩形的两个对角点；几何按世界米制坐标保存。'
@@ -735,6 +806,7 @@ export function App() {
       </div></details>
       <details className="workbench-menu"><summary>编辑</summary><div className="workbench-menu-items"><button disabled={readonly} onClick={() => { updateWorkbench({ leftCollapsed: false }); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="地图名称"]')?.focus()); }}>地图信息</button><button onClick={() => { updateWorkbench({ leftCollapsed: false }); requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-testid="object-search"]')?.focus()); }}>搜索对象</button></div></details>
       <details className="workbench-menu"><summary>视图</summary><div className="workbench-menu-items"><button onClick={() => updateWorkbench({ leftCollapsed: false, rightCollapsed: false })}>显示两侧面板</button><button onClick={() => updateWorkbench({ leftCollapsed: true, rightCollapsed: true })}>收起两侧面板</button><button onClick={() => updateWorkbench({ leftWidth: 240, rightWidth: 300, leftCollapsed: 'auto', rightCollapsed: 'auto' })}>恢复工作台布局</button></div></details>
+      <button onClick={() => requestLeave('打开底图面板', () => { setBackgroundPanelOpen(true); updateWorkbench({ leftCollapsed: false }); requestAnimationFrame(() => document.querySelector('[data-testid="background-panel"]')?.scrollIntoView({ block: 'nearest' })); })}>底图</button>
       <button onClick={() => setDrawerOpen(!drawerOpen)}>检查</button>
       <strong className="workbench-project-name" title={session.map.metadata.name}>{session.map.metadata.name}</strong>
       <span className="workbench-save-status"><span data-testid="browser-save-status">{projects.browserStatus}</span><span data-testid="local-save-status">{localState.busy ? '本地文件处理中…' : localState.conflict ? '本地文件冲突' : !localState.linkedName ? '本地文件未关联' : localState.confirmedContentHash === scene.mapContentHash ? '本地文件已确认：' + localState.linkedName : '本地文件有未写回变化：' + localState.linkedName}</span></span>
@@ -747,7 +819,7 @@ export function App() {
           if (roadId) openTopology({ type: 'suppressDegree2Node', nodeId, retainedRoadId: roadId });
           else { setOperationIssues([localIssue('DEGREE_TWO_REQUIRED', '此节点没有两条关联道路，不能保持道路连通删除。')]); }
         }}>保持道路连通删除节点</button></div><div><button onClick={fit}>适应地图</button><span className="zoom-value">{Number(camera.scale.toPrecision(3))} px/m</span></div></div></>}
-      left={<><div className="workbench-settings-area" role="region" aria-label="绘图设置与地图信息" tabIndex={0}><details className="workbench-settings"><summary>绘图与显示设置</summary>        <div className="spatial-controls">
+      left={<><div className="workbench-settings-area" role="region" aria-label="绘图设置与地图信息" tabIndex={0}><details className="workbench-settings" open={backgroundPanelOpen} onToggle={event => setBackgroundPanelOpen(event.currentTarget.open)}><summary>底图显示与调整</summary><BackgroundPanel key={[draftContext.projectId, session.changeToken, formEpoch].join('/')} map={session.map} context={draftContext} draftContext={draftContext} preferences={resolvedBackgroundPreferences} assets={backgroundAssets} disabled={backgroundDisabled || propertyDirty || mapName !== session.map.metadata.name} adjustingId={backgroundAdjustId} onPreferences={updateBackgroundPreferences} onAdjust={adjustBackground} onFit={fitBackground} onApply={applyBackground} onDirtyChange={onBackgroundDirty} onDraftChange={registerPropertyDraft} keepAspect={backgroundKeepAspect} onKeepAspect={setBackgroundKeepAspect}/></details><details className="workbench-settings"><summary>绘图与显示设置</summary>        <div className="spatial-controls">
           <label className="check-field"><input type="checkbox" aria-label="拓扑吸附" checked={topologySnap} disabled={readonly} onChange={event => { const enabled = event.target.checked; requestLeave('切换拓扑吸附', () => { setTopologySnap(enabled); setDraftResetToken(value => value + 1); }); }}/>拓扑吸附（释放后明确确认）</label>
           <label className="check-field"><input type="checkbox" aria-label="节点吸附" disabled={!projects.ready || projects.transitioning} checked={snapNodes} onChange={event => updateDrawingConfig({ snapNodes: event.target.checked })} />节点吸附（坐标，不自动接路）</label>
           <label className="field-label">网格吸附<select aria-label="网格吸附" disabled={!projects.ready || projects.transitioning} value={snapGrid} onChange={event => updateDrawingConfig({ snapGrid: Number(event.target.value) as DrawingConfig['snapGrid'] })}><option value="0">关闭</option><option value="1">1 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
@@ -766,7 +838,7 @@ export function App() {
         </div></details><details className="workbench-settings" open><summary>地图信息</summary>        <div className="panel-title">地图信息</div>
         <div className="map-name-editor"><label className="field-label">地图名称<input aria-label="地图名称" value={mapName} disabled={readonly || propertyDirty || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty} onChange={event => setMapName(event.target.value)} /></label><button className="subtle-button full-width" disabled={readonly || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || !mapName.trim()} onClick={() => requestLeave('应用地图名称', applyMapName, propertyDirty)}>应用地图名称</button></div>{session.map.schemaVersion === '0.1.0' && <div className="project-note">旧版 0.1.0 原样兼容。<button onClick={() => requestLeave('升级 Schema', () => setUpgradeDialog(true))} disabled={readonly || projects.temporary}>升级到 0.2.0</button></div>}</details></div>
         <div className="workbench-directory-area" role="region" aria-label="对象目录" tabIndex={0}><div className="panel-title">对象<span><span data-testid="node-count">{scene.nodes.length}</span> 节点 · <span data-testid="road-count">{scene.roads.length}</span> 道路</span></div>
-        <StableObjectDirectory domainReadonly={domainReadonly} items={scene.items} drawing={drawingConfig} disabled={!projects.ready || projects.transitioning} onDrawing={directoryDrawing}
+        <StableObjectDirectory domainReadonly={domainReadonly} items={scene.items} drawing={drawingConfig} disabled={!projects.ready || projects.transitioning || !!backgroundAdjustId || backgroundDirty} onDrawing={directoryDrawing}
           isSelected={directorySelected} onSelect={directoryChoose} onLocate={directoryLocate}/></div></>}
       right={<><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>
         {selectedNodeId && (!moveSupport.allowed || lockedTypes.includes('nodes') || moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind))) && <div className="field-note" data-testid="node-edit-guidance">当前节点拖动受依赖或图层锁定保护。{moveSupport.issues.map((issue, index) => <span key={index}>{issue.code} · {issue.jsonPath} · {issue.message}</span>)}{moveSupport.affectedRefs.filter(ref => lockedTypes.includes(ref.kind as SceneKind)).map(ref => <span key={ref.kind + '/' + ref.id}>LOCKED_DEPENDENCY · {ref.kind}/{ref.id}</span>)}</div>}
@@ -780,7 +852,7 @@ export function App() {
 {inspected ? <StableObjectInspector item={inspected} map={session.map} onLocate={inspectLocate}/> : <StablePropertyPanel draftContext={draftContext} onDraftChange={registerPropertyDraft} mapContentHash={scene.mapContentHash} onRoadPreviewChange={onRoadPreviewChange} boundaryEditMode={boundaryEditMode} onBoundaryModeChange={propertyBoundaryMode} map={session.map} facilityMovePolicy={facilityMovePolicy} zoneMovePolicy={zoneMovePolicy} onZoneMovePolicyChange={propertyZonePolicy} onMovePolicyChange={propertyFacilityPolicy} onDirtyChange={onPropertyDirty} key={(selected?.id ?? 'none') + '-' + session.changeToken + '-' + formEpoch} selected={selected} readonly={readonly || mapName !== session.map.metadata.name || selectionKinds.some(kind => validSelection[kind].length > 0 && lockedTypes.includes(kind)) || boundaryEditing || pointDraft !== null || draftRoad !== null || polygonDraftDirty || upgradeDialog} count={selectedCount} onApply={propertyApply} />}
         {(capabilities.reasons.length > 0 || capabilities.unrendered.length > 0) && <details className="capability-box"><summary>保留但未支持</summary>{capabilities.reasons.map(reason => <p key={reason}>{reason}</p>)}<h3>未渲染</h3><p>{capabilities.unrendered.join('、') || '无'}</p></details>}
         <details className="capability-box"><summary>草稿校验未覆盖</summary><p>手动诊断仅按所列声明范围检查；具体结果见检查器。</p><p>{capabilities.unchecked.join(' · ')}</p></details></>}
-      canvas={<MapCanvas topologySnap={topologySnap} lockedTypes={lockedTypes} onTopologyDrop={topologyDrop} onDragRejected={explainDrag}
+      canvas={<MapCanvas comparisonMode={resolvedBackgroundPreferences.comparisonMode} backgrounds={{ items: backgroundVisuals, adjustingId: !backgroundDisabled && !backgroundDirty && !lockedTypes.includes('backgroundLayers') && !interaction.state.dialog && resolvedBackgroundPreferences.layers[backgroundAdjustId ?? '']?.locked === false && resolvedBackgroundPreferences.layers[backgroundAdjustId ?? '']?.visible !== false ? backgroundAdjustId : null, keepAspect: backgroundKeepAspect, contextKey: backgroundContextKey, onCommit: backgroundCommit, onActive: onBackgroundActive, onError: backgroundError }} topologySnap={topologySnap} lockedTypes={lockedTypes} onTopologyDrop={topologyDrop} onDragRejected={explainDrag}
           splitPickRoadId={splitPicking ? validSelection.roads[0] : undefined} onSplitPick={distance => { if (currentOperation(operationToken, operationMap.current)) { setSplitDistance(String(distance)); setSplitPicking(false); setSplitDialog(true); } }} routePreview={shownPath ? { mapContentHash: scene.mapContentHash, points: shownPath.points, confirmed: !!currentPath?.confirmed } : null} diagnosticPosition={issueMarker?.hash === scene.mapContentHash ? issueMarker.position : null} hiddenTypes={hiddenTypes} labelMode={labelMode} focusKey={focusKey} describeItem={describeItem} inspectKey={inspected?.key} onInspect={item => chooseItem(item)} canDrag={canDrag}
           canEditBoundary={(kind, id) => boundaryPermissions.has(kind + '/' + id)}
           movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode }, onPointPick: result => setPointDraft(current => current ? applyPointPick(current, result) : null) } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} frameCamera={frameCamera} onSize={onCanvasSize} tool={tool} readonly={readonly || !!interaction.state.dialog || !!(pointDraft && !pointDraft.canvasMode)} selection={validSelection} onSelect={choose} onClearSelection={() => requestLeave('取消选择', () => { setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); })} draftRoad={draftRoad}

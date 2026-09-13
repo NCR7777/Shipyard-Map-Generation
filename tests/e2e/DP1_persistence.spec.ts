@@ -24,7 +24,7 @@ async function stored(page: Page, store: 'projects' | 'editorStates', replacemen
   return page.evaluate(({ store, replacement }) => new Promise((resolve, reject) => {
     const id = sessionStorage.getItem('shipyard.activeProjectId');
     if (!id) { reject(new Error('No restored project')); return; }
-    const request = indexedDB.open('shipyard-map-projects', 1);
+    const request = indexedDB.open('shipyard-map-projects');
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
