@@ -173,14 +173,14 @@ export function selectionImpact(map: YardMap, selection: Selection, facilityMove
         const refs = nodeOwners(map, id);
         const incidentIds = incident.get(id) ?? [];
         const external = incidentIds.filter(roadId => !ownedIds.has(roadId));
-        const dedicatedLeaf = seeds.has(id) && incidentIds.length === 1 && external.length === 1 && !roadOwner(map, external[0]!);
-        if (external.length && !dedicatedLeaf) {
+        const dedicatedAccess = refs.businessPoint && external.length === 1 && !roadOwner(map, external[0]!);
+        if (external.length && !dedicatedAccess) {
           if (explicitNodes.has(id)) fail('STATIC_SHARED_NODE', '组合选择包含应保持固定的公共节点。', '/nodes/' + id);
           fixed.add(id);
         } else {
           if (refs.unownedPoint || [...refs.owners].some(other => other !== owner)) fail('STATIC_SHARED_NODE', '内部节点被其他归属的入口或作业点共用。', '/nodes/' + id);
           moving.add(id);
-          if (dedicatedLeaf) {
+          if (dedicatedAccess) {
             const roadId = external[0]!, road = map.roads[roadId]!;
             if (road.shapePoints.length || road.corridorPolygon || road.observedLengthM) fail('STATIC_CONNECTOR_SHAPE_UNSUPPORTED', '专用入口接入段含折点或独立几何，不能猜测伸缩规则。', '/roads/' + roadId);
             connectors.add(roadId); fixed.add(road.fromNodeId === id ? road.toNodeId : road.fromNodeId);

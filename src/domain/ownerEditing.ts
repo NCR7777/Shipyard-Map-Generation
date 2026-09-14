@@ -29,7 +29,7 @@ export function nodeOwners(map: YardMap, nodeId: string): { owners: Set<string>;
   }
   return { owners, businessPoint, unownedPoint };
 }
-/** A dedicated leaf access may stretch its single declared edge without claiming that edge is owned. */
+/** A dedicated access may stretch one unowned connector while keeping its other roads explicitly owned. */
 export function privateNodeOwner(map: YardMap, nodeId: string): string | undefined {
   const refs = nodeOwners(map, nodeId);
   if (!refs.owners.size && !refs.unownedPoint) return undefined;
@@ -37,7 +37,7 @@ export function privateNodeOwner(map: YardMap, nodeId: string): string | undefin
   const owner = [...refs.owners][0]!;
   const roads = Object.entries(map.roads).filter(([, road]) => road.fromNodeId === nodeId || road.toNodeId === nodeId);
   const external = roads.filter(([id]) => roadOwner(map, id) !== owner);
-  if (external.length && !(refs.businessPoint && roads.length === 1 && !roadOwner(map, external[0]![0]))) {
+  if (external.length && !(refs.businessPoint && external.length === 1 && !roadOwner(map, external[0]![0]))) {
     throw new OwnerEditError('OWNER_PUBLIC_NODE', '该入口与公共道路或其他对象共用节点；公共节点保持固定，请建立独立入口后再移动。', '/nodes/' + nodeId);
   }
   return owner;

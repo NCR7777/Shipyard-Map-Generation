@@ -60,6 +60,25 @@ describe('UX02 explicit owner geometry and atomic road editing', () => {
     map.servicePoints.otherPoint = { ...structuredClone(map.servicePoints.sp!), facilityId: 'other' }; delete map.servicePoints.otherPoint.accessPointId;
     reject(map, move(), 'STATIC_SHARED_NODE');
   });
+  it('moves a dedicated access with one external connector and a declared internal road without moving the public anchor', () => {
+    const map = fixture(); map.extensionNamespaces[NS] = { version: '1.0', category: 'behavior' };
+    map.nodes.work = { ...testNode('', 5, 5), kind: 'service' };
+    map.roads.internal = { ...structuredClone(map.roads.access!), fromNodeId: 'gate', toNodeId: 'work', extensions: { [NS]: { role: 'internal', ownerEntityId: 'owner', physicalMeaning: 'design_declared_corridor_not_surveyed_clearance' } } };
+    map.servicePoints.sp!.nodeId = 'work'; map.servicePoints.sp!.arrival = { mode: 'explicit_internal', internalPath: [{ roadId: 'internal', direction: 'forward' }] };
+    const moved = success(map, move([1, 1, 0]));
+    expect(moved.map.nodes.gate!.position).toEqual([1, 6, 0]); expect(moved.map.nodes.work!.position).toEqual([6, 6, 0]); expect(moved.map.nodes.public).toEqual(map.nodes.public);
+    for (const key of ['roads', 'accessPoints', 'servicePoints', 'movements', 'resources', 'coordinateFrame'] as const) expect(moved.map[key]).toEqual(map[key]);
+    const pointMove: MapCommand = { type: 'movePoint', kind: 'accessPoints', id: 'ap', position: [0, 6, 0] };
+    const along = success(map, pointMove); expect(along.map.nodes.work).toEqual(map.nodes.work); expect(along.map.nodes.public).toEqual(map.nodes.public);
+    reject(map, { ...pointMove, position: [1, 5, 0] }, 'OWNER_ENTRANCE_REPOSITION_REQUIRED');
+    const through = structuredClone(map); through.nodes.other = testNode('', -20, 5); through.roads.otherRoad = { ...structuredClone(map.roads.access!), fromNodeId: 'other', toNodeId: 'gate' };
+    reject(through, pointMove, 'OWNER_PUBLIC_NODE');
+    const foreign = structuredClone(map); foreign.facilities.other = { ...testFacility('', rectangle(30, 0, 10, 10)), accessPointIds: ['otherAccess'], servicePointIds: [] }; foreign.accessPoints.otherAccess = { ...structuredClone(map.accessPoints.ap!), facilityId: 'other' };
+    reject(foreign, pointMove, 'OWNER_SHARED_NODE');
+    const unowned = structuredClone(map); unowned.servicePoints.otherService = { ...structuredClone(map.servicePoints.sp!), nodeId: 'gate', arrival: { mode: 'node_proxy', transferAssumption: 'excluded_from_model', note: 'unowned test' } }; delete unowned.servicePoints.otherService!.facilityId; delete unowned.servicePoints.otherService!.accessPointId;
+    reject(unowned, pointMove, 'OWNER_SHARED_NODE');
+    const folded = structuredClone(map); folded.roads.access!.shapePoints = [[-5, 6, 0]]; reject(folded, move(), 'STATIC_CONNECTOR_SHAPE_UNSUPPORTED');
+  });
   it('marker drag preview and point commit share the authoritative node and affected identities', () => {
     const map = fixture(), preview = commandSupport(map, { type: 'translateSelection', selection: { nodes: [], roads: [], accessPoints: ['ap'] }, delta: [0, 0, 0] });
     expect(preview.allowed).toBe(true); expect(preview.impact?.selection.nodes).toEqual(['gate']); expect(preview.affectedRefs).toEqual(expect.arrayContaining([{ kind: 'accessPoints', id: 'ap' }, { kind: 'servicePoints', id: 'sp' }]));

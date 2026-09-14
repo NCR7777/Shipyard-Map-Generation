@@ -985,6 +985,12 @@ export function App() {
         <StableObjectDirectory domainReadonly={domainReadonly} items={scene.items} drawing={drawingConfig} disabled={!projects.ready || projects.transitioning || !!backgroundAdjustId || backgroundDirty} onDrawing={directoryDrawing}
           isSelected={directorySelected} onSelect={directoryChoose} onLocate={directoryLocate}/></div></>}
       right={<div onKeyDown={propertyKeys}><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>
+        {selected && ['facility', 'zone', 'accessPoint', 'servicePoint'].includes(selected.kind) && (!moveSupport.allowed || moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind))) && <div className="field-note" data-testid="move-edit-guidance" role="status">
+          <strong>当前移动受限</strong>
+          {!moveSupport.allowed && moveSupport.issues.map((issue, index) => <p key={index}>{issue.message}</p>)}
+          {moveSupport.affectedRefs.filter(ref => lockedTypes.includes(ref.kind as SceneKind)).map(ref => <p key={ref.kind + '/' + ref.id}>关联对象已锁定：{ref.kind}/{ref.id}</p>)}
+          {!moveSupport.allowed && <details><summary>关联详情</summary>{moveSupport.issues.map((issue, index) => <p key={index}>{issue.code} · {issue.jsonPath}</p>)}</details>}
+        </div>}
         {selectedNodeId && (!moveSupport.allowed || lockedTypes.includes('nodes') || moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind))) && <div className="field-note" data-testid="node-edit-guidance">当前节点拖动受依赖或图层锁定保护。{moveSupport.issues.map((issue, index) => <span key={index}>{issue.code} · {issue.jsonPath} · {issue.message}</span>)}{moveSupport.affectedRefs.filter(ref => lockedTypes.includes(ref.kind as SceneKind)).map(ref => <span key={ref.kind + '/' + ref.id}>LOCKED_DEPENDENCY · {ref.kind}/{ref.id}</span>)}</div>}
         {selectedRoadId && <div className="field-note" data-testid="road-edit-guidance">道路拖动通过节点或折点完成；不会因外观相交建立连接。
           {(['fromNodeId', 'toNodeId'] as const).map((field, index) => <button key={field} disabled={hiddenTypes.includes('nodes')} onClick={() => choose('nodes', session.map.roads[selectedRoadId]![field], false)}>选择{index === 0 ? '起点' : '终点'}节点</button>)}
