@@ -34,7 +34,7 @@ export async function importMapUI(page: Page, map: YardMap, bytes: Buffer = Buff
   await browserSaved(page);
 }
 
-export async function selectResult(page: Page, kind: 'node' | 'facilities' | 'servicePoints', id: string) {
+export async function selectResult(page: Page, kind: 'node' | 'facilities' | 'accessPoints' | 'servicePoints', id: string) {
   if (!(await page.getByTestId('object-search').isVisible())) await page.getByRole('button', { name: '切换对象面板', exact: true }).click();
   await page.getByTestId('object-search').fill(id);
   await page.getByTestId(kind + '-item-' + id).click();

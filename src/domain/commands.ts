@@ -15,6 +15,7 @@ import { inspectPlanning, PLANNING_NAMESPACE as PLANNING, type PlanningSlot } fr
 import { OwnerEditError, nodeOwners, privateNodeOwner, roadOwner, pointOwner, boundaryEntranceAdjustments } from './ownerEditing';
 import { inspectOwnerGeometryEdit } from '../validation/ownerEditing';
 import { runConnectedPoint, type ConnectedPointCommand } from './connectedPoint';
+import { runAccessDetachment, type DetachAccessPointCommand } from './accessDetachment';
 
 export interface Selection { nodes: string[]; roads: string[]; facilities?: string[]; zones?: string[]; accessPoints?: string[]; servicePoints?: string[] }
 export const SELECTION_KINDS = ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints'] as const;
@@ -54,6 +55,7 @@ export type MapCommand =
   | TopologyCommand
   | BackgroundCommand
   | ConnectedPointCommand
+  | DetachAccessPointCommand
   | { type: 'deleteSelection'; topologyPolicy?: 'reject' | 'cascade'; selection: Selection; facilityPolicy?: 'reject' | 'withAssociatedPoints'; zonePolicy?: 'reject' | 'withAssociatedPoints'; orphanNodes?: 'keep' | 'deleteUnused' }
   | { type: 'splitRoad'; id: string; distanceM: number; nodeId: string; existingNode?: boolean; newRoadIds: [string, string] };
 
@@ -448,12 +450,13 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
         && changed.some(field => { const value = (update.patch as Record<string, unknown>)[field] as PhysicalValue | undefined; return value && typeof value === 'object' && value.state === 'known' && !value.sourceRef; })) affectedRefs.push({ kind: 'sources', id: update.designAssumption.id });
       return { allowed: true, issues: [], affectedRefs };
     }
-    if (isTopologyCommand(command) || command.type === 'createConnectedPoint') {
+    if (isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint') {
       if ('selection' in command) assertSelection(map, command.selection);
       const candidate = structuredClone(map);
       const connected = command.type === 'createConnectedPoint' ? runConnectedPoint(candidate, command, splitRoad) : undefined;
-      if (!connected) executeTopology(candidate, command);
-      const geometryPreservedRoadIds = connected?.geometryPreservedRoadIds ?? preservedTopologyGeometry(map, command);
+      const detached = command.type === 'detachAccessPoint' ? runAccessDetachment(candidate, command, splitRoad) : undefined;
+      if (!connected && !detached) executeTopology(candidate, command);
+      const geometryPreservedRoadIds = connected?.geometryPreservedRoadIds ?? detached?.geometryPreservedRoadIds ?? preservedTopologyGeometry(map, command);
       const changed = topologyChangedRefs(map, candidate);
       const retainedNodes = command.type === 'mergeNodes' ? [command.targetNodeId]
         : command.type === 'splitRoad' || command.type === 'connectNodeToRoad' ? [command.nodeId] : [];
@@ -780,6 +783,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   try {
     switch (command.type) {
       case 'createConnectedPoint': runConnectedPoint(next, command, splitRoad); break;
+      case 'detachAccessPoint': runAccessDetachment(next, command, splitRoad); break;
       case 'addBackground': case 'updateBackgroundTransform': case 'deleteBackground': case 'replaceBackgroundAsset': runBackgroundCommand(next, command); break;
       case 'addNode': put(next, next.nodes, command.id, command.node); break;
       case 'addRoad': {
@@ -871,7 +875,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   });
   const spatialIssues = [...inspectSpatialEdit(input, next, { geometryPreservedRoadIds: support.geometryPreservedRoadIds, rigidServiceIds }), ...inspectOwnerGeometryEdit(input, next, support.geometryPreservedRoadIds, support.impact?.rigidRoadIds)];
   if (spatialIssues.some(issue => issue.severity === 'error')) return { ok: false, issues: spatialIssues };
-  const topologySources = isTopologyCommand(command) || command.type === 'createConnectedPoint' ? recordTopologySources(input, next, support.affectedRefs, command.type === 'createConnectedPoint' ? command.source.id : undefined) : [];
+  const topologySources = isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint' ? recordTopologySources(input, next, support.affectedRefs, command.type === 'createConnectedPoint' ? command.source.id : undefined) : [];
   const boundarySources = command.type === 'normalizeSiteBoundary' ? recordSiteBoundaryNormalization(input, next) : [];
   const sourceRefs = recordGeometrySources(input, next, support.affectedRefs, command.type === 'duplicateSelection' ? command.idMap : undefined);
   const affectedRefs = [...new Map([...support.affectedRefs, ...topologySources, ...sourceRefs, ...boundarySources].map(ref => [ref.kind + '/' + ref.id, ref])).values()];

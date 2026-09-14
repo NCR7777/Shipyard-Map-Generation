@@ -19,7 +19,7 @@ const TOPOLOGY_FIELDS = {
   accessPoints: ['nodeId'], servicePoints: ['nodeId', 'arrival'], resources: ['appliesTo'],
 } as const;
 
-function sourceId(map: YardMap, preferred: string, source: Source): string {
+export function sourceId(map: YardMap, preferred: string, source: Source): string {
   const used = new Set((['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const).flatMap(kind => Object.keys(map[kind])));
   for (const slot of inspectPlanning(map).slots) used.add(slot.id);
   let id = preferred, suffix = 0;

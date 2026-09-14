@@ -839,6 +839,7 @@ export function App() {
       case 'updateRoad': return inInternalScope('roads', command.id);
       case 'updateRoadBatch': return command.ids.every(id => inInternalScope('roads', id));
       case 'movePoint': return inInternalScope(command.kind, command.id);
+      case 'detachAccessPoint':
       case 'updateAccessPoint': return inInternalScope('accessPoints', command.id);
       case 'updateServicePoint': return inInternalScope('servicePoints', command.id);
       case 'createConnectedPoint': return command.owner.kind === internalOwner.kind && command.owner.id === internalOwner.id;

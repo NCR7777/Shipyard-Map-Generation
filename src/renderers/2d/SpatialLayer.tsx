@@ -108,7 +108,11 @@ export function associatedPointGroups(scene: Pick<SceneSnapshot, 'accessPoints' 
 }
 export function AssociatedPointLayer(props: SpatialLayerProps) {
   const events = useSpatialEvents(props);
-  return <>{associatedPointGroups(props.scene, props.hiddenTypes, props.visibleKeys).map(points => {
+  const groups = associatedPointGroups(props.scene, props.hiddenTypes, props.visibleKeys);
+  const selectedGroups = new Set(groups.filter(points => points.some(point => props.selection[point.entityType]?.includes(point.id))));
+  // A selected entrance must remain draggable when a nearby service marker overlaps it.
+  // Keep distinct node identities; only the paint/hit order changes, never the edit guards.
+  return <>{[...groups.filter(points => !selectedGroups.has(points)), ...selectedGroups].map(points => {
     const selectedPoint = points.find(point => props.selection[point.entityType]?.includes(point.id));
     const point = selectedPoint ?? points[0]!;
     const origin = point.position; const offset = props.movingNodeIds.has(point.nodeId) ? props.previewDelta : null;
