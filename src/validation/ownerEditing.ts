@@ -30,7 +30,10 @@ export function inspectOwnerGeometryEdit(before: YardMap, after: YardMap, geomet
       }
       const previous = pointInPolygon(oldPosition, oldFacility.boundary), next = pointInPolygon(position, facility.boundary);
       if (previous === 'boundary' && next !== 'boundary' || previous === 'inside' && next === 'outside' || previous === 'outside' && next === 'inside') {
-        issue('OWNER_ENTRANCE_REPOSITION_REQUIRED', 'accessPoints', id, '入口需要重新定位：本次修改改变了原有入口与设施轮廓的关系。', position);
+        const fixed = sameValue(position, oldPosition);
+        const relation = next === 'outside' ? '轮廓外' : next === 'inside' ? '轮廓内' : '边界上';
+        issue('OWNER_ENTRANCE_REPOSITION_REQUIRED', 'accessPoints', id,
+          `入口 ${id}（节点 ${access.nodeId}）${fixed ? '保持原位，设施轮廓改变后' : '移动后'}位于${relation}，改变了原有接入关系。${fixed ? '请缩小本次位移或先调整入口接路；公共路网不会随主体移动。' : '请保持入口与设施轮廓的原有关系，或明确调整接入布局。'}`, position);
       } else if (previous === 'outside' && next === 'outside') issue('OWNER_ENTRANCE_LOCATION_UNCHECKED', 'accessPoints', id, '入口原本是设施外部的显式接入位置，保留原声明；其现场门位未核验。', position, 'warning');
     }
     const planning = inspectPlanning(after), oldSlots = new Map(inspectPlanning(before).slots.map(slot => [slot.id, slot]));
