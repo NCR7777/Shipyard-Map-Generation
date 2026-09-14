@@ -177,6 +177,8 @@ export function inspectSpatialEdit(before: YardMap, after: YardMap, options: {
    * Never populated from imported lineage, an editable map field, or a caller-supplied MapCommand.
    */
   geometryPreservedRoadIds?: readonly string[];
+  /** Internal transform impact only: the owner boundary and service node received the same rigid transform. */
+  rigidServiceIds?: readonly string[];
 } = {}): Issue[] {
   const roads = new Set<string>(), owners = new Set<string>(), slots = new Set<string>(), services = new Set<string>();
   const preserved = new Set(options.geometryPreservedRoadIds);
@@ -205,7 +207,14 @@ export function inspectSpatialEdit(before: YardMap, after: YardMap, options: {
   }
   if (!roads.size && !owners.size && !slots.size && !services.size) return [];
   const result = inspectSpatial(after, { ...options, scope: { roads, owners, slots, services } });
-  const issues = [...result.issues];
+  const issues = result.issues.map(issue => {
+    if (issue.code !== 'SPATIAL_SERVICE_OUTSIDE_OWNER' || !issue.entityId || !options.rigidServiceIds?.includes(issue.entityId)) return issue;
+    const old = before.servicePoints[issue.entityId], point = after.servicePoints[issue.entityId];
+    const owner = old?.facilityId ? before.facilities[old.facilityId] : old?.zoneId ? before.zones[old.zoneId] : undefined;
+    if (!old || !point || !owner || old.nodeId !== point.nodeId || old.facilityId !== point.facilityId || old.zoneId !== point.zoneId
+      || !sameValue(old.arrival, point.arrival) || pointInPolygon(before.nodes[old.nodeId]!.position, owner.boundary) !== 'outside') return issue;
+    return { ...issue, severity: 'warning' as const, message: issue.message + ' 本次整体刚体变换保留了原有相对关系；旧越界仍待修复。' };
+  });
   if (result.completion !== 'finished') issues.push({ code: 'SPATIAL_EDIT_INCOMPLETE', severity: 'error', jsonPath: '',
     message: '受影响空间关系检查未完成：' + result.completion + '；事务未提交。',
     suggestedAction: '缩小编辑影响范围并重新检查；不能将预算耗尽或结果截断当作无冲突。' });

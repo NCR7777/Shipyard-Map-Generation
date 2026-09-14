@@ -189,6 +189,7 @@ for (const failure of ['file', 'browser'] as const) test('RF01 independent save 
   await installRF01Picker(page, filename); await readyWorkbench(page); await importMapUI(page, editorFixture());
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
   await page.getByRole('dialog', { name: '选择保存目标' }).getByRole('button', { name: '保存到文件', exact: true }).click();
+  await page.getByRole('dialog', { name: '保存到哪个文件' }).getByRole('button', { name: '保存为新文件', exact: true }).click();
   await expect(page.getByTestId('local-save-status')).toContainText('已确认');
   await browserSaved(page);
   const durable = (await storedWorkspace(page)).record!; const oldFile = await opfsMap(page, filename);

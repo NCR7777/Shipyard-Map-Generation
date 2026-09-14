@@ -87,6 +87,17 @@ describe('GA01 commit-only changed spatial relations', () => {
     const renamed = structuredClone(before); renamed.servicePoints.s!.name = 'name only';
     expect(inspectSpatialEdit(before, renamed)).toEqual([]);
   });
+  it('only retains a transform-marked legacy service warning while its node, owner and arrival references remain unchanged', () => {
+    const before = roads(); before.facilities.owner = newFacility(rectangle(0, -10, 20, 20)); before.nodes.a!.position = [-1, 0, 0];
+    before.servicePoints.s = { ...newServicePoint('a', 's', 'other', 'owner'), arrival: { mode: 'explicit_internal', internalPath: [] } };
+    const after = structuredClone(before); after.facilities.owner!.boundary = rectangle(1, -10, 20, 20); after.nodes.a!.position = [0, 0, 0];
+    const options = { rigidServiceIds: ['s'] };
+    expect(inspectSpatialEdit(before, after, options).find(issue => issue.code === 'SPATIAL_SERVICE_OUTSIDE_OWNER')?.severity).toBe('warning');
+    after.servicePoints.s!.arrival = { mode: 'explicit_internal', entryNodeId: 'b', internalPath: [] };
+    expect(errors(inspectSpatialEdit(before, after, options)).map(issue => issue.code)).toContain('SPATIAL_SERVICE_OUTSIDE_OWNER');
+    after.servicePoints.s!.arrival = structuredClone(before.servicePoints.s!.arrival); after.facilities.other = structuredClone(after.facilities.owner!); after.servicePoints.s!.facilityId = 'other';
+    expect(errors(inspectSpatialEdit(before, after, options)).map(issue => issue.code)).toContain('SPATIAL_SERVICE_OUTSIDE_OWNER');
+  });
   it('rejects budget exhaustion and truncated issue lists instead of treating either as success', () => {
     const before = roads(), after = structuredClone(before); after.nodes.a!.position[0] += 1;
     expect(inspectSpatial(after, { maxComparisons: 0 }).completion).toBe('budget_exhausted');

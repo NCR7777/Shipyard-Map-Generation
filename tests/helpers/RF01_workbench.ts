@@ -24,7 +24,7 @@ export async function fileAction(page: Page, name: string) {
 
 export async function importMapUI(page: Page, map: YardMap, bytes: Buffer = Buffer.from(JSON.stringify(map))) {
   const chooser = page.waitForEvent('filechooser');
-  await fileAction(page, '导入 JSON');
+  await fileAction(page, '导入 JSON 副本');
   await (await chooser).setFiles({ name: map.mapId + '.json', mimeType: 'application/json', buffer: bytes });
   const conflict = page.getByRole('dialog', { name: '未保存编辑冲突', exact: true });
   await expect.poll(async () => await conflict.isVisible() || (await storedWorkspace(page))?.record?.draft?.contentHash === await page.getByTestId('map-hash').textContent()

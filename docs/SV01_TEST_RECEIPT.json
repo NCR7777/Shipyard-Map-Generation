@@ -1,0 +1,178 @@
+{
+  "baselineCommit": "ec6506acbbc92d7976900242e0341f3b92980902",
+  "scope": "map only; no originals or paper changes",
+  "sourceSHA256": {
+    "src/adapters/localFiles.ts": "5ba995d59153cccd0d778b93c2c8df21f01c8fed800a64c4ab375f4acfe23db2",
+    "src/adapters/projectStore.ts": "fbc179f826bb957cc5a19bedd3f23e0f37a225e85f062a37e9f74acb9b602006",
+    "src/domain/commands.ts": "cd5f0a3e7f1c75eb656fbf3440d5249e745c6884b567a096f7eec5dc3a7d1b0d",
+    "src/ui/App.tsx": "e12a5c691bf7c05b1e3eca7ebb264aa6f6cbca8816098e9a3969868a3dfa3fe5",
+    "src/ui/useEditorInteraction.ts": "29c2d1b33a6742465b1d29bc90c45f6f8f354d034e2d44f219aea71cf6adc28a",
+    "src/validation/spatialDiagnostics.ts": "b62e1d9ca0b311584e2bac2bf3d02641c7c3e4b349c87994a4980e4fbba2e633"
+  },
+  "productionBundle": {
+    "path": "dist/assets/index-N-lwgxVW.js",
+    "sha256": "191d33baff965e1327e7d27f7f250cf9d38734c18345fb83392db22073470fa5"
+  },
+  "checks": [
+    {
+      "command": "npm.cmd run schema:check",
+      "exitCode": 0,
+      "result": "passed"
+    },
+    {
+      "command": "npm.cmd run typecheck",
+      "exitCode": 0,
+      "result": "passed"
+    },
+    {
+      "command": "npm.cmd run lint",
+      "exitCode": 0,
+      "result": "passed"
+    },
+    {
+      "command": "npm.cmd run build",
+      "exitCode": 0,
+      "result": "passed"
+    },
+    {
+      "command": "npm.cmd run test",
+      "exitCode": 1,
+      "result": "667 passed; 4 blocked_input SR02 originals"
+    },
+    {
+      "command": "npm.cmd run test:integration",
+      "exitCode": 1,
+      "result": "86 passed; 4 blocked_input SR02 originals"
+    },
+    {
+      "report": "adapter-browser.json",
+      "exitCode": 0,
+      "stats": {
+        "startTime": "2026-09-14T05:36:53.612Z",
+        "duration": 53567.254,
+        "expected": 6,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "report": "browser-verified/report.json",
+      "exitCode": 0,
+      "stats": {
+        "startTime": "2026-09-14T05:48:19.018Z",
+        "duration": 94104.806,
+        "expected": 12,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "report": "browser-upgrade/report.json",
+      "exitCode": 0,
+      "stats": {
+        "startTime": "2026-09-14T05:50:31.359Z",
+        "duration": 5862.3820000000005,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "report": "editor-browser/report.json",
+      "exitCode": 0,
+      "stats": {
+        "startTime": "2026-09-14T05:56:20.834Z",
+        "duration": 18442.511000000002,
+        "expected": 2,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "report": "ux02/report.json",
+      "exitCode": 0,
+      "stats": {
+        "startTime": "2026-09-14T05:54:32.972Z",
+        "duration": 106261.741,
+        "expected": 11,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "report": "production-report.json",
+      "exitCode": 0,
+      "stats": {
+        "startTime": "2026-09-14T05:57:38.426Z",
+        "duration": 32888.137,
+        "expected": 6,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "report": "regression/report.json",
+      "exitCode": 1,
+      "stats": {
+        "startTime": "2026-09-14T05:48:59.911Z",
+        "duration": 824314.733,
+        "expected": 145,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0
+      }
+    },
+    {
+      "report": "bg01-original-timeout.json",
+      "exitCode": 0,
+      "stats": {
+        "startTime": "2026-09-14T05:58:18.245Z",
+        "duration": 30416.564,
+        "expected": 1,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    }
+  ],
+  "evidenceSHA256": {
+    ".cache/SV01/schema.log": "cd6d3534ca21e898a9ded244c8a1426ec4d47c9dea93e12600f268b5ead6fe3b",
+    ".cache/SV01/typecheck-final.log": "ccdc07aa1df2b2ff9ead1a24c2a799ba162534926177602cca8c23999bc55e18",
+    ".cache/SV01/lint-final.log": "08b71f5c9fc77ab1bf2abec0cbbaf51af448cb02128ba79deadc89becc1e97ca",
+    ".cache/SV01/build-reviewed.log": "0febc9ae333ec1927e8e6f6761d1e382e7b2ece091863f10096e3db27d5b3b71",
+    ".cache/SV01/unit.log": "c31a11604bf28c2325e0aeb776f4dbf075245ce275cdfcf137c9de2fdea80cd3",
+    ".cache/SV01/integration.log": "57db1ca19663e84406d215350a26d1860936a19ecd0faf3d1592e41e0186beed",
+    ".cache/SV01/localFiles-unit.log": "18ccad57bb62a912c757e6bcf16751f861027c187f12be67c34f1c80fe00f06e",
+    ".cache/SV01/adapter-browser.json": "0c6357b5637da4904c5680b9c64d0adca21ee5ec2858c7e11a4d00fab3ad8b45",
+    ".cache/SV01/browser-verified/report.json": "b4c8ba3c10185fbeeca1a049ef49eacc372adb31e4495838702ae78bbaf8e3fa",
+    ".cache/SV01/browser-upgrade/report.json": "056909541d2e83badc05d8940bbc14de29b2684e47b31f6e9dd5fb0349a70009",
+    ".cache/SV01/editor-browser/report.json": "fce12086beaea41f511eb6f815759e13a881448739f1c2394a44da33c5b289ea",
+    ".cache/SV01/ux02/report.json": "554f8e9dd9547899d3a3ea49541af9c430ec274297d11f6260f1c4e5e897011a",
+    ".cache/SV01/production-report.json": "2993fe6cefc54c9f82dbbd6e67ab15221804ad17da0160980501cd5090531e44",
+    ".cache/SV01/regression/report.json": "2368b9dd27c484e9ae544f4cdb4cd7711c31f81734e5598b498caa77ba187824",
+    ".cache/SV01/bg01-original-timeout.json": "b1f124d688d0c69a7acce063f8ee593b8c74b9f1e34715f701c009e2b6318ee4",
+    ".cache/SV01/correctness-review.json": "4fc9708b0a68b07b45e0b2313b10ffbb80c95e30a010e74740fdd8ae218e5e2e",
+    ".cache/SV01/ponytail-review.json": "fd09e0a677ce0b959bfba72c6006fe03a3ace01d1f5970da50cc184a2077104f",
+    ".cache/SV01/cli/receipt.json": "9bc9a732d5cf93f76ec7fc27e6c87f452e594c057869e72949f1e155f4600eac",
+    ".cache/SV01/cli/document-check.json": "87307a9aa23fe9d81bbe98a174b8f967ed018ec033e4235212b5648532be5317",
+    ".cache/SV01/edit-audit/implementation-handoff.json": "48ef2484fe0b5fe11e5fdba72676d0453282bbe222bfd16f095b4cdf68e2e34d"
+  },
+  "limitations": [
+    "OS chooser/permission UI not automated; native OPFS handles and streams are real",
+    "4 missing SR02 inputs in each of unit and integration",
+    "No performance budget claim",
+    "1500 independent candidates do not certify arbitrary movement"
+  ],
+  "originalMapFilesModified": false,
+  "editCandidates": {
+    "total": 1500,
+    "accepted": 1312,
+    "refused": 188
+  }
+}

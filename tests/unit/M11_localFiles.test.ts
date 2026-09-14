@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LocalFileController, type FilePickerPort, type LocalFileData, type LocalFileHandle, type LocalWritable } from '../../src/adapters/localFiles';
+import { LocalFileController, type FilePickerPort, type LocalFileBinding, type LocalFileData, type LocalFileHandle, type LocalWritable } from '../../src/adapters/localFiles';
 import { contentHash, serializeMap } from '../../src/domain/serialization';
 import { roadLength } from '../../src/geometry/roads';
 import { editorFixture } from '../helpers/M1_fixtures';
@@ -19,6 +19,11 @@ class FakeHandle implements LocalFileHandle {
   failAt: 'create' | 'write' | 'close' | null = null;
   closeGate: Promise<void> | null = null;
   beforeRead?: (read: number) => void;
+  permission: 'granted' | 'denied' | 'prompt' = 'granted';
+  permissionRequests: string[] = [];
+  permissionQueries: string[] = [];
+  async queryPermission(descriptor: { mode: 'read' | 'readwrite' }) { this.permissionQueries.push(descriptor.mode); return this.permission; }
+  async requestPermission(descriptor: { mode: 'read' | 'readwrite' }) { this.permissionRequests.push(descriptor.mode); return this.permission; }
   constructor(public name: string, text = '') { this.bytes = new TextEncoder().encode(text); }
   text(): string { return new TextDecoder().decode(this.bytes); }
   external(text: string): void { this.bytes = new TextEncoder().encode(text); }
@@ -251,5 +256,86 @@ describe('M1.1 native file adapter contract (mock handles, not native permission
     expect(first.snapshot().confirmedContentHash).not.toBe(contentHash(map));
     expect(second.snapshot().linkedName).toBeNull();
     expect(first.reset()).toBe(true); expect(first.snapshot().confirmedContentHash).toBeNull();
+  });
+});
+
+describe('SV01 restores only explicit file identity and its last confirmed baseline', () => {
+  it('restores without file reads or permission requests; the next save writes the same handle', async () => {
+    const { controller, handle } = await linked(); const reads = handle.reads;
+    const binding = controller.exportBinding()!;
+    const restored = new LocalFileController({});
+    expect(restored.restoreBinding(binding).status).toBe('linked');
+    expect(handle.reads).toBe(reads); expect(handle.permissionRequests).toEqual([]); expect(handle.permissionQueries).toEqual([]);
+    const map = editorFixture(); map.nodes.nB!.position[0] = 123.456789;
+    expect((await restored.write(map)).status).toBe('saved');
+    expect(handle.permissionRequests).toEqual(['readwrite']);
+    expect(handle.text()).toBe(serializeMap(map));
+    expect(controller.snapshot().confirmedContentHash).toBe(binding.contentHash);
+    expect(restored.exportBinding()!.rawHash).not.toBe(binding.rawHash);
+  });
+
+  it('automatic checks do not request permission and a denied save does not fall back to save-as', async () => {
+    const { controller, handle } = await linked(); const binding = controller.exportBinding()!;
+    const restored = new LocalFileController({ showSaveFilePicker: async () => { throw new Error('must not save-as'); } });
+    restored.restoreBinding(binding); handle.permission = 'prompt'; const reads = handle.reads;
+    expect((await restored.check()).status).toBe('failure');
+    expect(handle.permissionQueries).toEqual(['read']); expect(handle.permissionRequests).toEqual([]);
+    expect(handle.reads).toBe(reads);
+    handle.permission = 'denied';
+    expect((await restored.write(editorFixture())).status).toBe('failure');
+    expect(restored.exportBinding()).toEqual(binding); expect(handle.created).toBe(0);
+    handle.permission = 'granted';
+    expect((await restored.write(editorFixture())).status).toBe('saved');
+  });
+
+  it('explicit reload may renew read permission while denied reload preserves the old baseline', async () => {
+    const { controller, handle } = await linked(); const before = controller.snapshot();
+    handle.permission = 'denied';
+    expect((await controller.readCurrent()).status).toBe('failure');
+    expect(controller.snapshot()).toEqual(before);
+    handle.permission = 'granted';
+    expect((await controller.readCurrent()).status).toBe('opened');
+    expect(handle.permissionRequests).toEqual(['read', 'read']);
+  });
+
+  it('keeps the old raw baseline across refresh and rejects bytes changed while the page was closed', async () => {
+    const { controller, handle } = await linked(); const binding = controller.exportBinding()!;
+    const outside = editorFixture(); outside.metadata.name = 'closed-page external edit';
+    handle.external(serializeMap(outside));
+    const restored = new LocalFileController({}); restored.restoreBinding(binding);
+    const result = await restored.write(editorFixture());
+    expect(result.status).toBe('conflict'); expect(handle.created).toBe(0);
+    expect(restored.exportBinding()).toEqual(binding);
+    expect(handle.text()).toBe(serializeMap(outside));
+  });
+
+  it('does not confuse equal map IDs and equal filenames in different projects', async () => {
+    const a = new FakeHandle('map.json', serializeMap(editorFixture())), b = new FakeHandle('map.json', serializeMap(editorFixture()));
+    const first = await linked(a), second = await linked(b);
+    const restored = new LocalFileController({});
+    restored.restoreBinding(first.controller.exportBinding()!);
+    const changed = editorFixture(); changed.nodes.nB!.position[0] = 125;
+    expect((await restored.write(changed)).status).toBe('saved');
+    expect(a.text()).toBe(serializeMap(changed)); expect(b.text()).toBe(serializeMap(editorFixture()));
+    restored.reset(); restored.restoreBinding(second.controller.exportBinding()!);
+    expect((await restored.write(editorFixture())).status).toBe('saved');
+    expect(a.created).toBe(1); expect(b.created).toBe(1);
+  });
+
+  it('rejects malformed restored records without clearing an existing association', async () => {
+    const { controller } = await linked(); const before = controller.snapshot();
+    expect(controller.restoreBinding({ handle: { name: 'map.json' }, contentHash: 'a'.repeat(64), rawHash: 'b'.repeat(64) } as LocalFileBinding).status).toBe('failure');
+    expect(controller.restoreBinding({ ...controller.exportBinding()!, rawHash: 'invalid' }).status).toBe('failure');
+    expect(controller.snapshot()).toEqual(before);
+  });
+
+  it('does not replace a binding while its original file write is in flight', async () => {
+    const { controller, handle } = await linked(); const other = await linked(new FakeHandle('other.json', serializeMap(editorFixture())));
+    const gate = deferred(); handle.closeGate = gate.promise;
+    const saving = controller.write(editorFixture());
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(controller.restoreBinding(other.controller.exportBinding()!).status).toBe('busy');
+    gate.resolve(); expect((await saving).status).toBe('saved');
+    expect(controller.snapshot().linkedName).toBe('original.map.json');
   });
 });

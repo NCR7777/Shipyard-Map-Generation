@@ -15,6 +15,8 @@ export interface LocalFileHandle {
   getFile(): Promise<LocalFileData>;
   createWritable(): Promise<LocalWritable>;
   isSameEntry?(other: LocalFileHandle): Promise<boolean>;
+  queryPermission?(descriptor: { mode: 'read' | 'readwrite' }): Promise<'granted' | 'denied' | 'prompt'>;
+  requestPermission?(descriptor: { mode: 'read' | 'readwrite' }): Promise<'granted' | 'denied' | 'prompt'>;
 }
 export interface FilePickerOptions {
   types: { description: string; accept: Record<string, string[]> }[];
@@ -49,8 +51,8 @@ export interface LocalFileSnapshot {
 }
 
 interface ReadSnapshot { text: string | null; rawHash: string; loaded: LoadResult | null; issues: Issue[] }
-interface Binding { handle: LocalFileHandle; contentHash: string; rawHash: string }
-interface PendingOpen { token: number; binding: Binding }
+export interface LocalFileBinding { handle: LocalFileHandle; contentHash: string; rawHash: string }
+interface PendingOpen { token: number; binding: LocalFileBinding }
 const options: FilePickerOptions = {
   types: [{ description: '船厂地图 JSON', accept: { 'application/json': ['.json'] } }], excludeAcceptAllOption: false,
 };
@@ -77,14 +79,24 @@ async function readHandle(handle: LocalFileHandle): Promise<ReadSnapshot> {
   return { text, rawHash, loaded, issues: loaded.ok ? [] : loaded.report.issues };
 }
 
+/** Stored native handles use structured clone, never JSON or a guessed file path. */
+export function validLocalFileBinding(value: unknown): value is LocalFileBinding {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Partial<LocalFileBinding>;
+  return typeof record.contentHash === 'string' && /^[a-f0-9]{64}$/.test(record.contentHash)
+    && typeof record.rawHash === 'string' && /^[a-f0-9]{64}$/.test(record.rawHash)
+    && !!record.handle && typeof record.handle.name === 'string'
+    && typeof record.handle.getFile === 'function' && typeof record.handle.createWritable === 'function';
+}
+
 /**
- * One controller belongs to one project. Handles are intentionally session-only.
+ * One controller belongs to one project. The project store may restore its exact handle and baseline.
  * UI calls picker/write methods only from an explicit user action. Check never asks permission.
  * This detects observed changes, not an atomic compare-and-swap with external applications.
  */
 export class LocalFileController {
   private readonly port: FilePickerPort;
-  private binding: Binding | null = null;
+  private binding: LocalFileBinding | null = null;
   private pending: PendingOpen | null = null;
   private observedConflict: { token: number; rawHash: string } | null = null;
   private sequence = 0;
@@ -99,6 +111,14 @@ export class LocalFileController {
       linkedName: this.binding?.handle.name ?? null, confirmedContentHash: this.binding?.contentHash ?? null,
       confirmedRawHash: this.binding?.rawHash ?? null, conflict: this.observedConflict !== null, busy: this.busy,
     };
+  }
+  exportBinding(): LocalFileBinding | null { return this.binding ? { ...this.binding } : null; }
+  /** Restore only the binding saved for the selected project. No disk reads or permission prompts. */
+  restoreBinding(binding: LocalFileBinding): LocalLinkedResult {
+    if (this.busy) return failure('busy', '文件操作进行中，暂不能恢复关联。');
+    if (!validLocalFileBinding(binding)) return failure('failure', '本地文件关联记录损坏；当前地图保留，请重新选择原文件。');
+    this.sequence++; this.binding = { ...binding }; this.pending = null; this.observedConflict = null;
+    return { status: 'linked', name: binding.handle.name, contentHash: binding.contentHash };
   }
   /** Switching projects while an operation is in flight is refused, rather than mis-associating a late write. */
   reset(): boolean {
@@ -131,6 +151,9 @@ export class LocalFileController {
     if (!this.binding) return failure('unlinked', '当前工程尚未关联本地文件。');
     this.busy = true; this.pending = null;
     try {
+      if (this.binding.handle.requestPermission && await this.binding.handle.requestPermission({ mode: 'read' }) !== 'granted') {
+        return failure('failure', '原文件读取权限未获授权；当前地图与关联保留，请再次点击重新载入后授权。');
+      }
       const read = await readHandle(this.binding.handle);
       if (read.rawHash !== this.binding.rawHash) this.conflictResult(read);
       return this.prepareOpen(this.binding.handle, read);
@@ -142,6 +165,9 @@ export class LocalFileController {
     if (!this.binding) return failure('unlinked', '当前工程尚未关联本地文件。');
     this.busy = true;
     try {
+      if (this.binding.handle.queryPermission && await this.binding.handle.queryPermission({ mode: 'read' }) !== 'granted') {
+        return failure('failure', '原文件关联已恢复，读取权限待确认；点击保存或重新载入可授权，自动检查不会弹出权限请求。');
+      }
       const read = await readHandle(this.binding.handle);
       if (read.rawHash !== this.binding.rawHash) return this.conflictResult(read);
       this.observedConflict = null;
@@ -154,7 +180,10 @@ export class LocalFileController {
     if (!this.binding) return failure('unlinked', '当前工程尚未关联本地文件。');
     this.busy = true; this.pending = null;
     try {
+      // Request inside this explicit save action, before asynchronous reads can consume user activation.
+      const permission = this.binding.handle.requestPermission?.({ mode: 'readwrite' });
       const text = serializeMap(map); const hash = contentHash(map);
+      if (permission && await permission !== 'granted') return failure('failure', '原文件写入权限未获授权；地图与关联保留，未另存或覆盖文件。请再次点击保存后授权。');
       const read = await readHandle(this.binding.handle);
       if (overwriteToken !== undefined && (!this.observedConflict || overwriteToken !== this.observedConflict.token)) return failure('stale', '覆盖确认已过期，请重新检查外部文件。');
       if (read.rawHash !== this.binding.rawHash) {

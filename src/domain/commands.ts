@@ -863,7 +863,13 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
     if (!planning.supported) return { ok: false, issues: [problem('STATIC_CONTENTS_INVALID', '变换后静态槽位契约不再有效，整个事务已拒绝。'), ...planning.issues] };
   }
   if (contentHash(input) === contentHash(next)) return { ok: true, map: input, changed: false, ...(command.type === 'upgradeSchema' ? { migrationChanges: [] } : {}) };
-  const spatialIssues = [...inspectSpatialEdit(input, next, { geometryPreservedRoadIds: support.geometryPreservedRoadIds }), ...inspectOwnerGeometryEdit(input, next, support.geometryPreservedRoadIds, support.impact?.rigidRoadIds)];
+  // Only the existing transform command can establish that owner and service received the same rigid transform.
+  const transformed = command.type === 'translateSelection' || command.type === 'rotateSelection' ? support.impact?.selection : undefined;
+  const rigidServiceIds = transformed?.servicePoints.filter(id => {
+    const point = input.servicePoints[id]!;
+    return transformed.nodes.includes(point.nodeId) && (point.facilityId ? transformed.facilities.includes(point.facilityId) : !!point.zoneId && transformed.zones.includes(point.zoneId));
+  });
+  const spatialIssues = [...inspectSpatialEdit(input, next, { geometryPreservedRoadIds: support.geometryPreservedRoadIds, rigidServiceIds }), ...inspectOwnerGeometryEdit(input, next, support.geometryPreservedRoadIds, support.impact?.rigidRoadIds)];
   if (spatialIssues.some(issue => issue.severity === 'error')) return { ok: false, issues: spatialIssues };
   const topologySources = isTopologyCommand(command) || command.type === 'createConnectedPoint' ? recordTopologySources(input, next, support.affectedRefs, command.type === 'createConnectedPoint' ? command.source.id : undefined) : [];
   const boundarySources = command.type === 'normalizeSiteBoundary' ? recordSiteBoundaryNormalization(input, next) : [];

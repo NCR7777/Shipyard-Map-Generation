@@ -1,3 +1,4 @@
+import { validLocalFileBinding, type LocalFileBinding } from './localFiles';
 import { rasterBytes } from './rasterFiles';
 import {
   ProjectPersistenceError, persistenceError, validateEditorState,
@@ -8,6 +9,7 @@ const PROJECTS = 'projects';
 const META = 'metadata';
 const VIEWS = 'editorStates';
 const ASSETS = 'assetBlobs';
+const FILES = 'localFileBindings';
 
 /** Browser-only adapter. Map JSON, viewport records and future binary assets are separate stores. */
 export class IndexedDBProjectStore implements ProjectStorePort, RasterAssetStorePort {
@@ -18,12 +20,13 @@ export class IndexedDBProjectStore implements ProjectStorePort, RasterAssetStore
     if (!this.connection) this.connection = new Promise((resolve, reject) => {
       if (typeof indexedDB === 'undefined') { reject(new ProjectPersistenceError('PROJECT_STORAGE_UNAVAILABLE', '当前浏览器不支持 IndexedDB；仍可编辑与导出 JSON。')); return; }
       let failed = false;
-      const request = indexedDB.open(this.databaseName, 2);
+      const request = indexedDB.open(this.databaseName, 3);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(PROJECTS)) db.createObjectStore(PROJECTS, { keyPath: 'projectId' });
         if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
         if (!db.objectStoreNames.contains(VIEWS)) db.createObjectStore(VIEWS);
+        if (!db.objectStoreNames.contains(FILES)) db.createObjectStore(FILES);
         if (!db.objectStoreNames.contains(ASSETS)) {
           const assets = db.createObjectStore(ASSETS, { keyPath: ['projectId', 'sha256'] });
           assets.createIndex('sha256', 'sha256', { unique: false });
@@ -165,6 +168,23 @@ export class IndexedDBProjectStore implements ProjectStorePort, RasterAssetStore
     if (typeof projectId !== 'string' || !projectId || projectId.length > 200 || !/^[a-f0-9]{64}$/.test(sha256)) {
       throw new ProjectPersistenceError('ASSET_KEY_INVALID', '底图存储需要有效工程 ID 和 SHA-256 摘要。');
     }
+  }
+
+  async readLocalFileBinding(projectId: string): Promise<LocalFileBinding | null> {
+    this.checkProjectKey(projectId);
+    const binding = await this.read<unknown>(FILES, projectId);
+    if (binding === null) return null;
+    if (!validLocalFileBinding(binding)) throw new ProjectPersistenceError('LOCAL_FILE_BINDING_INVALID', '已存原文件关联损坏；未清除地图或覆盖文件，请重新选择原文件。');
+    return binding;
+  }
+  writeLocalFileBinding(projectId: string, binding: LocalFileBinding | null): Promise<void> {
+    this.checkProjectKey(projectId);
+    if (binding !== null && !validLocalFileBinding(binding)) throw new ProjectPersistenceError('LOCAL_FILE_BINDING_INVALID', '原文件关联或保存基线无效，未保存关联。');
+    // Native FileSystemFileHandle is structured-cloned by IndexedDB; no path or blob URL is stored.
+    return this.write(FILES, projectId, binding);
+  }
+  private checkProjectKey(projectId: string): void {
+    if (typeof projectId !== 'string' || !projectId || projectId.length > 200) throw new ProjectPersistenceError('PROJECT_ID_INVALID', '原文件关联需要有效工程 ID。');
   }
 
   async close(): Promise<void> { if (this.connection) (await this.connection).close(); this.connection = null; }

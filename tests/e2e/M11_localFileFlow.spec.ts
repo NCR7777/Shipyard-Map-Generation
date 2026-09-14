@@ -152,7 +152,7 @@ test('simulated picker + real OPFS: UI writes, detects unchanged-revision extern
   expect(errors).toEqual([]);
 });
 
-test('simulated picker + real OPFS: a new browser project does not inherit the old file and refresh requires reassociation', async ({ page }, testInfo) => {
+test('simulated picker + real OPFS: a new browser project does not inherit the old file and refresh restores its own saved file', async ({ page }, testInfo) => {
   testInfo.annotations.push({ type: 'evidence-boundary', description: 'Real OPFS I/O with simulated pickers; no native OS file authorization claim.' });
   await startLinked(page);
   await editEndpoint(page, 125);
@@ -183,8 +183,8 @@ test('simulated picker + real OPFS: a new browser project does not inherit the o
   await page.reload();
   await expect(page.getByTestId('browser-save-status')).toHaveText('浏览器草稿已保存');
   await expect(page.getByLabel('地图名称', { exact: true })).toHaveValue('独立的浏览器工程 B');
-  await expect(page.getByTestId('local-save-status')).toHaveText('本地文件未关联');
-  await openFileMenu(page); await expect(page.getByRole('button', { name: '写回关联文件', exact: true })).toBeDisabled();
+  await expect(page.getByTestId('local-save-status')).toContainText(copyFile);
+  await openFileMenu(page); await expect(page.getByRole('button', { name: '写回关联文件', exact: true })).toBeEnabled();
   expect(await readOPFS(page)).toEqual(original);
   expect(await readOPFS(page, copyFile)).toEqual(savedCopy);
 });

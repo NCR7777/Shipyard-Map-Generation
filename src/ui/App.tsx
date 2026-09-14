@@ -37,7 +37,8 @@ import { Modal } from './Modal';
 import { PointCreationPanel, makePointCreationDraft, applyPointPick, buildPointCreationCommand } from './PointCreationPanel';
 import './workspace.css';
 import { useProjectWorkspace } from './useProjectWorkspace';
-import { LocalFileController } from '../adapters/localFiles';
+import { LocalFileController, type LocalOpenCandidate } from '../adapters/localFiles';
+import { IndexedDBProjectStore } from '../adapters/projectStore';
 import { DEFAULT_DRAWING_CONFIG, type DrawingConfig } from '../editor/projectController';
 
 type SelectionKind = keyof FullSelection;
@@ -172,6 +173,12 @@ export function App() {
     frameConfirmation?.resolve(accepted); setFrameConfirmation(null);
   }
   const [local] = useState(() => new LocalFileController());
+  const [fileStore] = useState(() => new IndexedDBProjectStore());
+  const bindingGeneration = useRef(0), bindingRestoring = useRef(false);
+  const [bindingLoading, setBindingLoading] = useState(false);
+  const [fileLocation, setFileLocation] = interaction.booleanDialog('fileLocation');
+  const [attachCandidate, setAttachCandidate] = interaction.dialogField('attachFile');
+  useEffect(() => () => { ++bindingGeneration.current; }, []);
   const [localState, setLocalState] = useState(local.snapshot());
   const [localMessage, setLocalMessage] = useState('');
   const [fileConflict, setFileConflict] = interaction.dialogField('fileConflict');
@@ -185,6 +192,22 @@ export function App() {
     onRestore: recovery => {
       importSequence.current++; setFileLoading(false);
       if (!preserveNative.current && !local.reset()) throw new Error('本地文件仍在处理中，工程界面未切换；请等待并重试。');
+      const token = ++bindingGeneration.current;
+      if (!preserveNative.current) {
+        bindingRestoring.current = true; setBindingLoading(true);
+        void fileStore.readLocalFileBinding(recovery.projectId).then(binding => {
+          if (token !== bindingGeneration.current) return;
+          if (binding) {
+            const restored = local.restoreBinding(binding);
+            setLocalMessage(restored.status === 'linked' ? '已恢复原文件关联；保存将写回 ' + restored.name + '。' : restored.message);
+            refreshLocal();
+          }
+        }).catch(error => {
+          if (token === bindingGeneration.current) setLocalMessage('原文件关联恢复失败；地图保留，请重新关联：' + String(error));
+        }).finally(() => {
+          if (token === bindingGeneration.current) { bindingRestoring.current = false; setBindingLoading(false); }
+        });
+      } else { bindingRestoring.current = false; setBindingLoading(false); }
       updateSession({ ...createSession(recovery.map, true), changeToken: sessionRef.current.changeToken + 1 });
       setMapName(recovery.map.metadata.name); setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection());
       setBoundaryEditMode('auto'); onBoundaryInteractionChange(false);
@@ -218,7 +241,7 @@ export function App() {
   const capabilities = useMemo(() => mapCapabilities(session.map), [session.map]);
   const report = useMemo(() => validateMap(session.map), [session.map]);
   const domainReadonly = !capabilities.editable;
-  const backgroundDisabled = domainReadonly || !projects.ready || projects.transitioning || localState.busy || schemaUpgrading || saveRunning;
+  const backgroundDisabled = domainReadonly || bindingLoading || !projects.ready || projects.transitioning || localState.busy || schemaUpgrading || saveRunning;
   usePropertyDraft(mapName !== session.map.metadata.name ? draftContext : undefined, mapName !== session.map.metadata.name, applyMapName, registerPropertyDraft);
   const readonly = backgroundDisabled || !!backgroundAdjustId || backgroundDirty;
   const dirty = session.acknowledgedHash !== scene.mapContentHash;
@@ -261,7 +284,7 @@ export function App() {
     if (next.changeToken !== sessionRef.current.changeToken) { setRoadShapePreview(null); setLocatedKey(null); }
     sessionRef.current = next; setSession(next);
   }
-  function operationsBlocked() { return !projects.ready || projects.isNavigating() || local.snapshot().busy || nativeTransition.current || upgrading.current || saving.current; }
+  function operationsBlocked() { return bindingRestoring.current || !projects.ready || projects.isNavigating() || local.snapshot().busy || nativeTransition.current || upgrading.current || saving.current; }
   function rejectLocked(refs: readonly CommandAffectedRef[]): boolean {
     const locked = refs.filter(ref => drawingRef.current.lockedTypes.includes(ref.kind as SceneKind));
     if (!locked.length) return false;
@@ -353,6 +376,8 @@ export function App() {
     try {
       const backup = await projects.backup(before.map);
       if (sessionRef.current.changeToken !== before.changeToken) throw new Error('备份期间地图已变化，请重新执行升级。');
+      const projectId = projects.activeProjectId();
+      if (projectId && !projects.temporary) await fileStore.writeLocalFileBinding(projectId, null);
       if (!local.reset()) throw new Error('本地文件仍在处理中，未应用升级。');
       updateSession({ ...result.session, acknowledgedHash: sessionRef.current.acknowledgedHash });
       refreshLocal(); setFileConflict(null); setOverwriteReady(null); setUpgradeDialog(false);
@@ -404,6 +429,7 @@ export function App() {
   async function persistTargets(target: 'file' | 'browser', saveAs = false, overwriteToken?: number) {
     if (saving.current || operationsBlocked()) return;
     const context = currentDraftContext(); const map = sessionRef.current.map;
+    if (target === 'file' && !saveAs && !local.snapshot().linkedName && local.capabilities().open) { setFileLocation(true); return; }
     if (overwriteToken !== undefined && (overwriteReady?.token !== overwriteToken || overwriteReady.mapHash !== context.mapContentHash)) {
       setLocalMessage('覆盖确认已过期，请重新保存双方副本。'); return;
     }
@@ -418,9 +444,17 @@ export function App() {
       } else file = local.write(map, overwriteToken);
       refreshLocal();
       const results = await Promise.allSettled([projects.save(), file]);
+      const browserResult = results[0]; const fileResult = results[1];
+      let bindingMessage = '';
+      if (target === 'file' && context.projectId) {
+        // Never pair a newer file baseline with a browser map whose checkpoint failed.
+        if (browserResult.status === 'fulfilled' && browserResult.value) {
+          try { await persistFileBinding(context.projectId); }
+          catch (error) { bindingMessage = '文件关联未能持久保存；刷新后需重新关联：' + String(error); }
+        } else bindingMessage = '浏览器恢复未保存，保留旧文件关联基线；刷新后需核对原文件。';
+      }
       if (!sameDraftContext(context, currentDraftContext())) return;
       refreshLocal();
-      const browserResult = results[0]; const fileResult = results[1];
       const browserMessage = browserResult.status === 'fulfilled' && browserResult.value ? '浏览器恢复已保存' : '浏览器恢复未确认保存';
       if (browserResult.status === 'rejected') setOperationIssues([localIssue('PROJECT_SAVE_FAILED', String(browserResult.reason))]);
       let fileMessage = '';
@@ -433,6 +467,7 @@ export function App() {
           else if (result.status === 'conflict') { fileMessage = '本地文件冲突；当前版本已保留，未覆盖外部内容。'; setFileConflict(result); setOverwriteReady(null); }
           else fileMessage = result.message;
         }
+        fileMessage = [fileMessage, bindingMessage].filter(Boolean).join('；');
         setLocalMessage(fileMessage);
       }
       setStatus([browserMessage, fileMessage].filter(Boolean).join('；'));
@@ -466,6 +501,45 @@ export function App() {
     catch (error) { setOperationIssues([localIssue('PROJECT_COPY_FAILED', String(error))]); }
   }
   function refreshLocal() { setLocalState(local.snapshot()); }
+  async function persistFileBinding(projectId = projects.activeProjectId()) {
+    if (!projectId || projects.temporary) return;
+    await fileStore.writeLocalFileBinding(projectId, local.exportBinding());
+  }
+  async function chooseOriginalFile() {
+    if (operationsBlocked()) return;
+    const context = currentDraftContext();
+    setFileLocation(false); nativeTransition.current = true;
+    const pending = local.open(); refreshLocal();
+    let candidate: LocalOpenCandidate | null = null;
+    try {
+      const result = await pending; refreshLocal();
+      if (result.status !== 'opened') { setLocalMessage(result.message); return; }
+      candidate = result;
+      const current = sessionRef.current.map;
+      if (!sameDraftContext(context, currentDraftContext())) throw new Error('已提交地图已变化，请重新选择原文件。');
+      if (result.loaded.map.mapId !== current.mapId || !sameValue(result.loaded.map.coordinateFrame, current.coordinateFrame))
+        throw new Error('所选文件的地图 ID 或坐标框架不匹配，未关联或覆盖；请选原文件，或明确另存为新文件。');
+      await projects.backup(result.loaded.map);
+      if (!sameDraftContext(context, currentDraftContext())) throw new Error('工程已变化，原文件候选已取消。');
+      setAttachCandidate(result); candidate = null;
+    } catch (error) { setLocalMessage(String(error)); }
+    finally { if (candidate) local.cancelOpen(candidate.token); nativeTransition.current = false; refreshLocal(); }
+  }
+  function cancelAttachFile() {
+    if (attachCandidate) local.cancelOpen(attachCandidate.token);
+    setAttachCandidate(null);
+  }
+  function confirmAttachFile() {
+    const dialog = interaction.read().dialog;
+    if (operationsBlocked() || !attachCandidate || dialog?.kind !== 'attachFile') return;
+    if (!sameDraftContext(dialog.context, currentDraftContext())) {
+      cancelAttachFile(); setLocalMessage('关联确认已过期；当前编辑与原文件均保留。'); return;
+    }
+    const result = local.acceptOpen(attachCandidate.token); setAttachCandidate(null); refreshLocal();
+    if (result.status !== 'linked') { setLocalMessage(result.message); return; }
+    // Start write permission in this confirmation gesture; keep the current edited map.
+    void persistTargets('file');
+  }
   async function checkFile() {
     if (operationsBlocked()) return;
     const pending = local.check(); refreshLocal();
@@ -495,6 +569,7 @@ export function App() {
       preserveNative.current = true;
       await projects.create(result.loaded.map, initialView(result.loaded.map));
       const accepted = local.acceptOpen(result.token);
+      if (accepted.status === 'linked') await persistFileBinding();
       setLocalMessage(accepted.status === 'linked' ? '文件已关联；写回需要单独操作。' : accepted.message);
       setFileConflict(null); setOverwriteReady(null);
     } catch (error) { local.cancelOpen(result.token); setLocalMessage(String(error)); }
@@ -941,7 +1016,8 @@ export function App() {
         <button onClick={showRecent} disabled={!projects.ready || projects.transitioning || saveRunning}>最近项目</button>
         <button onClick={() => void copyProject()} disabled={!projects.ready || projects.transitioning || saveRunning}>浏览器另存为</button>
         <button disabled={!projects.ready || projects.transitioning || localState.busy || saveRunning} onClick={() => { setNewName('新建布局'); setNewDialog(true); }}>新建地图</button>
-        <button onClick={() => fileInput.current?.click()} disabled={fileLoading || !projects.ready || projects.transitioning || localState.busy || saveRunning}>导入 JSON</button>
+        <button onClick={() => { if (local.capabilities().open) void openNative(); else fileInput.current?.click(); }} disabled={bindingLoading || fileLoading || !projects.ready || projects.transitioning || localState.busy || saveRunning} title="支持文件授权的浏览器会关联原文件，后续保存直接写回">导入 JSON</button>
+        <button onClick={() => fileInput.current?.click()} disabled={bindingLoading || fileLoading || !projects.ready || projects.transitioning || localState.busy || saveRunning} title="创建浏览器副本，不取得原文件写入权限">导入 JSON 副本</button>
         <button onClick={exportCurrent}>导出 JSON</button>
               <button onClick={() => void openNative()} disabled={!local.capabilities().open || localState.busy || projects.transitioning} title="浏览器能力检测；点击后才请求文件授权">关联本地 JSON</button>
       <button onClick={() => void writeNative()} disabled={!localState.linkedName || localState.busy || projects.transitioning}>写回关联文件</button>
@@ -955,8 +1031,8 @@ export function App() {
       <button onClick={() => requestLeave('打开底图面板', () => { setBackgroundPanelOpen(true); updateWorkbench({ leftCollapsed: false }); requestAnimationFrame(() => document.querySelector('[data-testid="background-panel"]')?.scrollIntoView({ block: 'nearest' })); })}>底图</button>
       <button onClick={() => setDrawerOpen(!drawerOpen)}>检查</button>
       <strong className="workbench-project-name" title={session.map.metadata.name}>{session.map.metadata.name}</strong>
-      <span className="workbench-save-status"><span data-testid="browser-save-status">{projects.browserStatus}</span><span data-testid="local-save-status">{localState.busy ? '本地文件处理中…' : localState.conflict ? '本地文件冲突' : !localState.linkedName ? '本地文件未关联' : localState.confirmedContentHash === scene.mapContentHash ? '本地文件已确认：' + localState.linkedName : '本地文件有未写回变化：' + localState.linkedName}</span></span>
-      <button className="primary-button" aria-label="保存工程" onClick={() => saveProject()} disabled={!projects.ready || projects.transitioning || saveRunning}>{saveRunning ? '保存中…' : '保存'}</button>
+      <span className="workbench-save-status"><span data-testid="browser-save-status">{projects.browserStatus}</span><span data-testid="local-save-status">{bindingLoading ? '正在恢复原文件关联…' : localState.busy ? '本地文件处理中…' : localState.conflict ? '本地文件冲突' : !localState.linkedName ? '本地文件未关联' : localState.confirmedContentHash === scene.mapContentHash ? '本地文件已确认：' + localState.linkedName : '本地文件有未写回变化：' + localState.linkedName}</span></span>
+      <button className="primary-button" aria-label="保存工程" onClick={() => saveProject()} disabled={bindingLoading || !projects.ready || projects.transitioning || saveRunning}>{saveRunning ? '保存中…' : '保存'}</button>
       <details className="workbench-menu"><summary aria-label="保存选项">▾</summary><div className="workbench-menu-items"><button onClick={() => saveProject(false, 'browser')}>仅保存浏览器恢复</button><button onClick={() => saveProject(false, 'file')}>保存到文件</button><button onClick={() => setSaveTargetDialog({})}>更改默认保存目标</button></div></details>
     </>}
       tools={<>{/* Existing creation tools and one command toolbar. */}        <div className="tool-grid">{([{ id: 'select', label: '选择', icon: '↖' }, { id: 'node', label: '节点', icon: '⊙' }, { id: 'road', label: '道路折线', icon: '⌁' }, { id: 'pan', label: '平移', icon: '✥' }, { id: 'facilityRect', label: '矩形设施', icon: '▭' }, { id: 'facilityPolygon', label: '多边形设施', icon: '⬡' }, { id: 'zoneRect', label: '矩形区域', icon: '▧' }, { id: 'zonePolygon', label: '多边形区域', icon: '◇' }] as const).map(item => <button key={item.id} className={tool === item.id ? 'tool-button active' : 'tool-button'} aria-label={item.label} aria-pressed={tool === item.id} disabled={readonly && item.id !== 'select' && item.id !== 'pan'} onClick={() => changeTool(item.id)}><b>{item.icon}</b>{item.label}</button>)}</div></>}
@@ -1087,6 +1163,8 @@ export function App() {
       <div className="dialog-actions"><button data-cancel onClick={() => setSplitDialog(false)}>取消</button><button className="primary-button" onClick={splitRoad}>确认拆分</button></div>
     </Modal>}
     {saveIntent && <Modal title="有未应用输入" onCancel={() => setSaveIntent(null)}><p>未应用输入尚未成为地图事务。选择如何保存；未完成的绘制不会自动闭合。</p><div className="dialog-actions"><button data-cancel onClick={() => setSaveIntent(null)}>取消，保留输入</button><button onClick={() => saveProject(true, saveIntent.target, saveIntent.saveAs, saveIntent.overwriteToken)}>仅保存已提交地图</button><button className="primary-button" disabled={!!(draftRoad || polygonDraftDirty || pointDraft || splitPicking || boundaryEditing)} onClick={applyThenSave}>应用后保存</button></div>{(draftRoad || polygonDraftDirty || pointDraft || splitPicking) && <p>当前绘制尚未完成，请返回完成，或仅保存已提交地图。</p>}</Modal>}
+    {fileLocation && <Modal title="保存到哪个文件" onCancel={() => setFileLocation(false)}><p>此工程尚未关联可写文件。选择原文件并确认后，后续“保存”会直接写回，刷新和切换工程后仍保留关联。</p><div className="dialog-actions"><button data-cancel onClick={() => setFileLocation(false)}>取消</button><button className="primary-button" onClick={() => void chooseOriginalFile()}>选择原文件并写回</button><button onClick={() => { setFileLocation(false); void persistTargets('file', true); }}>保存为新文件</button></div></Modal>}
+    {attachCandidate && <Modal title="关联原文件并写回" onCancel={cancelAttachFile}><p>所选文件：{attachCandidate.name}；地图：{attachCandidate.loaded.map.metadata.name}。地图 ID 和坐标框架一致；所选文件内容已另存浏览器恢复副本。</p><p>确认后将用当前已编辑地图写回该文件。不会重新载入旧地图。写入前仍检查外部变化。</p><div className="dialog-actions"><button data-cancel onClick={cancelAttachFile}>取消</button><button className="primary-button" onClick={confirmAttachFile}>确认关联并写回</button></div></Modal>}
     {saveTargetDialog && <Modal title="选择保存目标" onCancel={() => setSaveTargetDialog(null)}><p>浏览器恢复用于本机恢复；文件保存用于独立备份。将记住此工程的选择，可在保存菜单中更改。</p><div className="dialog-actions"><button data-cancel onClick={() => setSaveTargetDialog(null)}>取消</button><button onClick={() => { updateWorkbench({ saveTarget: 'browser' }); saveProject(false, 'browser'); }}>仅保存浏览器恢复</button><button className="primary-button" onClick={() => { updateWorkbench({ saveTarget: 'file' }); saveProject(false, 'file', saveTargetDialog.saveAs); }}>保存到文件</button></div></Modal>}
     </>}
     {!projects.ready && !frameConfirmation && <Modal title="恢复浏览器工程" onCancel={() => {}}><p>{projects.error || '正在读取 IndexedDB；恢复完成前不会写入空地图。'}</p>{projects.error && <div className="dialog-actions"><button onClick={projects.retry}>重试恢复</button><button onClick={projects.continueTemporary}>仅内存继续编辑</button></div>}</Modal>}

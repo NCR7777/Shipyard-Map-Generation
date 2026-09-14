@@ -30,7 +30,7 @@ test('BG01 real IndexedDB v1 upgrade preserves project/view and stores verified 
     const version = db.version; db.close(); await store.close();
     return { before, after, view, version, records, sameBytes: String(new Uint8Array(shared.bytes)) === String(new Uint8Array(asset.bytes)), dimensions, missing, badHash };
   }, png);
-  expect(result.version).toBe(2); expect(result.before).toEqual(result.after); expect(result.after.draft.mapJson).toBe('untouched');
+  expect(result.version).toBe(3); expect(result.before).toEqual(result.after); expect(result.after.draft.mapJson).toBe('untouched');
   expect(result.view.camera).toEqual({ offsetX: 2, offsetY: 3, scale: 1 }); expect(result.records).toHaveLength(2);
   expect(result.sameBytes).toBe(true); expect(result.dimensions).toEqual([3, 2]); expect(result.missing).toBeNull(); expect(result.badHash).toBe('ASSET_HASH_MISMATCH');
 });

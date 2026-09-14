@@ -170,3 +170,41 @@ describe('UX02 explicit owner geometry and atomic road editing', () => {
   });
 
 });
+
+// SV01 regression: the original Geoje map contains old outside service locations.
+// Whole-owner rigid movement preserves that declared relation; independent edits do not.
+function oldOutsideService(): YardMap {
+  const map = fixture(); map.extensionNamespaces[NS] = { version: '1.0', category: 'behavior' };
+  map.nodes.work = { ...testNode('', 12, 5), kind: 'service' };
+  map.roads.internal = { ...structuredClone(map.roads.access!), fromNodeId: 'gate', toNodeId: 'work', extensions: { [NS]: { role: 'internal', ownerEntityId: 'owner', physicalMeaning: 'design_declared_corridor_not_surveyed_clearance' } } };
+  map.servicePoints.sp!.nodeId = 'work'; map.servicePoints.sp!.arrival = { mode: 'explicit_internal', internalPath: [{ roadId: 'internal', direction: 'forward' }] };
+  return map;
+}
+describe('SV01 unchanged legacy service-owner relation', () => {
+  it('keeps old outside service diagnostics as warnings for actual whole-owner translation and rotation', () => {
+    const map = oldOutsideService(), initial = createSession(map, true);
+    const commands: MapCommand[] = [move([1, 1, 0]), { type: 'rotateSelection', selection: { nodes: [], roads: [], facilities: ['owner'] }, facilityMovePolicy: 'withStaticContents', pivot: [5, 5, 0], angleRad: 0.05 }];
+    for (const command of commands) {
+      const result = editSession(initial, command); expect(result.ok, JSON.stringify(result.issues)).toBe(true);
+      expect(result.issues.find(issue => issue.code === 'SPATIAL_SERVICE_OUTSIDE_OWNER')?.severity).toBe('warning');
+      expect(result.session.past).toHaveLength(1); expect(undoSession(result.session).map).toEqual(initial.map);
+      expect(redoSession(undoSession(result.session)).map).toEqual(result.session.map);
+      for (const key of ['coordinateFrame', 'accessPoints', 'servicePoints', 'resources', 'movements'] as const) expect(result.session.map[key]).toEqual(map[key]);
+      expect(result.session.map.nodes.public).toEqual(map.nodes.public);
+    }
+  });
+  it('still rejects independent outside point and boundary changes, including forged command exemption fields', () => {
+    const map = oldOutsideService();
+    const point: MapCommand = { type: 'movePoint', kind: 'servicePoints', id: 'sp', position: [12.1, 5, 0] };
+    reject(map, point, 'SPATIAL_SERVICE_OUTSIDE_OWNER');
+    reject(map, { ...point, rigidServiceIds: ['sp'] } as MapCommand, 'SPATIAL_SERVICE_OUTSIDE_OWNER');
+    reject(map, { type: 'updateFacility', id: 'owner', patch: { boundary: rectangle(0, 0, 11, 10) } }, 'SPATIAL_SERVICE_OUTSIDE_OWNER');
+    reject(map, { ...move([1, 0, 0]), facilityMovePolicy: 'boundaryOnly' } as MapCommand, 'SPATIAL_SERVICE_OUTSIDE_OWNER');
+  });
+  it('never exempts newly outside services or unknown behavior', () => {
+    const map = oldOutsideService(); map.nodes.work!.position = [8, 5, 0];
+    reject(map, { type: 'movePoint', kind: 'servicePoints', id: 'sp', position: [12, 5, 0] }, 'SPATIAL_SERVICE_OUTSIDE_OWNER');
+    const hidden = oldOutsideService(); hidden.extensionNamespaces['example.future'] = { version: '1', category: 'behavior' }; hidden.extensions['example.future'] = { keep: true };
+    reject(hidden, move(), 'READ_ONLY_MAP');
+  });
+});
