@@ -49,9 +49,10 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
     await x.fill(String(requestedX));
     await page.getByRole('button', { name: '保存工程', exact: true }).click();
     const chooseTarget = page.getByRole('dialog', { name: '选择保存目标', exact: true });
-    await expect(chooseTarget).toBeVisible();
-    await expect(chooseTarget.getByRole('button', { name: '取消', exact: true })).toBeFocused();
-    await chooseTarget.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(chooseTarget).not.toBeVisible();
+    const firstPending = page.getByRole('dialog', { name: '有未应用输入', exact: true });
+    await expect(firstPending.getByRole('button', { name: '取消，保留输入', exact: true })).toBeFocused();
+    await firstPending.getByRole('button', { name: '取消，保留输入', exact: true }).click();
     expect((await storedWorkspace(page)).record).toEqual(before);
     await expect(page.getByTestId('map-hash')).toHaveText(originalHash);
     await expect(x).toHaveValue(String(requestedX));
@@ -97,7 +98,7 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
     await page.reload();
     await expect(page.getByTestId('map-hash')).toHaveText(editedHash, { timeout: 30000 });
     await browserSaved(page);
-    expect((await storedWorkspace(page)).editor?.workbench?.saveTarget).toBe('browser');
+    expect((await storedWorkspace(page)).editor?.workbench?.saveTarget).toBe('ask');
     assertGA01Equal((await exportMapUI(page, info, 'refreshed')).map, edited.map);
     const previousProject = (await storedWorkspace(page)).record!.projectId;
     await importMapUI(page, edited.map, await readFile(edited.path));
@@ -113,7 +114,7 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 1366, height: 76
       located, finalPosition, originalHash, editedHash, originalRevision: original.revision, editedRevision: edited.map.revision,
       singleGeometryTransaction: true, coordinateFramePreserved: true, stableIdsAndReferencesPreserved: true,
       saveCancel: true, committedOnlyCheckpoint: committedOnly.checkpoint!.contentHash, appliedCheckpoint: saved.checkpoint!.contentHash,
-      savePreferenceRestored: true, refreshed: true, jsonRoundtrip: true, originalUnchanged: true };
+      legacySavePreferencePreserved: true, refreshed: true, jsonRoundtrip: true, originalUnchanged: true };
     await writeFile(info.outputPath('RF01-receipt.json'), JSON.stringify(receipt, null, 2));
     await info.attach('RF01-receipt', { body: JSON.stringify(receipt), contentType: 'application/json' });
   });
@@ -187,9 +188,7 @@ for (const failure of ['file', 'browser'] as const) test('RF01 independent save 
   info.annotations.push({ type: 'evidence-boundary', description: 'Picker and one failure are simulated; OPFS streams and IndexedDB are native. OS file permission dialogs are not tested.' });
   const filename = 'rf01-' + failure + '.json';
   await installRF01Picker(page, filename); await readyWorkbench(page); await importMapUI(page, editorFixture());
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  await page.getByRole('dialog', { name: '选择保存目标' }).getByRole('button', { name: '保存到文件', exact: true }).click();
-  await page.getByRole('dialog', { name: '保存到哪个文件' }).getByRole('button', { name: '保存为新文件', exact: true }).click();
+  await fileAction(page, '文件另存为');
   await expect(page.getByTestId('local-save-status')).toContainText('已确认');
   await browserSaved(page);
   const durable = (await storedWorkspace(page)).record!; const oldFile = await opfsMap(page, filename);

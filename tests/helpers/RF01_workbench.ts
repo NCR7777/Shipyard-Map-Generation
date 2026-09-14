@@ -93,7 +93,7 @@ export async function expectVisiblePosition(page: Page, position: Vec3) {
 
 export async function selectBrowserTarget(page: Page) {
   const target = page.getByRole('dialog', { name: '选择保存目标', exact: true });
-  if (await target.isVisible()) await target.getByRole('button', { name: '仅保存浏览器恢复', exact: true }).click();
+  await expect(target).toHaveCount(0);
 }
 
 export async function installRF01Picker(page: Page, filename: string) {

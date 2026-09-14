@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type { YardMap } from '../../src/domain/model';
 import { editorFixture } from '../helpers/M1_fixtures';
 import { drawingControl, fileAction } from '../helpers/workbenchUi';
-import { expectVisiblePosition } from '../helpers/RF01_workbench';
+import { checkpoint, expectVisiblePosition, storedWorkspace } from '../helpers/RF01_workbench';
 
 const originalFile = 'sv01-original.map.json';
 const secondFile = 'sv01-second.map.json';
@@ -100,12 +100,7 @@ async function recent(page: Page, name: string) {
   await expect(modal).not.toBeVisible(); await saved(page);
 }
 async function selectOriginalForUnlinked(page: Page) {
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  const target = page.getByRole('dialog', { name: '选择保存目标', exact: true });
-  if (await target.isVisible()) await target.getByRole('button', { name: '保存到文件', exact: true }).click();
-  const location = page.getByRole('dialog', { name: '保存到哪个文件', exact: true });
-  await expect(location).toBeVisible();
-  await location.getByRole('button', { name: '选择原文件并写回', exact: true }).click();
+  await fileAction(page, '关联原文件');
 }
 async function externalX(page: Page, value: number) {
   return page.evaluate(async ({ name, x }) => {
@@ -265,9 +260,8 @@ test('SV01 saving only committed geometry while attaching preserves unapplied pr
   await page.getByTestId('node-item-nB').click();
   const input = page.getByLabel('X (m)', { exact: true }); await input.fill('175');
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  await page.getByRole('dialog', { name: '选择保存目标', exact: true }).getByRole('button', { name: '保存到文件', exact: true }).click();
   await page.getByRole('dialog', { name: '有未应用输入', exact: true }).getByRole('button', { name: '仅保存已提交地图', exact: true }).click();
-  await page.getByRole('dialog', { name: '保存到哪个文件', exact: true }).getByRole('button', { name: '选择原文件并写回', exact: true }).click();
+  await selectOriginalForUnlinked(page);
   await page.getByRole('dialog', { name: '关联原文件并写回', exact: true }).getByRole('button', { name: '确认关联并写回', exact: true }).click();
   await expect(page.getByTestId('local-save-status')).toContainText('本地文件已确认：' + originalFile);
   expect((await readMap(page)).nodes.nB!.position[0]).toBe(155);
@@ -367,4 +361,74 @@ test('SV01 failed binding removal during Schema upgrade preserves both the origi
   await expect(page.getByTestId('local-save-status')).toContainText(originalFile);
   await editX(page, 115); await saveOriginal(page, 115);
   expect((await readMap(page)).schemaVersion).toBe('0.1.0'); expect(await pickerCounts(page)).toEqual({ open: 1, save: 0 });
+});
+
+
+test('SV02 legacy ask browser and file preferences cannot redirect default Save or Ctrl S', async ({ page }, info) => {
+  let downloads = 0; page.on('download', () => downloads++);
+  await start(page);
+  for (const [index, preference] of ['ask', 'browser', 'file'].entries()) {
+    await page.evaluate(value => new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open('shipyard-map-projects'); open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result, tx = db.transaction('editorStates', 'readwrite');
+        const store = tx.objectStore('editorStates'), id = sessionStorage.getItem('shipyard.activeProjectId')!;
+        const request = store.get(id);
+        request.onsuccess = () => { const editor = request.result; editor.workbench.saveTarget = value; store.put(editor, id); };
+        tx.oncomplete = () => { db.close(); resolve(); }; tx.onabort = () => { db.close(); reject(tx.error); };
+      };
+    }), preference);
+    await page.reload(); await saved(page);
+    expect((await storedWorkspace(page)).editor?.workbench?.saveTarget).toBe(preference);
+    await editX(page, 140 + index); await saveOriginal(page, 140 + index);
+    await editX(page, 150 + index); await page.keyboard.press('Control+s');
+    await expect(page.getByTestId('local-save-status')).toContainText('本地文件已确认：' + originalFile); await saved(page);
+    expect((await readMap(page)).nodes.nB!.position[0]).toBe(150 + index);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '选择保存目标', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '保存到哪个文件', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '保存到文件', exact: true, includeHidden: true })).toHaveCount(0);
+    expect(await pickerCounts(page)).toEqual({ open: 1, save: 0 });
+    expect((await storedWorkspace(page)).editor?.workbench?.saveTarget).toBe(preference);
+  }
+  expect(downloads).toBe(0);
+  await page.screenshot({ path: info.outputPath('default-save-no-target-dialog.png'), fullPage: true });
+});
+
+test('SV02 unlinked Save keeps recovery without a picker download or false file-success claim', async ({ page }, info) => {
+  let downloads = 0; page.on('download', () => downloads++);
+  await start(page, false); const original = await fileText(page);
+  await editX(page, 155); const hash = (await page.getByTestId('map-hash').textContent())!;
+  for (const shortcut of [false, true]) {
+    const before = (await storedWorkspace(page)).record!.storageVersion;
+    if (shortcut) await page.keyboard.press('Control+s');
+    else await page.getByRole('button', { name: '保存工程', exact: true }).click();
+    const record = await checkpoint(page, hash, before);
+    expect(JSON.parse(record.checkpoint!.mapJson).nodes.nB.position[0]).toBe(155);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.project-note').filter({ hasText: '未关联原文件' })).toContainText('未写入本地文件');
+    await expect(page.getByTestId('local-save-status')).toHaveText('本地文件未关联');
+    expect(await pickerCounts(page)).toEqual({ open: 0, save: 0 });
+    expect(await fileText(page)).toBe(original); await expect(page.getByTestId('map-hash')).toHaveText(hash);
+  }
+  expect(downloads).toBe(0); await expect(page.locator('.canvas-status')).toContainText('1 个撤销事务');
+  await page.screenshot({ path: info.outputPath('unlinked-save-explicit-status.png'), fullPage: true });
+});
+
+test('SV02 explicit Save As changes the linked target and subsequent default saves do not reopen a picker', async ({ page }, info) => {
+  let downloads = 0; page.on('download', () => downloads++);
+  await start(page); await editX(page, 110); await saveOriginal(page, 110);
+  const original = await fileText(page);
+  await editX(page, 120);
+  await page.getByLabel('保存选项', { exact: true }).click();
+  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await expect(page.getByTestId('local-save-status')).toContainText('本地文件已确认：' + copyFile); await saved(page);
+  expect((await readMap(page, copyFile)).nodes.nB!.position[0]).toBe(120);
+  await editX(page, 130); await saveOriginal(page, 130, copyFile);
+  await page.reload(); await saved(page); await editX(page, 140); await page.keyboard.press('Control+s');
+  await expect(page.getByTestId('local-save-status')).toContainText('本地文件已确认：' + copyFile); await saved(page);
+  expect((await readMap(page, copyFile)).nodes.nB!.position[0]).toBe(140);
+  expect(await fileText(page)).toBe(original); expect(await pickerCounts(page)).toEqual({ open: 1, save: 1 });
+  expect(downloads).toBe(0); await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('explicit-save-as-subsequent-save.png'), fullPage: true });
 });

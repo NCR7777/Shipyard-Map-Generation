@@ -13,11 +13,12 @@ export async function fileAction(page: Page, name: string): Promise<void> {
 }
 export async function chooseBrowserSaveTarget(page: Page): Promise<void> {
   const target = page.getByRole('dialog', { name: '选择保存目标', exact: true });
-  if (await target.isVisible()) await target.getByRole('button', { name: '仅保存浏览器恢复', exact: true }).click();
+  await expect(target).toHaveCount(0);
 }
 export async function saveToBrowser(page: Page): Promise<void> {
-  await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  await chooseBrowserSaveTarget(page);
+  const options = page.getByLabel('保存选项', { exact: true });
+  if (!await options.evaluate(element => (element.parentElement as HTMLDetailsElement).open)) await options.click();
+  await page.getByRole('button', { name: '仅保存浏览器恢复', exact: true }).click();
 }
 export async function saveShortcutToBrowser(page: Page): Promise<void> {
   await page.keyboard.press('Control+s');

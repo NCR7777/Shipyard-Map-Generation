@@ -4,6 +4,7 @@ export interface WorkbenchPreferences {
   leftCollapsed: boolean | 'auto';
   rightCollapsed: boolean | 'auto';
   drawerHeight: number;
+  /** Legacy preference preserved for old EditorState; Save always targets the linked file. */
   saveTarget: 'ask' | 'file' | 'browser';
 }
 

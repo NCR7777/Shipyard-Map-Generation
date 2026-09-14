@@ -12,10 +12,9 @@ export interface DialogValues {
   roadPreset: { roadId: string };
   boundaryRepair: { kind: 'facilities' | 'zones'; id: string; boundary: Polygon; command: import('../domain/commands').MapCommand; issues: Issue[]; allowed: boolean };
   new: true; copy: true; upgrade: true; delete: true; rotate: true; split: true;
-  recent: true; storageConflict: true; fileLocation: true;
+  recent: true; storageConflict: true;
   attachFile: LocalOpenCandidate;
   save: { target?: 'file' | 'browser'; saveAs?: boolean; overwriteToken?: number };
-  saveTarget: { saveAs?: boolean };
   frame: { resolve: (accepted: boolean) => void };
   import: { value: ImportProposal; isNew: boolean };
   leave: { label: string; action: () => void };
@@ -55,7 +54,7 @@ export function useEditorInteraction(context: () => DraftContext) {
       send({ type: 'dialog', dialog: { kind, value: next, context: before?.kind === kind ? before.context : getContext.current() } as EditorDialog });
     }];
   }
-  function booleanDialog(kind: 'new' | 'copy' | 'upgrade' | 'delete' | 'rotate' | 'split' | 'recent' | 'storageConflict' | 'fileLocation'): [boolean, (value: boolean) => void] {
+  function booleanDialog(kind: 'new' | 'copy' | 'upgrade' | 'delete' | 'rotate' | 'split' | 'recent' | 'storageConflict'): [boolean, (value: boolean) => void] {
     const [shown, set] = dialogField(kind); return [shown === true, value => set(value ? true : null)];
   }
   function activityField<K extends keyof ActivityValues>(kind: K): [ActivityValues[K] | null, (value: SetStateAction<ActivityValues[K] | null>) => void] {
