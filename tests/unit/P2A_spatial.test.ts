@@ -138,8 +138,10 @@ describe('P2A declared spatial relations, pure Node and immutable maps', () => {
   it.each(P1_TARGETS.filter(target=>target.family==='SR03'))('reads $id unchanged and diagnoses in-memory fault copies',async target=>{
     const {map,text}=await readP1Target(target);
     const result=inspectSpatial(map);
-    expect(result.issues).toEqual([]);
-    expect(result.checks.filter(check=>!['spatial.declaration_coverage','spatial.road_forbidden'].includes(check.id)).every(check=>check.status==='checked')).toBe(true);
+    // FAST01 adds geometric building-overlap warnings without imposing prohibition.
+    expect(result.issues.filter(issue => issue.code !== 'SPATIAL_ROAD_BUILDING_OVERLAP')).toEqual([]);
+    expect(result.issues.every(issue => issue.severity === 'warning')).toBe(true);
+    expect(result.checks.filter(check=>!['spatial.declaration_coverage','spatial.road_forbidden','spatial.road_building'].includes(check.id)).every(check=>check.status==='checked')).toBe(true);
     expect(result.checks.find(check=>check.id==='spatial.road_forbidden')?.status).toBe(target.yard==='A' ? 'not_checked' : 'checked');
     const slots=inspectPlanning(map).slots; const first=slots[0]!;
     const copy=structuredClone(map);

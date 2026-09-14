@@ -1,12 +1,18 @@
 import type { YardMap as LegacyMap, ServicePoint as LegacyPoint } from './model.generated';
-import type { YardMap as CurrentMap } from './model.v02.generated';
-export type * from './model.v02.generated';
+import type { YardMap as V02Map, MapRoad as PolylineMapRoad } from './model.v02.generated';
+import type { YardMap as V03Map, MapRoad as PathMapRoad } from './model.v03.generated';
+export type * from './model.v03.generated';
 export type LegacyServicePoint = LegacyPoint & { zoneId?: never; arrival?: never };
-export type LegacyYardMap = Omit<LegacyMap, 'servicePoints'> & { servicePoints: Record<string, LegacyServicePoint> };
-export type YardMap = LegacyYardMap | CurrentMap;
+export type LegacyRoad = PolylineMapRoad & { geometry?: never };
+export type PathRoad = PathMapRoad & { shapePoints?: never };
+export type MapRoad = LegacyRoad | PathRoad;
+export type LegacyYardMap = Omit<LegacyMap, 'servicePoints' | 'roads'> & { servicePoints: Record<string, LegacyServicePoint>; roads: Record<string, LegacyRoad> };
+export type YardMapV02 = Omit<V02Map, 'roads'> & { roads: Record<string, LegacyRoad> };
+export type YardMapV03 = Omit<V03Map, 'roads'> & { roads: Record<string, PathRoad> };
+export type YardMap = LegacyYardMap | YardMapV02 | YardMapV03;
 export type SchemaVersion = YardMap['schemaVersion'];
-export const SCHEMA_VERSION = '0.2.0' as const;
-export const SUPPORTED_SCHEMA_VERSIONS = ['0.1.0', '0.2.0'] as const;
+export const SCHEMA_VERSION = '0.3.0' as const;
+export const SUPPORTED_SCHEMA_VERSIONS = ['0.1.0', '0.2.0', '0.3.0'] as const;
 export const MAX_JSON_BYTES = 10 * 1024 * 1024;
 
 export interface Issue {

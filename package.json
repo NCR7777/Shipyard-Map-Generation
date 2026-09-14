@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.18.0" },
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "npm run typecheck && vite build",
@@ -20,7 +22,8 @@
     "test:bg01": "playwright test -c playwright.bg01.config.ts",
     "map:diagnose": "tsx scripts/map-diagnose.ts",
     "map:validate": "tsx scripts/map-validate.ts",
-    "map:migrate": "tsx scripts/map-migrate.ts"
+    "map:migrate": "tsx scripts/map-migrate.ts",
+    "map:compile": "tsx scripts/map-compile.ts"
   },
   "dependencies": {
     "ajv": "8.20.0",

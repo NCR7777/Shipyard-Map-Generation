@@ -4,6 +4,7 @@ import type { MapCommand, SplitMapping } from './commands';
 import { inspectPlanning, PLANNING_NAMESPACE } from './planning';
 import { nodeOwners, roadOwner } from './ownerEditing';
 import { TopologyError } from './topologyEditing';
+import { roadGeometryAnchors, hasNonlinearGeometry } from '../geometry/roadPath';
 import { polylineLength2D, projectPolyline, roadPoints } from '../geometry/roads';
 
 /** Distances run from the access's existing public node toward the private end, not road.fromNodeId. */
@@ -32,7 +33,7 @@ function fail(code: string, message: string, path: string): never { throw new To
 function candidate(map: YardMap, id: string): AccessDetachmentInfo {
   const access = map.accessPoints[id], path = '/accessPoints/' + id;
   if (!access || !map.facilities[access.facilityId]) fail('ACCESS_DETACH_MISSING', '请选择现有设施入口。', path);
-  if (map.schemaVersion !== '0.2.0') fail('ACCESS_DETACH_SCHEMA', '请先显式升级地图到 0.2.0，保留原件。', '/schemaVersion');
+  if (map.schemaVersion === '0.1.0') fail('ACCESS_DETACH_SCHEMA', '请先显式升级地图到 0.2.0，保留原件。', '/schemaVersion');
   const planning = inspectPlanning(map);
   if (!planning.supported) fail('ACCESS_DETACH_PLANNING', '现有静态内容语义未受支持，不能猜测入口连接拆分规则。', path);
   const publicNodeId = access.nodeId, ownerId = access.facilityId;
@@ -49,7 +50,7 @@ function candidate(map: YardMap, id: string): AccessDetachmentInfo {
   }
   const [roadId, road] = internal[0]!;
   const privateEndNodeId = road.fromNodeId === publicNodeId ? road.toNodeId : road.fromNodeId;
-  if (road.shapePoints.length || road.corridorPolygon || road.observedLengthM || roadPoints(map, roadId).some(point => point[2] !== map.nodes[publicNodeId]!.position[2])) {
+  if (roadGeometryAnchors(road).length || hasNonlinearGeometry(road) || road.corridorPolygon || road.observedLengthM || roadPoints(map, roadId).some(point => point[2] !== map.nodes[publicNodeId]!.position[2])) {
     fail('ACCESS_DETACH_GEOMETRY', '内部支路含折点、高差、人工道路带或登记长度，尚无安全拆分规则。', '/roads/' + roadId);
   }
   if (road.direction === 'unknown') fail('ACCESS_DETACH_DIRECTION', '内部支路方向未声明，不能生成连续通过的转向。', '/roads/' + roadId + '/direction');

@@ -8,14 +8,19 @@ import { transformPolygon, normalizePolygonBetweenVertices } from '../geometry/p
 import { polylineLength2D, roadPoints } from '../geometry/roads';
 import { newNode } from './factory';
 import { sameValue } from './value';
-import { recordGeometrySources, recordTopologySources, recordSiteBoundaryNormalization } from './geometrySources';
-import { TopologyError, splitPosition, onlySubdivisionJunctions, checkSplitGeometry, remapSplitReferences, preserveSplitContinuation, rejectOpaqueTopologyReferences, runTopology, deleteNetwork, topologyChangedRefs, type TopologyCommand } from './topologyEditing';
+import { recordGeometrySources, recordTopologySources, recordSiteBoundaryNormalization, sourceId } from './geometrySources';
+import { TopologyError, moveNodeWithHandles, splitPosition, onlySubdivisionJunctions, checkSplitGeometry, remapSplitReferences, preserveSplitContinuation, rejectOpaqueTopologyReferences, runTopology, deleteNetwork, topologyChangedRefs, type TopologyCommand } from './topologyEditing';
 import { zoneServicePointIds } from '../topology/serviceConnections';
 import { inspectPlanning, PLANNING_NAMESPACE as PLANNING, type PlanningSlot } from './planning';
 import { OwnerEditError, nodeOwners, privateNodeOwner, roadOwner, pointOwner, boundaryEntranceAdjustments } from './ownerEditing';
 import { inspectOwnerGeometryEdit } from '../validation/ownerEditing';
 import { runConnectedPoint, type ConnectedPointCommand } from './connectedPoint';
 import { runAccessDetachment, type DetachAccessPointCommand } from './accessDetachment';
+import { allocateMapIds, runQuickTrace, type QuickTraceCommand } from './drawingDefaults';
+import { runSemanticPatch, recordManualSemanticChanges, type ApplySemanticPatchCommand } from './semanticPatch';
+import { runResearchAccess, type ApplyResearchAccessCommand } from './researchAccess';
+import { upgradeMapToV03 } from './upgradeV03';
+import { isStraightRoad, transformRoadGeometry, withRoadAnchors, roadForMap, getRoadPath, hasNonlinearGeometry, pathLength, poseAtDistance, splitPath, pathToRoadGeometry, type ResolvedPath } from '../geometry/roadPath';
 
 export interface Selection { nodes: string[]; roads: string[]; facilities?: string[]; zones?: string[]; accessPoints?: string[]; servicePoints?: string[] }
 export const SELECTION_KINDS = ['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints'] as const;
@@ -23,21 +28,22 @@ export type SelectionKind = typeof SELECTION_KINDS[number];
 export type FullSelection = Record<SelectionKind, string[]>;
 export type FacilityMovePolicy = 'boundaryOnly' | 'withAssociatedNodes' | 'withStaticContents';
 export type ZoneMovePolicy = FacilityMovePolicy;
-export interface MigrationChange { path: string; before: string | number; after: string | number }
-export function schemaUpgradeChanges(map: YardMap): MigrationChange[] { return map.schemaVersion === '0.1.0' ? [{ path: '/schemaVersion', before: '0.1.0', after: '0.2.0' }, { path: '/revision', before: map.revision, after: map.revision + 1 }] : []; }
-export interface DesignAssumption { id: string; name?: string; description?: string }
+export interface MigrationChange { path: string; before: unknown; after: unknown }
+export function schemaUpgradeChanges(map: YardMap, targetVersion: '0.2.0' | '0.3.0' = '0.2.0'): MigrationChange[] { return targetVersion === '0.3.0' ? upgradeMapToV03(map).changes : map.schemaVersion === '0.1.0' ? [{ path: '/schemaVersion', before: '0.1.0', after: '0.2.0' }, { path: '/revision', before: map.revision, after: map.revision + 1 }] : []; }
+export interface DesignAssumption { id: string; name?: string; description?: string; origin?: 'manual_image_estimate' }
 export interface SplitMapping { oldRoadId: string; newRoadIds: [string, string]; nodeId: string }
 export const LINEAGE_NAMESPACE = 'org.shipyard.editor.lineage';
 export const SPLIT_TOLERANCE_M = 1e-6;
 interface NewPointNode { id: string; node: MapNode }
-export type RoadPatch = Partial<Pick<MapRoad, 'name' | 'shapePoints' | 'direction' | 'widthM' | 'heightLimitM' | 'massLimitKg' | 'speedLimitMps'>>;
+export type RoadPatch = Partial<Pick<MapRoad, 'name' | 'shapePoints' | 'geometry' | 'direction' | 'widthM' | 'heightLimitM' | 'massLimitKg' | 'speedLimitMps'>>;
 export type MapCommand =
   | { type: 'movePoint'; kind: 'accessPoints' | 'servicePoints'; id: string; position: Vec3 }
   | { type: 'updateRoadBatch'; ids: string[]; patch: RoadPatch; designAssumption?: DesignAssumption }
+  | { type: 'splitRoadAndSetWidth'; roadId: string; distanceM: number; widthM: number; direction?: 'forward' | 'backward'; designAssumption?: DesignAssumption }
   | { type: 'addNode'; id: string; node: MapNode }
   | { type: 'addRoad'; id: string; road: MapRoad; designAssumption?: DesignAssumption }
   | { type: 'updateNode'; id: string; patch: Partial<Pick<MapNode, 'name' | 'position'>> }
-  | { type: 'updateRoad'; id: string; patch: Partial<Pick<MapRoad, 'name' | 'shapePoints' | 'direction' | 'widthM' | 'heightLimitM' | 'massLimitKg' | 'speedLimitMps'>>; designAssumption?: DesignAssumption }
+  | { type: 'updateRoad'; id: string; patch: Partial<Pick<MapRoad, 'name' | 'shapePoints' | 'geometry' | 'direction' | 'widthM' | 'heightLimitM' | 'massLimitKg' | 'speedLimitMps'>>; designAssumption?: DesignAssumption }
   | { type: 'addFacility'; id: string; facility: Facility }
   | { type: 'updateFacility'; id: string; entranceAdjustments?: { id: string; position: Vec3 }[]; patch: Partial<Pick<Facility, 'name' | 'kind' | 'boundary' | 'heightM'>>; designAssumption?: DesignAssumption }
   | { type: 'addZone'; id: string; zone: Zone }
@@ -48,7 +54,7 @@ export type MapCommand =
   | { type: 'updateServicePoint'; id: string; patch: Partial<Pick<ServicePoint, 'name' | 'kind' | 'nodeId'>> & { facilityId?: string | null; accessPointId?: string | null; zoneId?: string | null; arrival?: ServiceArrival | null }; newNode?: NewPointNode }
   | { type: 'normalizeSiteBoundary' }
   | { type: 'renameMap'; name: string }
-  | { type: 'upgradeSchema'; targetVersion: '0.2.0' }
+  | { type: 'upgradeSchema'; targetVersion: '0.2.0' | '0.3.0' }
   | { type: 'translateSelection'; selection: Selection; delta: Vec3; facilityMovePolicy?: FacilityMovePolicy; zoneMovePolicy?: ZoneMovePolicy }
   | { type: 'rotateSelection'; selection: Selection; pivot: Vec3; angleRad: number; facilityMovePolicy?: FacilityMovePolicy; zoneMovePolicy?: ZoneMovePolicy }
   | { type: 'duplicateSelection'; selection: Selection; delta: Vec3; idMap: Record<string, string>; associationPolicy?: 'retainFacility' | 'retainOwner' | 'rejectExternal' }
@@ -56,6 +62,8 @@ export type MapCommand =
   | BackgroundCommand
   | ConnectedPointCommand
   | DetachAccessPointCommand
+  | QuickTraceCommand
+  | ApplySemanticPatchCommand | ApplyResearchAccessCommand
   | { type: 'deleteSelection'; topologyPolicy?: 'reject' | 'cascade'; selection: Selection; facilityPolicy?: 'reject' | 'withAssociatedPoints'; zonePolicy?: 'reject' | 'withAssociatedPoints'; orphanNodes?: 'keep' | 'deleteUnused' }
   | { type: 'splitRoad'; id: string; distanceM: number; nodeId: string; existingNode?: boolean; newRoadIds: [string, string] };
 
@@ -184,7 +192,7 @@ export function selectionImpact(map: YardMap, selection: Selection, facilityMove
           moving.add(id);
           if (dedicatedAccess) {
             const roadId = external[0]!, road = map.roads[roadId]!;
-            if (road.shapePoints.length || road.corridorPolygon || road.observedLengthM) fail('STATIC_CONNECTOR_SHAPE_UNSUPPORTED', '专用入口接入段含折点或独立几何，不能猜测伸缩规则。', '/roads/' + roadId);
+            if (!isStraightRoad(road) || road.corridorPolygon || road.observedLengthM) fail('STATIC_CONNECTOR_SHAPE_UNSUPPORTED', '专用入口接入段含折点或独立几何，不能猜测伸缩规则。', '/roads/' + roadId);
             connectors.add(roadId); fixed.add(road.fromNodeId === id ? road.toNodeId : road.fromNodeId);
           }
         }
@@ -201,7 +209,7 @@ export function selectionImpact(map: YardMap, selection: Selection, facilityMove
         if (road.corridorPolygon || road.observedLengthM) fail('STATIC_ROAD_GEOMETRY_UNSUPPORTED', '道路存在需要独立维护的人工边界或登记长度。', '/roads/' + id);
         if (from && to) { rigid.add(id); selected.roads.push(id); }
         else {
-          if (road.shapePoints.length) fail('STATIC_CONNECTOR_SHAPE_UNSUPPORTED', '接入段含折点，无法推测哪些折点应随对象移动。', '/roads/' + id + '/shapePoints');
+          if (!isStraightRoad(road)) fail('STATIC_CONNECTOR_SHAPE_UNSUPPORTED', '接入段含折点，无法推测哪些折点应随对象移动。', '/roads/' + id + '/shapePoints');
           connectors.add(id);
         }
       }
@@ -331,6 +339,19 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
     if (command.type === 'upgradeSchema') return { allowed: true, issues: [], affectedRefs: [] };
     const capability = mapCapabilities(map);
     if (!capability.editable) return { allowed: false, issues: [problem('READ_ONLY_MAP', capability.reasons.join(' '))], affectedRefs: [] };
+    if (command.type === 'applyResearchAccess') {
+      const candidate = structuredClone(map); const result = runResearchAccess(candidate, command, splitRoad);
+      return { allowed: true, issues: [], affectedRefs: topologyChangedRefs(map, candidate), geometryPreservedRoadIds: result.geometryPreservedRoadIds };
+    }
+    if (command.type === 'applySemanticPatch') {
+      const candidate = structuredClone(map); runSemanticPatch(candidate, command);
+      return { allowed: true, issues: [], affectedRefs: topologyChangedRefs(map, candidate) };
+    }
+    if (command.type === 'quickTraceRoad' || command.type === 'quickTraceBoundary') {
+      const candidate = structuredClone(map);
+      const result = runQuickTrace(candidate, command, splitRoad);
+      return { allowed: true, issues: [], affectedRefs: topologyChangedRefs(map, candidate), geometryPreservedRoadIds: result.geometryPreservedRoadIds };
+    }
     if (isBackgroundCommand(command)) {
       const candidate = { ...map, assets: { ...map.assets }, backgroundLayers: structuredClone(map.backgroundLayers), sources: { ...map.sources } };
       const affectedRefs = runBackgroundCommand(candidate, command);
@@ -403,10 +424,11 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
       const previous = map[kind][update.id]! as unknown as Record<string, unknown>;
       const changed = Object.keys(update.patch).filter(key => !sameValue(previous[key], (update.patch as Record<string, unknown>)[key]));
       const namedOnly = changed.every(key => key === 'name') && !('newNode' in update && update.newNode) && !('entranceAdjustments' in update && update.entranceAdjustments?.length);
+      const localSemantic = (kind === 'facilities' || kind === 'zones') && changed.every(key => key === 'name' || key === 'kind') && !('entranceAdjustments' in update && update.entranceAdjustments?.length);
       const localNode = kind === 'nodes' && changed.every(key => key === 'name' || key === 'position');
-      const localRoad = kind === 'roads' && changed.every(key => ['name', 'shapePoints', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps'].includes(key));
-      if (advanced && !namedOnly && !localNode && !localRoad && !((kind === 'facilities' || kind === 'zones') && changed.every(key => key === 'name' || key === 'boundary') && canChangeBoundary(map, kind, update.id))) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '该字段涉及高级引用或静态内容；仅开放已检查的点路字段与边界/刚体联动。', '/' + kind + '/' + update.id);
-      if (kind === 'roads' && (changed.includes('shapePoints') || changed.includes('widthM')) && (map.roads[update.id]!.corridorPolygon || changed.includes('shapePoints') && map.roads[update.id]!.observedLengthM)) fail('ROAD_GEOMETRY_DEPENDENCY', '道路含人工边界或登记长度，尚不支持同步编辑相关几何。', '/roads/' + update.id);
+      const localRoad = kind === 'roads' && changed.every(key => ['name', 'shapePoints', 'geometry', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps'].includes(key));
+      if (advanced && !namedOnly && !localSemantic && !localNode && !localRoad && !((kind === 'facilities' || kind === 'zones') && changed.every(key => key === 'name' || key === 'boundary') && canChangeBoundary(map, kind, update.id))) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '该字段涉及高级引用或静态内容；仅开放已检查的点路字段与边界/刚体联动。', '/' + kind + '/' + update.id);
+      if (kind === 'roads' && ((changed.includes('shapePoints') || changed.includes('geometry')) || changed.includes('widthM')) && (map.roads[update.id]!.corridorPolygon || (changed.includes('shapePoints') || changed.includes('geometry')) && map.roads[update.id]!.observedLengthM)) fail('ROAD_GEOMETRY_DEPENDENCY', '道路含人工边界或登记长度，尚不支持同步编辑相关几何。', '/roads/' + update.id);
       if (kind === 'nodes' && changed.includes('position')) {
         const impact = selectionImpact(map, { nodes: [update.id], roads: [] });
         if (impact.affectedRoadIds.some(id => map.roads[id]!.corridorPolygon || map.roads[id]!.observedLengthM)) fail('ROAD_GEOMETRY_DEPENDENCY', '节点影响含独立几何的道路。', '/nodes/' + update.id);
@@ -420,12 +442,13 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
         ? dependencyRefs(map, [{ kind, id: update.id }], [], [update.id])
         : (kind === 'facilities' || kind === 'zones') && changed.includes('boundary')
           ? ownerBoundaryRefs(map, kind, update.id) : [{ kind, id: update.id }];
-      if (advanced && kind === 'roads' && (changed.includes('shapePoints') || changed.includes('widthM'))) {
-        if (update.type === 'updateRoad' && changed.includes('shapePoints')) {
+      if (advanced && kind === 'roads' && ((changed.includes('shapePoints') || changed.includes('geometry')) || changed.includes('widthM'))) {
+        if (update.type === 'updateRoad' && (changed.includes('shapePoints') || changed.includes('geometry'))) {
           const z = map.nodes[map.roads[update.id]!.fromNodeId]!.position[2];
-          if (!Array.isArray(update.patch.shapePoints) || update.patch.shapePoints.some(point => !Array.isArray(point) || point[2] !== z)) fail('LOCAL_NONPLANAR_EDIT', '道路折点必须保持既有端点所在的同一水平面 Z。', '/roads/' + update.id + '/shapePoints');
+          const points = update.patch.geometry ? [...update.patch.geometry.anchors, ...update.patch.geometry.spans.flatMap(span => span.kind === 'cubic' ? [span.control1, span.control2] : [])] : update.patch.shapePoints;
+          if (!Array.isArray(points) || points.some(point => !Array.isArray(point) || point[2] !== z)) fail('LOCAL_NONPLANAR_EDIT', '道路锚点和控制点必须保持既有端点所在的同一水平面 Z。', '/roads/' + update.id);
         }
-        localGeometrySupport(map, affectedRefs, [], [update.id], !changed.includes('shapePoints'));
+        localGeometrySupport(map, affectedRefs, [], [update.id], !(changed.includes('shapePoints') || changed.includes('geometry')));
       }
       if (update.type === 'updateFacility' && update.entranceAdjustments) {
         if (!update.patch.boundary || !Array.isArray(update.entranceAdjustments) || update.entranceAdjustments.length > 4096) fail('INVALID_COMMAND', '入口调整必须与明确轮廓补丁一同提交。');
@@ -537,8 +560,9 @@ function checkPatch(patch: object, keys: readonly string[]): void { if (Object.k
 function checkVector(vector: Vec3): void { if (!Array.isArray(vector) || vector.length !== 3 || vector.some(value => !Number.isFinite(value))) fail('INVALID_COMMAND', '必须输入三个有限米制数值。'); }
 function moved(position: Vec3, delta: Vec3): Vec3 { checkVector(delta); return [position[0] + delta[0], position[1] + delta[1], position[2] + delta[2]]; }
 function transformSelection(map: YardMap, selected: FullSelection, transform: (point: Vec3) => Vec3, impact?: SelectionImpact): void {
-  for (const id of selected.nodes) map.nodes[id]!.position = transform(map.nodes[id]!.position);
-  for (const id of selected.roads) map.roads[id]!.shapePoints = map.roads[id]!.shapePoints.map(transform);
+  const rigidRoads = new Set(selected.roads);
+  for (const id of selected.nodes) moveNodeWithHandles(map, id, transform(map.nodes[id]!.position), rigidRoads);
+  for (const id of selected.roads) map.roads[id] = transformRoadGeometry(map.roads[id]!, transform);
   for (const id of selected.facilities) map.facilities[id]!.boundary = transformPolygon(map.facilities[id]!.boundary, transform);
   for (const id of selected.zones) map.zones[id]!.boundary = transformPolygon(map.zones[id]!.boundary, transform);
   const slotOwners = new Map((impact?.slots ?? []).map(slot => [slot.ownerKind + '/' + slot.ownerId, slot]));
@@ -575,11 +599,33 @@ function batchRoadPatch(map: YardMap, id: string, patch: RoadPatch): RoadPatch {
 }
 function updateRoad(map: YardMap, id: string, patch: RoadPatch, assumption?: DesignAssumption, reuseSource = false): void {
   assertSelection(map, { nodes: [], roads: [id] });
-  checkPatch(patch, ['name', 'shapePoints', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps']);
+  checkPatch(patch, ['name', 'shapePoints', 'geometry', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps']);
   const previous = map.roads[id]!;
-  const road = { ...previous, ...structuredClone(patch), provenance: structuredClone(previous.provenance) };
+  if (patch.shapePoints !== undefined && patch.geometry !== undefined) fail('ROAD_GEOMETRY_CONFLICT', '道路编辑只能提供一份几何。');
+  const { shapePoints, geometry, ...properties } = structuredClone(patch);
+  let road: MapRoad = { ...previous, ...properties, provenance: structuredClone(previous.provenance) };
+  if (shapePoints !== undefined) road = withRoadAnchors(road, shapePoints);
+  if (geometry !== undefined) {
+    if (!road.geometry || map.schemaVersion !== '0.3.0') fail('ROAD_GEOMETRY_VERSION', '真实路径几何需要先升级工作副本为 0.3.0。');
+    road = { ...road, geometry };
+  }
   physicalSources(map, previous, road, ['widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps'], assumption, reuseSource);
   map.roads[id] = road;
+}
+/** A changed traffic declaration is a manual assumption; imagery never certifies direction. */
+function recordDirectionSources(before: YardMap, after: YardMap, refs: readonly CommandAffectedRef[]): CommandAffectedRef[] {
+  const ids = [...new Set(refs.filter(ref => ref.kind === 'roads').map(ref => ref.id))]
+    .filter(id => before.roads[id] && after.roads[id] && before.roads[id]!.direction !== after.roads[id]!.direction);
+  if (!ids.length) return [];
+  const source = { name: '编辑器人工道路方向声明', category: 'design_assumption' as const, description: '用户明确修改的通行方向；保留原来源与既有转向限制，未经现场交通规则核验。' };
+  const id = sourceId(after, 'source_editor_direction', source), added = !Object.hasOwn(after.sources, id);
+  if (added) after.sources[id] = source;
+  for (const roadId of ids) {
+    const provenance = after.roads[roadId]!.provenance, old = before.roads[roadId]!.provenance.fieldSources?.direction;
+    provenance.sourceRefs = [...new Set([...(provenance.sourceRefs ?? []), ...(old ? [old] : []), id])];
+    provenance.fieldSources = { ...provenance.fieldSources, direction: id };
+  }
+  return added ? [{ kind: 'sources', id }] : [];
 }
 function samePhysicalValue(a: PhysicalValue | undefined, b: PhysicalValue | undefined): boolean {
   if (!a || !b) return a === b;
@@ -605,7 +651,8 @@ function physicalSources(map: YardMap, previous: MapRoad | Facility, entity: Map
     if (!value.sourceRef) {
       if (!assumption) fail('KNOWN_SOURCE_REQUIRED', `${field} 新的已知值缺少来源，请显式声明设计假设。`);
       if (!created && !(reuseSource && Object.hasOwn(map.sources, assumption.id))) {
-        put(map, map.sources, assumption.id, { name: assumption.name ?? '人工设计参数假设', category: 'design_assumption', description: assumption.description ?? '用户在编辑器中明确输入的设计假设，未经现场测量核验。' });
+        const imagery = assumption.origin === 'manual_image_estimate';
+        put(map, map.sources, assumption.id, { name: assumption.name ?? (imagery ? '人工影像宽度估计' : '人工设计参数假设'), category: imagery ? 'imagery_derived' : 'design_assumption', description: assumption.description ?? (imagery ? '用户对照底图拖动宽度侧柄得到的人工影像估计，不代表实测净宽或车辆通行安全。' : '用户在编辑器中明确输入的设计假设，未经现场测量核验。') });
         created = true;
       }
       value.sourceRef = assumption.id;
@@ -634,7 +681,7 @@ function copySelection(map: YardMap, command: Extract<MapCommand, { type: 'dupli
   for (const id of selected.nodes) { const node = structuredClone(map.nodes[id]!); node.position = moved(node.position, command.delta); put(map, map.nodes, command.idMap[id]!, node); }
   for (const id of selected.roads) {
     const road = structuredClone(map.roads[id]!); road.fromNodeId = command.idMap[road.fromNodeId]!; road.toNodeId = command.idMap[road.toNodeId]!;
-    road.shapePoints = road.shapePoints.map(point => moved(point, command.delta)); put(map, map.roads, command.idMap[id]!, road);
+    put(map, map.roads, command.idMap[id]!, transformRoadGeometry(road, point => moved(point, command.delta)));
   }
   for (const id of selected.facilities) {
     const facility = structuredClone(map.facilities[id]!); facility.boundary = transformPolygon(facility.boundary, point => moved(point, command.delta));
@@ -704,11 +751,19 @@ function splitRoad(map: YardMap, command: Extract<MapCommand, { type: 'splitRoad
   checkSplitGeometry(map, command.id);
   rejectOpaqueTopologyReferences(map, [command.id]);
   const { declaration, lineage } = readLineage(map);
-  const points = roadPoints(map, command.id); const length = polylineLength2D(points);
+  const path = getRoadPath(map, command.id), nonlinear = hasNonlinearGeometry(road);
+  const measured = nonlinear ? pathLength(path) : undefined;
+  if (measured && !measured.converged) fail('CURVE_LENGTH_NOT_CONVERGED', '曲线长度未收敛，不能拆路。');
+  const points = path.anchors, length = measured?.lengthM ?? polylineLength2D(points);
   if (!Number.isFinite(command.distanceM) || command.distanceM <= SPLIT_TOLERANCE_M || command.distanceM >= length - SPLIT_TOLERANCE_M) fail('INVALID_SPLIT_POSITION', '切分里程必须严格位于道路内部，距端点大于 1e-6 m。');
   if (command.newRoadIds.length !== 2 || command.newRoadIds[0] === command.newRoadIds[1] || command.newRoadIds.some(id => existsId(map, id)) || command.newRoadIds.includes(command.nodeId)) fail('INVALID_SPLIT_IDS', '拆分需要两个新道路 ID，且不能与节点或现有实体冲突。');
-  let accumulated = 0; let index = -1; let position: Vec3 | null = null;
-  for (let i = 0; i + 1 < points.length; i++) {
+  let accumulated = 0; let index = -1; let position: Vec3 | null = null; let pieces: [ResolvedPath, ResolvedPath] | undefined;
+  if (nonlinear) {
+    const pose = poseAtDistance(path, 'forward', command.distanceM);
+    if (!pose.converged) fail('CURVE_POSITION_NOT_CONVERGED', '曲线里程定位未收敛，不能拆路。');
+    pieces = splitPath(path, pose.spanIndex, pose.t); position = pose.position; index = pose.spanIndex;
+  }
+  for (let i = 0; !nonlinear && i + 1 < points.length; i++) {
     const a = points[i]!; const b = points[i + 1]!; const segment = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (segment > 0 && accumulated + segment >= command.distanceM) { const t = (command.distanceM - accumulated) / segment; position = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])]; index = i; break; }
     accumulated += segment;
@@ -720,11 +775,19 @@ function splitRoad(map: YardMap, command: Extract<MapCommand, { type: 'splitRoad
     if (Math.hypot(existing[0] - position[0], existing[1] - position[1], existing[2] - position[2]) > SPLIT_TOLERANCE_M) fail('INVALID_SPLIT_NODE', '已有节点不在切分点 1e-6 m 容差内。');
     position = [...existing];
   } else { const node = newNode(position, road.name + ' / 拆分点'); node.provenance = structuredClone(road.provenance); put(map, map.nodes, command.nodeId, node); }
-  const clean = (values: Vec3[]) => values.filter((point, i) => i === 0 || point.some((value, axis) => value !== values[i - 1]![axis]));
-  const left = clean([...points.slice(0, index + 1), position]); const right = clean([position, ...points.slice(index + 1)]);
-  if (Math.abs(polylineLength2D(left) + polylineLength2D(right) - length) > SPLIT_TOLERANCE_M) fail('SPLIT_LENGTH_MISMATCH', '拆分后水平长度不守恒（容差 1e-6 m）。');
-  const first = { ...structuredClone(road), toNodeId: command.nodeId, shapePoints: left.slice(1, -1) };
-  const second = { ...structuredClone(road), fromNodeId: command.nodeId, shapePoints: right.slice(1, -1) };
+  let first: MapRoad, second: MapRoad;
+  if (pieces && road.geometry) {
+    const leftLength = pathLength(pieces[0]), rightLength = pathLength(pieces[1]);
+    if (!leftLength.converged || !rightLength.converged || Math.abs(leftLength.lengthM + rightLength.lengthM - length) > (measured!.errorM + leftLength.errorM + rightLength.errorM + SPLIT_TOLERANCE_M)) fail('SPLIT_LENGTH_MISMATCH', '精确曲线拆分长度超出数值误差预算。');
+    first = { ...structuredClone(road), toNodeId: command.nodeId, geometry: pathToRoadGeometry(pieces[0]) };
+    second = { ...structuredClone(road), fromNodeId: command.nodeId, geometry: pathToRoadGeometry(pieces[1]) };
+  } else {
+    const clean = (values: Vec3[]) => values.filter((point, i) => i === 0 || point.some((value, axis) => value !== values[i - 1]![axis]));
+    const left = clean([...points.slice(0, index + 1), position]); const right = clean([position, ...points.slice(index + 1)]);
+    if (Math.abs(polylineLength2D(left) + polylineLength2D(right) - length) > SPLIT_TOLERANCE_M) fail('SPLIT_LENGTH_MISMATCH', '拆分后水平长度不守恒（容差 1e-6 m）。');
+    first = { ...withRoadAnchors(structuredClone(road), left.slice(1, -1)), toNodeId: command.nodeId };
+    second = { ...withRoadAnchors(structuredClone(road), right.slice(1, -1)), fromNodeId: command.nodeId };
+  }
   put(map, map.roads, command.newRoadIds[0], first); put(map, map.roads, command.newRoadIds[1], second); delete map.roads[command.id];
   remapSplitReferences(map, command.id, command.newRoadIds);
   preserveSplitContinuation(map, command.nodeId, command.newRoadIds);
@@ -735,11 +798,28 @@ function splitRoad(map: YardMap, command: Extract<MapCommand, { type: 'splitRoad
   return mapping;
 }
 
+/** Width changes use the existing exact subdivision and reference maintenance in one transaction. */
+function widthSplitCommand(map: YardMap, command: Extract<MapCommand, { type: 'splitRoadAndSetWidth' }>): Extract<MapCommand, { type: 'splitRoad' }> {
+  if (!Number.isFinite(command.widthM) || command.widthM < 0.1 || command.widthM > 1000) fail('INVALID_ROAD_WIDTH', '局部宽度必须为 0.1 至 1000 m 的有限值。');
+  if (command.direction !== undefined && command.direction !== 'forward' && command.direction !== 'backward') fail('INVALID_WIDTH_DIRECTION', '局部变宽必须选择沿原道路的正向或反向一侧。');
+  const allocate = allocateMapIds(map);
+  return { type: 'splitRoad', id: command.roadId, distanceM: command.distanceM, nodeId: allocate('node_width_'), newRoadIds: [allocate('road_width_'), allocate('road_width_')] };
+}
+function splitRoadAndSetWidth(map: YardMap, command: Extract<MapCommand, { type: 'splitRoadAndSetWidth' }>): SplitMapping {
+  const split = widthSplitCommand(map, command), allocate = allocateMapIds(map);
+  const source = command.designAssumption ?? { id: allocate('source_width_'), name: '局部道路宽度设计假设', description: '用户在指定里程之后明确设置宽度；保持中心线和既有引用，不表示实测净宽。' };
+  const mapping = splitRoad(map, split);
+  const changed = mapping.newRoadIds[command.direction === 'backward' ? 0 : 1];
+  updateRoad(map, changed, batchRoadPatch(map, changed, { widthM: { state: 'known', value: command.widthM } }), source);
+  return mapping;
+}
+
 function isTopologyCommand(command: MapCommand): boolean {
-  return ['splitRoad', 'mergeNodes', 'connectNodeToRoad', 'suppressDegree2Node'].includes(command.type)
+  return ['splitRoad', 'splitRoadAndSetWidth', 'mergeNodes', 'connectNodeToRoad', 'suppressDegree2Node'].includes(command.type)
     || command.type === 'deleteSelection' && !['facilities', 'zones', 'accessPoints', 'servicePoints'].some(kind => (command.selection[kind as keyof Selection]?.length ?? 0) > 0);
 }
 function preservedTopologyGeometry(map: YardMap, command: MapCommand): readonly string[] {
+  if(command.type==='splitRoadAndSetWidth')return [widthSplitCommand(map,command).newRoadIds[command.direction==='backward'?1:0]];
   if(command.type==='suppressDegree2Node')return [command.retainedRoadId];
   if(command.type==='connectNodeToRoad')return [...command.newRoadIds];
   if(command.type==='splitRoad' && (!command.existingNode || sameValue(map.nodes[command.nodeId]!.position,splitPosition(map,command.id,command.distanceM))))return [...command.newRoadIds];
@@ -748,7 +828,7 @@ function preservedTopologyGeometry(map: YardMap, command: MapCommand): readonly 
 function executeTopology(map: YardMap, command: MapCommand): SplitMapping | undefined {
   const before = { nodes: Object.keys(map.nodes), roads: Object.keys(map.roads), movements: Object.keys(map.movements), junctions: Object.keys(map.junctions) };
   const result = executeTopologyMutation(map, command);
-  if(command.type!=='splitRoad') {
+  if(command.type!=='splitRoad' && command.type!=='splitRoadAndSetWidth') {
     const record: TopologyEditRecord = { operation: command.type,
       removedNodes: before.nodes.filter(id=>!Object.hasOwn(map.nodes,id)), removedRoads: before.roads.filter(id=>!Object.hasOwn(map.roads,id)),
       removedMovements: before.movements.filter(id=>!Object.hasOwn(map.movements,id)), removedJunctions: before.junctions.filter(id=>!Object.hasOwn(map.junctions,id)),
@@ -763,6 +843,7 @@ function executeTopology(map: YardMap, command: MapCommand): SplitMapping | unde
 }
 function executeTopologyMutation(map: YardMap, command: MapCommand): SplitMapping | undefined {
   if (command.type === 'splitRoad') return splitRoad(map, command);
+  if (command.type === 'splitRoadAndSetWidth') return splitRoadAndSetWidth(map, command);
   if (command.type === 'deleteSelection') {
     const roads = new Set(command.selection.roads);
     if (command.topologyPolicy === 'cascade') for (const [id, road] of Object.entries(map.roads)) if (command.selection.nodes.includes(road.fromNodeId) || command.selection.nodes.includes(road.toNodeId)) roads.add(id);
@@ -779,15 +860,18 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   if (!initial.ok) return { ok: false, issues: initial.issues };
   const support = commandSupport(input, command);
   if (!support.allowed) return { ok: false, issues: support.issues };
-  const next = structuredClone(input); let mapping: SplitMapping | undefined;
+  let next = structuredClone(input); let mapping: SplitMapping | undefined;
   try {
     switch (command.type) {
+      case 'applyResearchAccess': runResearchAccess(next, command, splitRoad); break;
+      case 'applySemanticPatch': runSemanticPatch(next, command); break;
+      case 'quickTraceRoad': case 'quickTraceBoundary': runQuickTrace(next, command, splitRoad); break;
       case 'createConnectedPoint': runConnectedPoint(next, command, splitRoad); break;
       case 'detachAccessPoint': runAccessDetachment(next, command, splitRoad); break;
       case 'addBackground': case 'updateBackgroundTransform': case 'deleteBackground': case 'replaceBackgroundAsset': runBackgroundCommand(next, command); break;
       case 'addNode': put(next, next.nodes, command.id, command.node); break;
       case 'addRoad': {
-        const road = structuredClone(command.road);
+        const road = roadForMap(next, structuredClone(command.road));
         if (command.designAssumption && road.widthM.state === 'known') {
           const previous = { ...road, widthM: { state: 'unknown' as const }, provenance: structuredClone(road.provenance) };
           road.widthM = { state: 'known', value: road.widthM.value };
@@ -796,10 +880,12 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
         put(next, next.roads, command.id, road); break;
       }
       case 'updateNode':
-        assertSelection(next, { nodes: [command.id], roads: [] }); checkPatch(command.patch, ['name', 'position']); next.nodes[command.id] = { ...next.nodes[command.id]!, ...structuredClone(command.patch) }; break;
+        assertSelection(next, { nodes: [command.id], roads: [] }); checkPatch(command.patch, ['name', 'position']);
+        if (command.patch.position) { checkVector(command.patch.position); moveNodeWithHandles(next, command.id, command.patch.position); }
+        next.nodes[command.id] = { ...next.nodes[command.id]!, ...structuredClone(command.patch) }; break;
       case 'movePoint': {
         const point = next[command.kind][command.id]!;
-        next.nodes[point.nodeId]!.position = structuredClone(command.position); break;
+        moveNodeWithHandles(next, point.nodeId, command.position); break;
       }
       case 'updateRoad': updateRoad(next, command.id, command.patch, command.designAssumption); break;
       case 'updateRoadBatch': {
@@ -814,12 +900,16 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'updateFacility': {
         assertSelection(next, { nodes: [], roads: [], facilities: [command.id] }); checkPatch(command.patch, ['name', 'kind', 'boundary', 'heightM']);
         const previous = next.facilities[command.id]!; const facility = { ...previous, ...structuredClone(command.patch), provenance: structuredClone(previous.provenance) };
-        physicalSources(next, previous, facility, ['heightM'], command.designAssumption); next.facilities[command.id] = facility;
-        for (const adjustment of command.entranceAdjustments ?? []) next.nodes[next.accessPoints[adjustment.id]!.nodeId]!.position = structuredClone(adjustment.position);
+        physicalSources(next, previous, facility, ['heightM'], command.designAssumption); recordManualSemanticChanges(next, previous, facility, ['kind', 'name']); next.facilities[command.id] = facility;
+        for (const adjustment of command.entranceAdjustments ?? []) moveNodeWithHandles(next, next.accessPoints[adjustment.id]!.nodeId, adjustment.position);
         break;
       }
       case 'addZone': put(next, next.zones, command.id, command.zone); break;
-      case 'updateZone': assertSelection(next, { nodes: [], roads: [], zones: [command.id] }); checkPatch(command.patch, ['name', 'kind', 'boundary', 'passability']); next.zones[command.id] = { ...next.zones[command.id]!, ...structuredClone(command.patch) }; break;
+      case 'updateZone': {
+        assertSelection(next, { nodes: [], roads: [], zones: [command.id] }); checkPatch(command.patch, ['name', 'kind', 'boundary', 'passability']);
+        const previous = next.zones[command.id]!, zone = { ...previous, ...structuredClone(command.patch), provenance: structuredClone(previous.provenance) };
+        recordManualSemanticChanges(next, previous, zone, ['kind', 'name']); next.zones[command.id] = zone; break;
+      }
       case 'addAccessPoint':
         addPointNode(next, command.accessPoint.nodeId, command.newNode); put(next, next.accessPoints, command.id, command.accessPoint); facilityMember(next, 'accessPointIds', command.id, undefined, command.accessPoint.facilityId); break;
       case 'updateAccessPoint': {
@@ -836,7 +926,8 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
         addPointNode(next, point.nodeId, command.newNode); facilityMember(next, 'servicePointIds', command.id, previous.facilityId, point.facilityId); next.servicePoints[command.id] = point; break;
       }
       case 'upgradeSchema':
-        if (command.targetVersion !== '0.2.0') fail('UNSUPPORTED_MIGRATION', '只支持显式升级到 0.2.0。');
+        if (command.targetVersion === '0.3.0') { next = upgradeMapToV03(next).map; break; }
+        if (command.targetVersion !== '0.2.0' || next.schemaVersion === '0.3.0') fail('UNSUPPORTED_MIGRATION', '不能通过升级命令降级曲线地图。');
         next.schemaVersion = '0.2.0'; break;
       case 'normalizeSiteBoundary': if (next.siteBoundary) next.siteBoundary = normalizePolygonBetweenVertices(next.siteBoundary); break;
       case 'renameMap': next.metadata.name = command.name; break;
@@ -855,6 +946,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'duplicateSelection': copySelection(next, command); break;
       case 'deleteSelection': if (isTopologyCommand(command)) executeTopology(next, command); else deleteSelection(next, command); break;
       case 'splitRoad': mapping = splitRoad(next, command); break;
+      case 'splitRoadAndSetWidth': mapping = splitRoadAndSetWidth(next, command); break;
       case 'mergeNodes': case 'connectNodeToRoad': case 'suppressDegree2Node': mapping = executeTopology(next, command); break;
       default: return { ok: false, issues: [problem('UNKNOWN_COMMAND', '未支持的领域命令。')] };
     }
@@ -875,15 +967,17 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   });
   const spatialIssues = [...inspectSpatialEdit(input, next, { geometryPreservedRoadIds: support.geometryPreservedRoadIds, rigidServiceIds }), ...inspectOwnerGeometryEdit(input, next, support.geometryPreservedRoadIds, support.impact?.rigidRoadIds)];
   if (spatialIssues.some(issue => issue.severity === 'error')) return { ok: false, issues: spatialIssues };
-  const topologySources = isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint' ? recordTopologySources(input, next, support.affectedRefs, command.type === 'createConnectedPoint' ? command.source.id : undefined) : [];
+  const topologySources = isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint' || command.type === 'quickTraceRoad' || command.type === 'applyResearchAccess' ? recordTopologySources(input, next, support.affectedRefs, command.type === 'createConnectedPoint' ? command.source.id : undefined) : [];
   const boundarySources = command.type === 'normalizeSiteBoundary' ? recordSiteBoundaryNormalization(input, next) : [];
   const sourceRefs = recordGeometrySources(input, next, support.affectedRefs, command.type === 'duplicateSelection' ? command.idMap : undefined);
-  const affectedRefs = [...new Map([...support.affectedRefs, ...topologySources, ...sourceRefs, ...boundarySources].map(ref => [ref.kind + '/' + ref.id, ref])).values()];
+  const directionSources = command.type === 'updateRoad' || command.type === 'updateRoadBatch' ? recordDirectionSources(input, next, support.affectedRefs) : [];
+  const semanticRefs = command.type === 'applySemanticPatch' || command.type === 'updateFacility' || command.type === 'updateZone' ? topologyChangedRefs(input, next) : [];
+  const affectedRefs = [...new Map([...support.affectedRefs, ...topologySources, ...sourceRefs, ...boundarySources, ...semanticRefs, ...directionSources].map(ref => [ref.kind + '/' + ref.id, ref])).values()];
   next.revision = input.revision + 1;
   const finalReport = validateMap(next); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };
   try { serializeMap(next); } catch (error) { return { ok: false, issues: [problem('JSON_SIZE_LIMIT', error instanceof Error ? error.message : '规范化 JSON 超过限制。')] }; }
   const before = freezeMap(structuredClone(input)); const after = freezeMap(next);
-  return { ok: true, map: after, changed: true, ...(spatialIssues.length ? { issues: spatialIssues } : {}), transaction: { before, after, label: command.type, affectedRefs: Object.freeze(affectedRefs.map(ref => Object.freeze({ ...ref }))) }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input) } : {}) };
+  return { ok: true, map: after, changed: true, ...(spatialIssues.length ? { issues: spatialIssues } : {}), transaction: { before, after, label: command.type, affectedRefs: Object.freeze(affectedRefs.map(ref => Object.freeze({ ...ref }))) }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input, command.targetVersion) } : {}) };
 }
 
 /** Explicit preview only, never pointermove: use the exact same candidate as the final command. */

@@ -17,6 +17,7 @@ export interface SpatialLayerProps {
   snap?: SnapOptions; readonly: boolean; selecting: boolean; drawingRoad: boolean; movingNodeIds: Set<string>;
   disableDrag?: boolean; pickingPoint?: boolean; onPickNode?: (id: string) => void;
   onSelect: (kind: keyof Selection, id: string, additive: boolean) => void;
+  onClickSelect?: (kind: keyof Selection, id: string, additive: boolean) => void;
   onDrawClick: () => void; onRoadNode: (id: string) => void;
   onDragStart: (origin: Vec3) => void; onPreview: (delta: Vec3 | null) => void; onDragEnd: (delta: Vec3) => void;
 }
@@ -57,7 +58,7 @@ function useSpatialEvents(props: SpatialLayerProps) {
     event.cancelBubble = true;
     if (target.nodeId !== undefined && props.pickingPoint && !props.readonly) props.onPickNode?.(target.nodeId);
     else if (target.nodeId !== undefined && props.drawingRoad && !props.readonly) props.onRoadNode(target.nodeId);
-    else if (props.selecting) { if (!event.evt.shiftKey) props.onSelect(target.kind, target.id, false); }
+    else if (props.selecting) { if (!event.evt.shiftKey) (props.onClickSelect??props.onSelect)(target.kind, target.id, false); }
     else if (!props.readonly) props.onDrawClick();
   });
   const onDragStart = useCurrentCallback((event: KonvaEventObject<DragEvent>) => {
@@ -90,7 +91,7 @@ export function SpatialLayer(props: SpatialLayerProps) {
     const fill = item.entityType === 'facilities' ? '#c7e3df' : item.kind === 'water' ? '#bad8ef' : item.kind === 'obstacle' || item.kind === 'forbidden' ? '#ead0cc' : '#e8e3c6';
     return <Group _useStrictMode key={item.entityType + item.id} x={anchor[0]} y={anchor[1]} draggable={!props.disableDrag && props.selecting && !props.readonly && (props.canDrag?.(item.entityType, item.id) ?? true)}
       entityKind={item.entityType} entityId={item.id} {...events}>
-      <Shape fill={props.comparisonMode ? fill + '24' : fill} stroke={selected ? '#d57921' : item.entityType === 'facilities' ? '#497e75' : '#929174'} strokeWidth={selected ? 3 : 1.5} fillRule="evenodd"
+      <Shape fill={fill + (props.comparisonMode ? '18' : '35')} dash={item.kind === 'building' || item.kind === 'unclassified' ? [6, 3] : item.inferred ? [2, 3] : undefined} stroke={selected ? '#d57921' : item.entityType === 'facilities' ? '#497e75' : '#929174'} strokeWidth={selected ? 3 : 1.5} fillRule="evenodd"
         sceneFunc={(context, shape) => { context.beginPath(); for (const ring of rings) { ring.forEach((point, index) => { if (!index) context.moveTo(point[0]!, point[1]!); else context.lineTo(point[0]!, point[1]!); }); context.closePath(); } context.fillStrokeShape(shape); }} />
     </Group>;
   })}</>;
@@ -136,11 +137,11 @@ export function AssociatedPointLayer(props: SpatialLayerProps) {
 }
 
 /** Existing polygons/points/lines only; selected logical resources highlight their references. */
-export function DeclaredLayer({ items, camera, hiddenTypes, visibleKeys, onHover, selectedKey, onSelect, selection, previewDelta, movingJunctionIds, backdrop = false }: {
+export function DeclaredLayer({ items, camera, hiddenTypes, visibleKeys, onHover, selectedKey, onSelect, selection, previewDelta, movingJunctionIds, backdrop = false, listening = true }: {
   items: SceneItem[]; camera: Camera; hiddenTypes: readonly SceneKind[];
   visibleKeys?: ReadonlySet<string>; onHover?: (key: string | null) => void;
   selectedKey?: string; onSelect: (item: SceneItem) => void; selection: Selection; previewDelta: Vec3 | null;
-  movingJunctionIds: readonly string[]; backdrop?: boolean;
+  movingJunctionIds: readonly string[]; backdrop?: boolean; listening?: boolean;
 }) {
   const onEnter = useCurrentCallback((event: KonvaEventObject<MouseEvent>) => onHover?.(event.currentTarget.getAttr('sceneKey') as string));
   const onLeave = useCurrentCallback(() => onHover?.(null));
@@ -154,7 +155,7 @@ export function DeclaredLayer({ items, camera, hiddenTypes, visibleKeys, onHover
     const delta = item.owner && selection[item.owner.kind]?.includes(item.owner.id) || item.kind === 'junctions' && movingJunctionIds.includes(item.id) ? previewDelta : null;
     const selected = item.key === selectedKey;
     const stroke = selected ? '#d57921' : item.kind === 'siteBoundary' ? '#54656f' : item.kind === 'junctions' ? '#af78a5' : item.kind === 'slots' ? '#6a897d' : '#b78627';
-    return <Group key={item.key} name={'declared-' + item.kind} sceneKey={item.key} onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={onPick}>
+    return <Group listening={listening} key={item.key} name={'declared-' + item.kind} sceneKey={item.key} onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={onPick}>
       {item.polygons.map((polygon, index) => {
         const rings = [polygon.outer, ...polygon.holes].map(ring => ring.map(point => worldToScreen(move(point, delta), camera)));
         if (rings.some(ring => ring.some(p => !p.every(Number.isFinite)))) return null;

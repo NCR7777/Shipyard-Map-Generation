@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { compile } from 'json-schema-to-typescript';
 
-const contracts = [['map.schema.json', 'model.generated.ts'], ['map-0.2.schema.json', 'model.v02.generated.ts']];
+const contracts = [['map.schema.json', 'model.generated.ts'], ['map-0.2.schema.json', 'model.v02.generated.ts'], ['map-0.3.schema.json', 'model.v03.generated.ts']];
 // The generator consumes tuple `items`; the authoritative validator uses Draft 2020-12 prefixItems.
 function generatorSchema(value) {
   if (Array.isArray(value)) return value.map(generatorSchema);

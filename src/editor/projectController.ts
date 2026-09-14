@@ -16,6 +16,9 @@ export interface DrawingConfig {
   objectSearch: string;
   snapGrid: 0 | 1 | 5 | 10;
   snapNodes: boolean;
+  roadWidthM: number;
+  roadDirection: 'both' | 'forward' | 'backward';
+  connectNewCrossings: boolean;
   showRoadBands: boolean;
   showRoadCenterlines: boolean;
   showOrdinaryNodes: boolean;
@@ -26,8 +29,8 @@ export interface DrawingConfig {
 }
 export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
   hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
-  snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
-  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
+  snapGrid: 0, snapNodes: true, roadWidthM: 12, roadDirection: 'both', connectNewCrossings: true, facilityKind: 'building', zoneKind: 'unclassified',
+  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: false,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
 });
 export interface BackgroundLayerPreference { visible: boolean; opacity: number; locked: boolean }
@@ -145,9 +148,11 @@ export function validateEditorState(value: unknown): EditorState {
   if (![drawing.hiddenTypes, drawing.lockedTypes].every(values => Array.isArray(values) && values.every(value => SCENE_KINDS.includes(value)) && new Set(values).size === values.length)
     || !['auto', 'focus', 'off', 'debug_all'].includes(drawing.labelMode) || typeof drawing.objectSearch !== 'string' || drawing.objectSearch.length > 200
     || ![0, 1, 5, 10].includes(drawing.snapGrid) || typeof drawing.snapNodes !== 'boolean'
+    || typeof drawing.connectNewCrossings !== 'boolean'
+    || !Number.isFinite(drawing.roadWidthM) || drawing.roadWidthM <= 0 || drawing.roadWidthM > 1000 || !['both', 'forward', 'backward'].includes(drawing.roadDirection)
     || typeof drawing.showRoadBands !== 'boolean' || typeof drawing.showRoadCenterlines !== 'boolean' || typeof drawing.showOrdinaryNodes !== 'boolean'
-    || !['workshop', 'yard', 'assembly', 'dock', 'quay', 'other'].includes(drawing.facilityKind)
-    || !['work', 'buffer', 'waiting', 'water', 'obstacle', 'drivable', 'forbidden'].includes(drawing.zoneKind)
+    || !['building', 'workshop', 'yard', 'assembly', 'dock', 'quay', 'other'].includes(drawing.facilityKind)
+    || !['unclassified', 'work', 'buffer', 'waiting', 'water', 'obstacle', 'drivable', 'forbidden'].includes(drawing.zoneKind)
     || !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(drawing.facilityMovePolicy)
     || !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(drawing.zoneMovePolicy)) {
     throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置的吸附数值、布尔值、对象类型或移动策略无效。');

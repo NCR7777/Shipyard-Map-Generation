@@ -1,5 +1,6 @@
+import type { Facility, Zone } from '../../src/domain/model.v02.generated';
 import { editorFixture, testNode } from './M1_fixtures';
-import type { Facility, Polygon, YardMap, Zone } from '../../src/domain/model';
+import type { Polygon, LegacyYardMap, YardMapV02 } from '../../src/domain/model';
 
 /** Independent geometry fixtures are synthetic test inputs, never measured shipyard data. */
 export function rectangle(x = 0, y = 0, width = 60, height = 30): Polygon {
@@ -17,7 +18,7 @@ export function testZone(kind: Zone['kind'] = 'waiting'): Zone {
     resourceIds: [], provenance: { category: 'synthetic' },
   };
 }
-export function spatialFixture(): YardMap {
+export function spatialFixture(): LegacyYardMap | YardMapV02 {
   const map = editorFixture();
   map.mapId = 'map_M2A_test';
   map.metadata.name = 'M2A synthetic 回归地图';
@@ -25,7 +26,7 @@ export function spatialFixture(): YardMap {
   map.zones.zA = testZone();
   return map;
 }
-export function associatedFixture(): YardMap {
+export function associatedFixture(): LegacyYardMap | YardMapV02 {
   const map = spatialFixture();
   map.nodes.nA!.kind = 'access';
   map.nodes.nS = { ...testNode('装卸节点', 15, 10), kind: 'service' };
@@ -38,7 +39,7 @@ export function associatedFixture(): YardMap {
   map.facilities.fA!.servicePointIds = ['sA'];
   return map;
 }
-export function missingBackgroundFixture(): YardMap {
+export function missingBackgroundFixture(): LegacyYardMap | YardMapV02 {
   const map = associatedFixture();
   map.sources.srcImage = { name: '不存在的合成图测试', category: 'synthetic', description: '不提供二进制，仅验证矢量保留。' };
   map.assets.imgA = { path: 'assets/absent.png', sha256: 'a'.repeat(64), mediaType: 'image/png', sourceRef: 'srcImage', widthPx: 100, heightPx: 100 };

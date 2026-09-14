@@ -1,3 +1,4 @@
+import { roadGeometryAnchors, getRoadPath, hasNonlinearGeometry, intersectPaths, projectToPath, pathLength } from '../geometry/roadPath';
 import type { Issue, Vec3, YardMap } from '../domain/model';
 import type { DiagnosticSection } from '../validation/diagnostics';
 import { GEOMETRY_TOLERANCE_M as EPS, pointOnSegment, segmentsIntersect } from '../geometry/polygons';
@@ -51,10 +52,11 @@ export function inspectNetwork(map: YardMap): DiagnosticSection {
       location: { position: [...position] }, message, suggestedAction: '核对这些声明及现场依据；本批只读列出候选，不自动连接、合并或修改地图。' });
   };
   const tick = () => { if (++pairs > MAX_PAIRS) { limited = true; return false; } return !limited; };
-  const coordinates = Object.values(map.nodes).map(n => n.position).concat(Object.values(map.roads).flatMap(r => r.shapePoints));
+  const coordinates = Object.values(map.nodes).map(n => n.position).concat(Object.values(map.roads).flatMap(r => roadGeometryAnchors(r)));
   if (coordinates.some(p => p.some(n => !Number.isFinite(n) || Math.abs(n) > 1e9))) {
     return { issues: [], checks: [{ id: 'network_geometry', status: 'not_checked', detail: '坐标超出有限 ±1e9 m 数值检查范围，未确认是否存在交点或断开。' }] };
   }
+  const curvedIds = new Set(Object.entries(map.roads).filter(([,road])=>hasNonlinearGeometry(road)).map(([id])=>id));
   const segments: Segment[] = [];
   const adjacency = new Map(Object.keys(map.nodes).map(id => [id, new Set<string>()]));
   const direct = new Set<string>();
@@ -71,6 +73,7 @@ export function inspectNetwork(map: YardMap): DiagnosticSection {
   }
   for (let i = 0; i < segments.length && !limited; i++) for (let j = i + 1; j < segments.length && tick(); j++) {
     const a = segments[i]!, b = segments[j]!;
+    if (curvedIds.has(a.roadId) || curvedIds.has(b.roadId)) continue;
     const aa = geometryBounds([a.a, a.b])!, bb = geometryBounds([b.a, b.b])!;
     if (aa.max[0] + EPS < bb.min[0] || bb.max[0] + EPS < aa.min[0] || aa.max[1] + EPS < bb.min[1] || bb.max[1] + EPS < aa.min[1]) continue;
     const hit = intersection(a, b); if (!hit) continue;
@@ -84,6 +87,20 @@ export function inspectNetwork(map: YardMap): DiagnosticSection {
       '道路 ' + a.roadId + ' 段 ' + a.index + ' 与 ' + b.roadId + ' 段 ' + b.index + (hit.overlap ? ' 在 XY 共线重叠。' : ' 在 XY 接触/交叉，未显式共享该处节点。') + note,
       b.roadId + '/' + a.index + '/' + b.index);
   }
+  const roadEntries = Object.entries(map.roads);
+  for (let i=0;i<roadEntries.length&&!limited;i++) for(let j=i+1;j<roadEntries.length&&tick();j++) {
+    const [id,a]=roadEntries[i]!,[otherId,b]=roadEntries[j]!;
+    if (!curvedIds.has(id)&&!curvedIds.has(otherId)) continue;
+    const first=getRoadPath(map,id),second=getRoadPath(map,otherId),result=intersectPaths(first,second);
+    if (!result.converged||result.ambiguous) add('P2A_CURVE_INTERSECTION_UNRESOLVED','roads',id,'/geometry',first.anchors[0]!, '曲线交点存在重叠、分支或未收敛候选；未确认连接。',otherId);
+    const endpoint=(road: typeof a, s:number,length:number)=>s<=1e-5?road.fromNodeId:s>=length-1e-5?road.toNodeId:undefined;
+    const al=pathLength(first).lengthM,bl=pathLength(second).lengthM;
+    for(const hit of result.intersections) {
+      const an=endpoint(a,hit.a.sM,al),bn=endpoint(b,hit.b.sM,bl);if(an&&an===bn)continue;
+      const kind=an&&bn?'ENDPOINT_IDS_DIFFER':an||bn?'T_JUNCTION_CANDIDATE':'X_CROSSING_CANDIDATE';
+      add('P2A_'+kind,'roads',id,'/geometry',hit.point,'道路 '+id+' 与 '+otherId+' 的真实曲线交点未显式共享节点；几何相交不建立通行许可。',otherId+'/'+hit.a.spanIndex+'/'+hit.a.t);
+    }
+  }
   const nodes = Object.entries(map.nodes);
   for (let i = 0; i < nodes.length && !limited; i++) for (let j = i + 1; j < nodes.length && tick(); j++) {
     const [id, a] = nodes[i]!, [otherId, b] = nodes[j]!;
@@ -94,8 +111,14 @@ export function inspectNetwork(map: YardMap): DiagnosticSection {
   }
   for (const [id, node] of nodes) {
     if (limited) break;
+    for (const roadId of curvedIds) {
+      if (!tick()) break; const road=map.roads[roadId]!;if(road.fromNodeId===id||road.toNodeId===id)continue;
+      const path=getRoadPath(map,roadId),nearest=projectToPath(path,node.position);
+      if(nearest.converged&&!nearest.ambiguous&&nearest.sM>EPS&&nearest.sM<pathLength(path).lengthM-EPS&&nearest.offsetM<=NEAR_M&&Math.abs(nearest.point[2]-node.position[2])<=EPS) add('P2A_NODE_NEAR_ROAD_INTERIOR','nodes',id,'/position',node.position,'节点靠近道路 '+roadId+' 的真实曲线内部，但未显式接入。',roadId);
+    }
     for (const segment of segments) {
       if (!tick()) break;
+      if (curvedIds.has(segment.roadId)) continue;
       if (segment.startNode === id || segment.endNode === id) continue;
       const nearest = projection(node.position, segment.a, segment.b);
       if (distance(nearest.point, segment.a) <= EPS || distance(nearest.point, segment.b) <= EPS) continue;
@@ -120,6 +143,7 @@ export function inspectNetwork(map: YardMap): DiagnosticSection {
   }
   for (const [id, facility] of Object.entries(map.facilities)) if (!facility.accessPointIds.length && !facility.servicePointIds.length) add('P2A_FACILITY_NO_SERVICE', 'facilities', id, '/servicePointIds', facility.boundary.outer[0], '设施未声明入口或服务点；不将面积或中心自动作为运输目标。');
   for (const kind of ['accessPoints', 'servicePoints'] as const) for (const [id, point] of Object.entries(map[kind])) if (!adjacency.get(point.nodeId)?.size) add('P2A_POINT_UNCONNECTED', kind, id, '/nodeId', map.nodes[point.nodeId]!.position, '该点权威节点没有道路端点关联，无法从外部道路进入。');
+  if(curvedIds.size) checks.push({id:'curve_self_crossing',status:'not_checked',detail:'曲线自身的回环交点未在整图诊断中枚举；接路投影仍检查分支歧义。'});
   checks.push({ id: 'network_geometry', status: limited ? 'partial' : 'checked', detail: 'XY 交点/共线重叠、端点近邻、孤立节点和分量；数值容差 1e-7 m、提示距离 0.5 m。' + (limited ? '达到 200 万候选或 500 条结果预算，清单未完成。' : '') },
     { id: 'crossing_physical_layers', status: 'not_checked', detail: '比较声明 Z 只用于说明；没有跨越结构/物理层证明，不确认真实道路连接、净空或车辆通行。' });
   return { issues, checks };

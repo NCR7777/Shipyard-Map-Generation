@@ -1,8 +1,10 @@
+import { inspectRoadBand, inspectPathContainment } from '../geometry/roadBand';
+import { getRoadPath, boundsOfPath } from '../geometry/roadPath';
 import type { Issue, Polygon, Vec3, YardMap } from '../domain/model';
 import { inspectPlanning, PLANNING_NAMESPACE } from '../domain/planning';
 import { GEOMETRY_TOLERANCE_M as EPS, validatePolygon } from '../geometry/polygons';
 import { geometryBounds, roadPoints, roadWidthBounds } from '../geometry/roads';
-import { pointInPolygon, polygonHasArea, polylineWithinPolygon, roundRoadIntersectsPolygon } from '../geometry/relations';
+import { pointInPolygon, polygonHasArea } from '../geometry/relations';
 import type { DiagnosticCheck, DiagnosticSection } from './diagnostics';
 import { sameValue } from '../domain/value';
 
@@ -108,9 +110,10 @@ export function inspectSpatial(map: YardMap, options: SpatialOptions = {}): Spat
     for (const [id, road] of Object.entries(map.roads)) {
       if (scope && !scope.roads.has(id) && !forbidden.some(space => scope.owners.has(space.kind + '/' + space.id))) continue;
       work(); const path = '/roads/' + pointer(id);
-      const points = roadPoints(map, id);
+      const points = roadPoints(map, id), resolved = getRoadPath(map, id);
+      const pathBox = boundsOfPath(resolved);
       if (scope && !scope.roads.has(id) && (road.corridorPolygon || road.widthM.state === 'known' && road.widthM.value > 0)) {
-        const box = road.corridorPolygon ? bounds(road.corridorPolygon) : roadWidthBounds(points, road.widthM).bounds;
+        const box = road.corridorPolygon ? bounds(road.corridorPolygon) : roadWidthBounds([pathBox.min, pathBox.max], road.widthM).bounds;
         if (!box || !forbidden.some(space => scope.owners.has(space.kind + '/' + space.id) && overlaps(box, bounds(space.boundary)))) continue;
       }
       if (points.some(point => point.some(value => !Number.isFinite(value)) || Math.abs(point[0]) > 1e9 || Math.abs(point[1]) > 1e9)) {
@@ -121,26 +124,52 @@ export function inspectSpatial(map: YardMap, options: SpatialOptions = {}): Spat
       if (corridor && !usable(corridor)) { skipped++; issue('SPATIAL_CORRIDOR_UNCHECKED', 'roads', id, path + '/corridorPolygon', '声明带几何不可用，未改用其他几何替代。', points[0], 'warning'); continue; }
       if (corridor && (!scope || scope.roads.has(id)) && samePlane(points, corridor)) {
         count++;
-        if (!polylineWithinPolygon(points, corridor, work)) issue('SPATIAL_CORRIDOR_CENTERLINE_OUTSIDE', 'roads', id, path + '/corridorPolygon', '道路中心线部分位于人工声明通行带之外（含孔洞）。', points[0]);
+        const containment = inspectPathContainment(resolved, corridor, work);
+        if (containment.status === 'outside') issue('SPATIAL_CORRIDOR_CENTERLINE_OUTSIDE', 'roads', id, path + '/corridorPolygon', '道路中心线部分位于人工声明通行带之外（含孔洞）。', points[0]);
+        if (containment.status === 'uncertain') { skipped++; issue('SPATIAL_CORRIDOR_NEEDS_REFINEMENT', 'roads', id, path + '/corridorPolygon', '曲线与人工声明带临界关系未确认；误差界 ' + containment.errorM + ' m。', points[0], 'warning'); }
+
       } else if (corridor && (!scope || scope.roads.has(id))) { skipped++; issue('SPATIAL_LAYER_UNCHECKED', 'roads', id, path + '/corridorPolygon', '中心线与声明带不共平面，未验证其立体关系。', points[0], 'warning'); }
       const hasBand = corridor !== undefined || width !== null && width / 2 > 0;
       if (!hasBand) { skipped++; issue('SPATIAL_WIDTH_UNCHECKED', 'roads', id, path + '/widthM', '没有可用的声明带或已知正宽度；仅可报告中心线候选，未补默认宽度。', points[0], 'warning'); }
-      const box = corridor ? bounds(corridor) : roadWidthBounds(points, road.widthM).bounds;
+      const strokeBox = roadWidthBounds([pathBox.min, pathBox.max], road.widthM).bounds;
+      const box = corridor && strokeBox ? geometryBounds([strokeBox.min, strokeBox.max, bounds(corridor).min, bounds(corridor).max]) : strokeBox;
       for (const space of forbidden) {
         if (scope && !scope.roads.has(id) && !scope.owners.has(space.kind + '/' + space.id)) continue;
         work();
         if (!usable(space.boundary)) { skipped++; continue; }
         if (!box || !overlaps(box, bounds(space.boundary))) continue;
         const planar = samePlane(points, space.boundary) && (!corridor || samePlane(corridor.outer, space.boundary));
-        const hit = corridor ? polygonHasArea(corridor, space.boundary, 'intersection', work)
-          : roundRoadIntersectsPolygon(points, width === null ? 0 : width / 2, space.boundary, work);
+        const band = corridor ? { status: 'clear' as const, errorM: 0 } : inspectRoadBand(resolved, width === null ? 0 : width / 2, space.boundary, work);
+        const declaredHit = corridor ? polygonHasArea(corridor, space.boundary, 'intersection', work) : false;
+        const hit = declaredHit || band.status === 'intersects';
+        if (!declaredHit && band.status === 'uncertain') {
+          skipped++; issue('SPATIAL_ROAD_BAND_NEEDS_REFINEMENT', 'roads', id, path + '/geometry', '曲线道路带与 ' + space.kind + '/' + space.id + ' 的临界关系未确认；展平误差界 ' + band.errorM + ' m。', points[0], 'warning');
+        }
         if (!planar || !hasBand) skipped++; else count++;
         if (hit) issue(planar && hasBand ? 'SPATIAL_ROAD_FORBIDDEN' : 'SPATIAL_ROAD_FORBIDDEN_CANDIDATE', 'roads', id, path + (corridor ? '/corridorPolygon' : '/widthM'),
           '道路' + (planar && hasBand ? '声明通行带与' : ' XY 候选与') + space.kind + '/' + space.id + ' 的明确禁止通行面相交。' + (!planar ? ' 高程不同或非平面，立体净空未检查。' : '') + (!hasBand ? ' 宽度未知，不能确认道路带冲突。' : ''),
           points[0], planar && hasBand ? 'error' : 'warning');
       }
     }
-    return { count, skipped, detail: (forbidden.length ? '' : '无明确禁入声明，未确认道路与实际建筑/禁区关系。') + '扫描 ' + Object.keys(map.roads).length + ' 道路 × ' + forbidden.length + ' 明确禁区，包围盒排除不相交候选；人工带优先，否则为中心线半宽胶囊并集（圆端/圆连接，无离散化）。不将建筑、SPMT 排除业务网络或水域名称自动视为禁区。' };
+    return { count, skipped, detail: (forbidden.length ? '' : '无明确禁入声明，未确认道路与实际建筑/禁区关系。') + '扫描 ' + Object.keys(map.roads).length + ' 道路 × ' + forbidden.length + ' 明确禁区，包围盒排除不相交候选；保留既有人工声明带优先口径；无人工带时检查同一中心线半宽道路带（圆端/圆连接），曲线使用保守误差包络并细化临界候选。不将建筑、SPMT 排除业务网络或水域名称自动视为禁区。' };
+  });
+  run('spatial.road_building', () => {
+    let count = 0, skipped = 0;
+    for (const [id, road] of Object.entries(map.roads)) {
+      if (road.widthM.state !== 'known' || road.widthM.value <= 0) { skipped++; continue; }
+      const resolved = getRoadPath(map, id), pathBox = boundsOfPath(resolved);
+      const box = roadWidthBounds([pathBox.min, pathBox.max], road.widthM).bounds;
+      for (const [buildingId, building] of Object.entries(map.facilities)) {
+        if (!['building', 'workshop', 'assembly'].includes(building.kind)) continue;
+        if (scope && !scope.roads.has(id) && !scope.owners.has('facilities/' + buildingId)) continue;
+        work(); if (!box || !overlaps(box, bounds(building.boundary))) continue;
+        if (!usable(building.boundary) || !samePlane(resolved.anchors, building.boundary)) { skipped++; continue; }
+        const band = inspectRoadBand(resolved, road.widthM.value / 2, building.boundary, work); count++;
+        if (band.status !== 'clear') issue(band.status === 'intersects' ? 'SPATIAL_ROAD_BUILDING_OVERLAP' : 'SPATIAL_ROAD_BAND_NEEDS_REFINEMENT', 'roads', id, '/roads/' + pointer(id) + '/geometry',
+          band.status === 'intersects' ? '声明道路带与建筑轮廓 facilities/' + buildingId + ' 重叠；需核对轮廓或用途，未自动改变通行语义。' : '曲线道路带与建筑 facilities/' + buildingId + ' 的临界关系未确认；误差界 ' + band.errorM + ' m。', resolved.anchors[0], 'warning');
+      }
+    }
+    return { count, skipped, detail: '建筑轮廓重叠提示；通用建筑不会因此被写成禁止通行。' };
   });
   run('spatial.service_owner', () => {
     let count = 0, skipped = 0;
@@ -185,7 +214,7 @@ export function inspectSpatialEdit(before: YardMap, after: YardMap, options: {
   for (const [id, road] of Object.entries(after.roads)) {
     if (preserved.has(id)) continue;
     const old = before.roads[id];
-    if (!old || !sameValue(old.shapePoints, road.shapePoints) || (old.widthM.state !== road.widthM.state || (old.widthM.state === 'known' ? old.widthM.value : undefined) !== (road.widthM.state === 'known' ? road.widthM.value : undefined))
+    if (!old || !sameValue(getRoadPath(before, id), getRoadPath(after, id)) || (old.widthM.state !== road.widthM.state || (old.widthM.state === 'known' ? old.widthM.value : undefined) !== (road.widthM.state === 'known' ? road.widthM.value : undefined))
       || !sameValue(old.corridorPolygon, road.corridorPolygon)
       || !sameValue(before.nodes[old.fromNodeId]?.position, after.nodes[road.fromNodeId]?.position)
       || !sameValue(before.nodes[old.toNodeId]?.position, after.nodes[road.toNodeId]?.position)) roads.add(id);

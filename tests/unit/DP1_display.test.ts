@@ -28,7 +28,7 @@ describe('DP1 renderer-only culling and labels', () => {
   it('keeps crossing roads, containing polygons and width edges with all source vertices offscreen', () => {
     const points: Vec3[] = [[-1000, 450, 0], [2000, 450, 0]];
     const data = scene([item('roads', 'wide', { lines: [points] }), item('facilities', 'cover', { polygons: [polygon(-1000, -1000, 3000, 3000)] }), item('nodes', 'far', { points: [[10000, 10000, 0]] })], {
-      roads: [{ id: 'wide', name: 'road', fromNodeId: 'a', toNodeId: 'b', points, lengthM: 3000, widthM: { state: 'known', value: 100 } }],
+      roads: [{ id: 'wide', name: 'road', fromNodeId: 'a', toNodeId: 'b', path: { anchors: points, spans: points.slice(1).map(() => ({ kind: 'line' })) }, points, lengthM: 3000, widthM: { state: 'known', value: 100 } }],
     });
     const before = JSON.stringify(data), index = createDisplayIndex(data), displayed = selectDisplay(index, options);
     expect(displayed.keys).toEqual(new Set(['roads/wide', 'facilities/cover']));
@@ -40,7 +40,7 @@ describe('DP1 renderer-only culling and labels', () => {
   it('keeps preview geometry and declared width, focus and drag exceptions while respecting explicit hiding', () => {
     const points: Vec3[] = [[9000, 0, 0], [10000, 0, 0]];
     const data = scene([item('roads', 'r', { lines: [points] }), item('facilities', 'f', { polygons: [polygon(9000, 9000, 50, 50)] })], {
-      roads: [{ id: 'r', name: 'r', fromNodeId: 'a', toNodeId: 'b', points, lengthM: 1000, widthM: { state: 'known', value: 100 } }],
+      roads: [{ id: 'r', name: 'r', fromNodeId: 'a', toNodeId: 'b', path: { anchors: points, spans: points.slice(1).map(() => ({ kind: 'line' })) }, points, lengthM: 1000, widthM: { state: 'known', value: 100 } }],
     });
     const index = createDisplayIndex(data);
     const displayed = selectDisplay(index, { ...options, geometryOverrides: new Map([['roads/r', { lines: [[[-1000, 450, 0], [2000, 450, 0]] as Vec3[]] }]]), keepKeys: new Set(['facilities/f']) });
@@ -70,7 +70,7 @@ describe('DP1 renderer-only culling and labels', () => {
     const points: Vec3[] = [[50, 50, 0], [60, 50, 0], [300, 50, 0]];
     const nodes: SceneSnapshot['nodes'] = [{ id: 'a', name: 'A', kind: 'ordinary', position: points[0]! }, { id: 'b', name: 'B', kind: 'ordinary', position: points[2]! }];
     const data = scene([item('nodes', 'a', { points: [points[0]!] }), item('nodes', 'b', { points: [points[2]!] }), item('accessPoints', 'ap', { points: [points[2]!] }), item('servicePoints', 'sp', { points: [points[2]!] }), item('servicePoints', 'near', { points: [[300.01, 50, 0]] })], {
-      nodes, roads: [{ id: 'r', name: 'R', fromNodeId: 'a', toNodeId: 'b', points, lengthM: 250, widthM: { state: 'unknown' } }],
+      nodes, roads: [{ id: 'r', name: 'R', fromNodeId: 'a', toNodeId: 'b', path: { anchors: points, spans: points.slice(1).map(() => ({ kind: 'line' })) }, points, lengthM: 250, widthM: { state: 'unknown' } }],
       accessPoints: [{ id: 'ap', name: 'AP', nodeId: 'b', facilityId: 'f', position: points[2]! }],
       servicePoints: [{ id: 'sp', name: 'SP', nodeId: 'b', kind: 'loading', position: points[2]! }, { id: 'near', name: 'near', nodeId: 'different', kind: 'loading', position: [300.01, 50, 0] }],
     });

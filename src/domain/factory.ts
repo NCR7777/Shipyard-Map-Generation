@@ -1,5 +1,7 @@
-import type { AccessPoint, Facility, MapNode, MapRoad, Polygon, SchemaVersion, ServicePoint, Vec3, YardMap, Zone } from './model';
+import type { AccessPoint, Facility, MapNode, LegacyRoad, Polygon, SchemaVersion, ServicePoint, Vec3, YardMap, Zone } from './model';
 
+export function newMap<V extends SchemaVersion>(mapId: string, name: string, schemaVersion: V): Extract<YardMap, { schemaVersion: V }>;
+export function newMap(mapId: string, name?: string, schemaVersion?: SchemaVersion): YardMap;
 export function newMap(mapId: string, name = '未命名地图', schemaVersion: SchemaVersion = '0.2.0'): YardMap {
   return {
     schemaVersion, mapId, revision: 0,
@@ -18,7 +20,7 @@ export function newNode(position: Vec3, name = '节点'): MapNode {
   return { name, position: [...position], kind: 'ordinary', provenance: { category: 'synthetic' } };
 }
 
-export function newRoad(fromNodeId: string, toNodeId: string, shapePoints: Vec3[] = [], name = '道路'): MapRoad {
+export function newRoad(fromNodeId: string, toNodeId: string, shapePoints: Vec3[] = [], name = '道路'): LegacyRoad {
   return {
     name, fromNodeId, toNodeId, shapePoints: shapePoints.map(p => [...p]), direction: 'unknown',
     widthM: { state: 'unknown' }, heightLimitM: { state: 'unknown' },
@@ -26,10 +28,10 @@ export function newRoad(fromNodeId: string, toNodeId: string, shapePoints: Vec3[
     resourceIds: [], provenance: { category: 'synthetic' },
   };
 }
-export function newFacility(boundary: Polygon, name = '厂房', kind: Facility['kind'] = 'workshop'): Facility {
+export function newFacility<K extends Facility['kind'] = 'workshop'>(boundary: Polygon, name = '厂房', kind: K = 'workshop' as K): Facility & { kind: K } {
   return { name, kind, boundary: structuredClone(boundary), accessPointIds: [], servicePointIds: [], heightM: { state: 'unknown' }, provenance: { category: 'synthetic' } };
 }
-export function newZone(boundary: Polygon, name = '作业区', kind: Zone['kind'] = 'work'): Zone {
+export function newZone<K extends Zone['kind'] = 'work'>(boundary: Polygon, name = '作业区', kind: K = 'work' as K): Zone & { kind: K } {
   return { name, kind, boundary: structuredClone(boundary), passability: 'unknown', resourceIds: [], provenance: { category: 'synthetic' } };
 }
 export function newAccessPoint(facilityId: string, nodeId: string, name = '入口'): AccessPoint {

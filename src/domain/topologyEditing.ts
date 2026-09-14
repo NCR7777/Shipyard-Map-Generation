@@ -2,6 +2,7 @@ import type { ArcRef, MapRoad, Vec3, YardMap } from './model';
 import type { CommandAffectedRef, MapCommand, SplitMapping } from './commands';
 import { sameValue } from './value';
 import { roadPoints, polylineLength2D } from '../geometry/roads';
+import { withRoadAnchors, getRoadPath, hasNonlinearGeometry, pathLength, poseAtDistance, reversePath, pathToRoadGeometry } from '../geometry/roadPath';
 import { inspectPlanning, PLANNING_NAMESPACE } from './planning';
 export interface ApprovedMovement {
     id: string;
@@ -55,7 +56,8 @@ function independentGeometry(map: YardMap, ids: string[]) {
         const r = road(map, id);
         if (r.corridorPolygon || r.observedLengthM)
             fail('TOPOLOGY_INDEPENDENT_GEOMETRY', '道路含独立通行带或登记长度，不能猜测拆分/重连规则。', '/roads/' + id);
-        const points = roadPoints(map, id);
+        const path = getRoadPath(map, id);
+        const points = [...path.anchors, ...path.spans.flatMap(span => span.kind === 'cubic' ? [span.control1, span.control2] : [])];
         if (points.some(p => p[2] !== points[0]![2]))
             fail('LOCAL_NONPLANAR_EDIT', '此拓扑编辑仅支持同一 XY 水平面。', '/roads/' + id);
     }
@@ -67,8 +69,9 @@ export function topologyChangedRefs(before: YardMap, after: YardMap): CommandAff
         for (const id of new Set([...Object.keys(before[kind]), ...Object.keys(after[kind])]))
             if (!sameValue(before[kind][id], after[kind][id]))
                 refs.push({ kind, id });
-    if (!sameValue(before.extensions, after.extensions) || !sameValue(before.extensionNamespaces, after.extensionNamespaces))
-        refs.push({ kind: 'extensions', id: 'org.shipyard.editor.lineage' });
+    for (const id of new Set([...Object.keys(before.extensions), ...Object.keys(after.extensions), ...Object.keys(before.extensionNamespaces), ...Object.keys(after.extensionNamespaces)]))
+        if (!sameValue(before.extensions[id], after.extensions[id]) || !sameValue(before.extensionNamespaces[id], after.extensionNamespaces[id]))
+            refs.push({ kind: 'extensions', id });
     return refs;
 }
 /** Split references retain direction and original endpoint meaning. */
@@ -91,6 +94,14 @@ export function remapSplitReferences(map: YardMap, oldId: string, newIds: [
 }
 export function checkSplitGeometry(map: YardMap, id: string): void { independentGeometry(map, [id]); }
 export function splitPosition(map: YardMap, id: string, distanceM: number): Vec3 {
+    if (hasNonlinearGeometry(road(map, id))) {
+        const path = getRoadPath(map, id), measured = pathLength(path);
+        if (!measured.converged) fail('CURVE_LENGTH_NOT_CONVERGED', '曲线长度未在数值预算内收敛，不能拆路。', '/roads/' + id);
+        if (!Number.isFinite(distanceM) || distanceM <= 1e-6 || distanceM >= measured.lengthM - 1e-6) fail('INVALID_SPLIT_POSITION', '切分点必须严格位于道路内部。');
+        const pose = poseAtDistance(path, 'forward', distanceM);
+        if (!pose.converged) fail('CURVE_POSITION_NOT_CONVERGED', '曲线里程定位未收敛，不能创建不确定连接。', '/roads/' + id);
+        return pose.position;
+    }
     const points = roadPoints(map, id), length = polylineLength2D(points);
     if (!Number.isFinite(distanceM) || distanceM <= 1e-6 || distanceM >= length - 1e-6)
         fail('INVALID_SPLIT_POSITION', '切分点必须严格位于道路内部。');
@@ -188,6 +199,18 @@ function checkMovedNode(map: YardMap, id: string, position: Vec3): void {
         if (movement.internalPath && (roads.includes(movement.incomingArc.roadId) || roads.includes(movement.outgoingArc.roadId)))
             fail('TOPOLOGY_MOVEMENT_GEOMETRY', '节点移动影响独立转向几何。', '/movements/' + mid);
 }
+/** Move shared-node endpoint handles with the node; whole-road transforms skip their own handles here. */
+export function moveNodeWithHandles(map: YardMap, nodeId: string, position: Vec3, rigidRoads: ReadonlySet<string> = new Set()): void {
+    const current = node(map, nodeId), delta = position.map((value, axis) => value - current.position[axis]!) as Vec3;
+    if (delta.every(value => value === 0)) return;
+    for (const [id, road] of Object.entries(map.roads)) {
+        if (!road.geometry || rigidRoads.has(id)) continue;
+        const first = road.geometry.spans[0]!, last = road.geometry.spans.at(-1)!;
+        if (road.fromNodeId === nodeId && first.kind === 'cubic') first.control1 = first.control1.map((value: number, axis: number) => value + delta[axis]!) as Vec3;
+        if (road.toNodeId === nodeId && last.kind === 'cubic') last.control2 = last.control2.map((value: number, axis: number) => value + delta[axis]!) as Vec3;
+    }
+    current.position = [...position];
+}
 export function mergeNodes(map: YardMap, sourceId: string, targetId: string, approvedMovements: ApprovedMovement[] = []): void {
     const source = node(map, sourceId), target = node(map, targetId);
     if (sourceId === targetId)
@@ -204,6 +227,7 @@ export function mergeNodes(map: YardMap, sourceId: string, targetId: string, app
         fail('TOPOLOGY_JUNCTION_CONFLICT', '两个路口的模型或扩展不兼容。');
     if (sourceJ && Object.values(map.movements).some(m => m.junctionId === sourceJ[0] && m.internalPath))
         fail('TOPOLOGY_MOVEMENT_GEOMETRY', '合并不能重写路口独立转向几何。');
+    moveNodeWithHandles(map, sourceId, target.position);
     const permitted = enumerateMergeTurns(map, { sourceNodeId: sourceId, targetNodeId: targetId });
     if (approvedMovements.some(v => !permitted.some(p => arcEqual(p.incomingArc, v.incomingArc) && arcEqual(p.outgoingArc, v.outgoingArc))))
         fail('TOPOLOGY_TURN_NOT_PROPOSED', '仅可批准明确列出的新增跨支路接续；不重复或覆盖原转向。');
@@ -351,6 +375,7 @@ export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: st
         fail('TOPOLOGY_DEGREE_TWO_REQUIRED', '连续化简要求恰好两条关联道路，且保留 ID 属于其中一条。');
     const removedId = ids.find(id => id !== retainedId)!, first = road(map, retainedId), second = road(map, removedId);
     independentGeometry(map, ids);
+    if (metadataPolicy && (hasNonlinearGeometry(first) || hasNonlinearGeometry(second))) fail('MQ01_CURVE_SIMPLIFICATION', '旧走廊共线化简不能改写真实曲线。');
     if (first.direction === 'unknown' || second.direction === 'unknown')
         fail('TOPOLOGY_DIRECTION_UNKNOWN', '连续化简前必须明确道路方向。');
     const firstForward = first.toNodeId === nodeId, secondForward = second.fromNodeId === nodeId;
@@ -387,7 +412,8 @@ export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: st
         if (!internalMovements.some(([, m]) => m.allowed && arcEqual(m.incomingArc, incomingArc) && arcEqual(m.outgoingArc, outgoingArc) && map.junctions[m.junctionId]!.model === 'explicit_movements'))
             fail('TOPOLOGY_CONTINUATION_UNDECLARED', '化简前须有每个道路允许方向的显式无资源直行许可；缺失不能被解释为已允许。');
     }
-    const pathA = firstForward ? roadPoints(map, retainedId) : roadPoints(map, retainedId).reverse(), pathB = secondForward ? roadPoints(map, removedId) : roadPoints(map, removedId).reverse();
+    const resolvedA = getRoadPath(map, retainedId), resolvedB = getRoadPath(map, removedId);
+    const pathA = firstForward ? resolvedA : reversePath(resolvedA), pathB = secondForward ? resolvedB : reversePath(resolvedB);
     const from = firstForward ? first.fromNodeId : first.toNodeId, to = secondForward ? second.toNodeId : second.fromNodeId;
     if (from === to || Object.entries(map.roads).some(([id, r]) => !ids.includes(id) && (r.fromNodeId === from && r.toNodeId === to || r.fromNodeId === to && r.toNodeId === from)))
         fail('TOPOLOGY_DUPLICATE_EDGE', '连续化简会形成自环或重复道路。');
@@ -424,8 +450,9 @@ export function suppressDegree2Node(map: YardMap, nodeId: string, retainedId: st
     first.fromNodeId = from;
     first.toNodeId = to;
     first.direction = oriented(first, firstForward);
-    const joinedPoints = [...pathA, ...pathB.slice(1)];
-    first.shapePoints = (evidence ? removeExactBetweenVertices(joinedPoints) : joinedPoints).slice(1, -1);
+    const joinedPoints = [...pathA.anchors, ...pathB.anchors.slice(1)];
+    if (first.geometry) first.geometry = pathToRoadGeometry({ anchors: joinedPoints, spans: [...pathA.spans, ...pathB.spans] });
+    else Object.assign(first, withRoadAnchors(first, (evidence ? removeExactBetweenVertices(joinedPoints) : joinedPoints).slice(1, -1)));
     first.provenance.sourceRefs = [...new Set([...(first.provenance.sourceRefs ?? []), ...(second.provenance.sourceRefs ?? []), ...Object.values(second.provenance.fieldSources ?? {})])];
     rejectOpaqueTopologyReferences(map, [removedId, nodeId, ...junctionIds, ...internalMovements.map(([id]) => id)]);
     delete map.roads[removedId];
@@ -451,7 +478,7 @@ export function runTopology(map: YardMap, command: TopologyCommand, split: (map:
         suppressDegree2Node(map, command.nodeId, command.retainedRoadId, command.metadataPolicy);
         return;
     }
-    const moving = node(map, command.nodeId), target = road(map, command.roadId);
+    node(map, command.nodeId); const target = road(map, command.roadId);
     if (target.fromNodeId === command.nodeId || target.toNodeId === command.nodeId)
         fail('TOPOLOGY_ALREADY_CONNECTED', '该节点已经是目标道路端点。');
     if (fields(target).ownerEntityId)
@@ -468,7 +495,7 @@ export function runTopology(map: YardMap, command: TopologyCommand, split: (map:
         fail('TOPOLOGY_JUNCTION_CONFLICT', '所选路口不属于待连接节点。');
     if (!has(map.junctions, command.junctionId))
         freeId(map, command.junctionId);
-    moving.position = position;
+    moveNodeWithHandles(map, command.nodeId, position);
     if (!has(map.junctions, command.junctionId))
         map.junctions[command.junctionId] = { name: '编辑器显式接入', nodeIds: [command.nodeId], model: 'explicit_movements', resourceIds: [], provenance: { category: 'design_assumption' } };
     const mapping = split(map, { type: 'splitRoad', id: command.roadId, distanceM: command.distanceM, nodeId: command.nodeId, existingNode: true, newRoadIds: command.newRoadIds });

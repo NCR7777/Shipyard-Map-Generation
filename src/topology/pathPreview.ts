@@ -1,7 +1,8 @@
 import type { ArcRef, Issue, Movement, Vec3, YardMap } from '../domain/model';
 import { contentHash } from '../domain/serialization';
 import { inspectPlanning, PLANNING_NAMESPACE } from '../domain/planning';
-import { polylineLength2D, roadPoints } from '../geometry/roads';
+import { roadGeometryAnchors } from '../geometry/roadPath';
+import { roadLength, roadPoints } from '../geometry/roads';
 import { inspectServiceConnection } from './serviceConnections';
 
 export interface PathEndpoint { kind: 'servicePoints' | 'accessPoints' | 'nodes'; id: string }
@@ -69,10 +70,10 @@ function prepare(map: YardMap): PreparedPathPreview {
     }
     let geometryWork = 0;
     for (const [id, road] of Object.entries(map.roads).sort(([a], [b]) => a.localeCompare(b))) {
-      geometryWork += road.shapePoints.length + 2;
+      geometryWork += roadGeometryAnchors(road).length + 2;
       if (geometryWork > MAX_WORK) throw new Unchecked('PATH_COMPLEXITY_LIMIT', '/roads', '道路折线几何超过路径预览上限。');
       if (!['unknown', 'forward', 'backward', 'both'].includes(road.direction)) throw new Unchecked('PATH_INPUT_INVALID', `/roads/${pointer(id)}/direction`, '道路方向不合法。');
-      const points = roadPoints(map, id); const length = polylineLength2D(points);
+      const points = roadPoints(map, id); const length = roadLength(map, id);
       if (!points.every(p => p.every(Number.isFinite)) || !Number.isFinite(length) || length <= 0)
         throw new Unchecked('PATH_GEOMETRY_UNSUPPORTED', `/roads/${pointer(id)}`, '道路长度不能表示为有限正米数。');
       const payload = road.extensions?.[PLANNING_NAMESPACE] as { ownerEntityId?: string } | undefined;

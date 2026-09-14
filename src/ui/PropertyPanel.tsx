@@ -1,3 +1,4 @@
+import { roadGeometryAnchors, hasNonlinearGeometry } from '../geometry/roadPath';
 import { useEffect, useState } from 'react';
 import { changedFields, unitFactor } from './propertyFields';
 import { DEFAULT_PROPERTY_UNITS, type PropertyUnits } from '../editor/projectController';
@@ -52,15 +53,15 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
   const physicalPending = selected?.kind === 'road' && physical !== null && JSON.stringify(physical) !== JSON.stringify(makePhysicalDraft(selected.value));
   const [name, setName] = useState(selected?.value.name ?? '');
   const [coords, setCoords] = useState<string[]>(selected?.kind === 'node' ? selected.value.position.map(String) : []);
-  const [shapePoints, setShapePoints] = useState<string[][]>(selected?.kind === 'road' ? selected.value.shapePoints.map(p => p.map(String)) : []);
+  const [shapePoints, setShapePoints] = useState<string[][]>(selected?.kind === 'road' ? roadGeometryAnchors(selected.value).map(p => p.map(String)) : []);
   const [direction, setDirection] = useState<MapRoad['direction']>(selected?.kind === 'road' ? selected.value.direction : 'unknown');
   const [error, setError] = useState('');
   const pending = !!selected && (!!physicalPending || name !== selected.value.name || (selected.kind === 'node'
     ? JSON.stringify(coords) !== JSON.stringify(selected.value.position.map(String))
-    : JSON.stringify(shapePoints) !== JSON.stringify(selected.value.shapePoints.map(point => point.map(String))) || direction !== selected.value.direction));
+    : JSON.stringify(shapePoints) !== JSON.stringify(roadGeometryAnchors(selected.value).map(point => point.map(String))) || direction !== selected.value.direction));
   useEffect(() => { onDirtyChange?.(pending); return () => onDirtyChange?.(false); }, [pending, onDirtyChange]);
   const roadId = selected?.kind === 'road' ? selected.id : null;
-  const originalShapePoints = selected?.kind === 'road' ? selected.value.shapePoints : null;
+  const originalShapePoints = selected?.kind === 'road' ? roadGeometryAnchors(selected.value) : null;
   useEffect(() => {
     const points = shapePoints.map(vec);
     const changed = originalShapePoints !== null && JSON.stringify(points) !== JSON.stringify(originalShapePoints);
@@ -88,7 +89,7 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
     const proposal: Partial<MapRoad> = {};
     if (name !== selected.value.name) proposal.name = name;
     if (direction !== selected.value.direction) proposal.direction = direction;
-    if (JSON.stringify(shapePoints) !== JSON.stringify(selected.value.shapePoints.map(p => p.map(String)))) {
+    if (JSON.stringify(shapePoints) !== JSON.stringify(roadGeometryAnchors(selected.value).map(p => p.map(String)))) {
       const points = shapePoints.map(vec);
       if (points.some(p => p === null)) { setError('折点 XYZ 必须为有限米制数值。'); return false; }
       proposal.shapePoints = points as Vec3[];
@@ -96,7 +97,7 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
     const parsed = physical ? parsePhysicalPatch(selected.value, physical) : { ok: true as const, patch: {}, needsAssumption: false };
     if (!parsed.ok) { setError(parsed.message); return false; }
     const patch = changedFields(selected.value, { ...proposal, ...parsed.patch });
-    if (!Object.keys(patch).length) { setError(''); setShapePoints(selected.value.shapePoints.map(p => p.map(String))); setPhysical(makePhysicalDraft(selected.value)); return true; }
+    if (!Object.keys(patch).length) { setError(''); setShapePoints(roadGeometryAnchors(selected.value).map(p => p.map(String))); setPhysical(makePhysicalDraft(selected.value)); return true; }
     const accepted = onApply({ type: 'updateRoad', id: selected.id, patch,
       ...(parsed.needsAssumption ? { designAssumption: { id: 'source_' + crypto.randomUUID(), name: '道路参数设计假设', description: '用户数值输入，未经现场核验' } } : {}),
     });
@@ -127,10 +128,10 @@ function NetworkPropertyPanel({ selected, readonly, count, onApply, onDirtyChang
       }).join(' · ')}</p>
       <p className="field-note">{(['heightLimitM', 'massLimitKg', 'speedLimitMps'] as const).filter(f => selected.value[f].state === 'known').length} 项已声明限制 · {(['heightLimitM', 'massLimitKg', 'speedLimitMps'] as const).filter(f => selected.value[f].state === 'unknown').length} 项待配置</p>
       <details><summary>技术详情与折点</summary><label className="field-label">稳定 ID<input aria-label="稳定 ID" value={selected.id} readOnly /></label><dl className="reference-list"><dt>起点</dt><dd>{selected.value.fromNodeId}</dd><dt>终点</dt><dd>{selected.value.toNodeId}</dd></dl>
-      <div className="property-subheading">内部折点 · m</div>
+      <div className="property-subheading">内部几何锚点 · m</div>{hasNonlinearGeometry(selected.value) && <p className="field-note">曲线请在画布拖动锚点、切向柄或弯曲柄；控制点保持同一米制几何。</p>}
       <p className="field-note">按起点到终点排序；端点只引用节点。</p>
-      {shapePoints.map((point, index) => <div key={index} className="shape-point"><span>{index + 1}</span>{(['X', 'Y', 'Z'] as const).map((axis, axisIndex) => <input key={axis} type="number" step="any" aria-label={`折点 ${index + 1} ${axis} (m)`} title={axis + ' (m)'} value={point[axisIndex] ?? ''} disabled={readonly} onChange={event => setShapePoints(points => points.map((p, i) => i === index ? p.map((v, j) => j === axisIndex ? event.target.value : v) : p))} />)}<button type="button" className="icon-button" aria-label={`删除折点 ${index + 1}`} disabled={readonly} onClick={() => setShapePoints(points => points.filter((_, i) => i !== index))}>×</button></div>)}
-      <button type="button" className="subtle-button full-width" disabled={readonly} onClick={() => setShapePoints(points => [...points, points.at(-1) ? [...points.at(-1)!] : ['0', '0', '0']])}>添加内部折点</button>
+      {!hasNonlinearGeometry(selected.value) && shapePoints.map((point, index) => <div key={index} className="shape-point"><span>{index + 1}</span>{(['X', 'Y', 'Z'] as const).map((axis, axisIndex) => <input key={axis} type="number" step="any" aria-label={`折点 ${index + 1} ${axis} (m)`} title={axis + ' (m)'} value={point[axisIndex] ?? ''} disabled={readonly} onChange={event => setShapePoints(points => points.map((p, i) => i === index ? p.map((v, j) => j === axisIndex ? event.target.value : v) : p))} />)}<button type="button" className="icon-button" aria-label={`删除折点 ${index + 1}`} disabled={readonly} onClick={() => setShapePoints(points => points.filter((_, i) => i !== index))}>×</button></div>)}
+      <button type="button" className="subtle-button full-width" disabled={readonly || hasNonlinearGeometry(selected.value)} onClick={() => setShapePoints(points => [...points, points.at(-1) ? [...points.at(-1)!] : ['0', '0', '0']])}>添加内部折点</button>
       <p className="field-note">道路外观不决定通行约束；隐藏字段完整保留。</p></details>
     </>}
     {error && <p role="alert" className="inline-error">{error}</p>}

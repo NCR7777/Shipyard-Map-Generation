@@ -54,7 +54,7 @@ describe('M2A independent commands, references and world geometry', () => {
   it('G01 preserves all ordered polygon coordinates, identifiers and four-state data over ten JSON round trips', () => {
     const original = associatedFixture();
     const canonical = serializeMap(original);
-    let map = original;
+    let map: YardMap = original;
     for (let round = 0; round < 10; round++) {
       const loaded = loadMap(serializeMap(map));
       expect(loaded.ok).toBe(true);
@@ -67,7 +67,7 @@ describe('M2A independent commands, references and world geometry', () => {
   });
 
   it('adds facilities and all requested zone categories through transactions without invented physical values', () => {
-    let map = editorFixture();
+    let map: YardMap = editorFixture();
     map = execute(map, { type: 'addFacility', id: 'fA', facility: testFacility() }).map;
     expect(map.facilities.fA!.heightM).toEqual({ state: 'unknown' });
     for (const kind of ['work', 'buffer', 'waiting', 'water', 'obstacle'] as const) {
@@ -79,7 +79,7 @@ describe('M2A independent commands, references and world geometry', () => {
   });
 
   it('G02 adds entrance and service nodes atomically and uses nodeId as their only authoritative position', () => {
-    let map = spatialFixture();
+    let map: YardMap = spatialFixture();
     map = execute(map, {
       type: 'addAccessPoint', id: 'aNew',
       accessPoint: { name: '入口', facilityId: 'fA', nodeId: 'nNew', provenance: { category: 'synthetic' } },

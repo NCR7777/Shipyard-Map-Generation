@@ -1,6 +1,8 @@
 import Ajv2020, { type ErrorObject } from 'ajv/dist/2020';
 import legacySchema from '../../schemas/map.schema.json';
 import currentSchema from '../../schemas/map-0.2.schema.json';
+import pathSchema from '../../schemas/map-0.3.schema.json';
+import { roadGeometryAnchors, hasNonlinearGeometry, getRoadPath, pathLength } from '../geometry/roadPath';
 import type { Issue, PhysicalValue, Provenance, ValidationReport, YardMap } from '../domain/model';
 import { roadLength, roadPoints } from '../geometry/roads';
 import { MAX_MAP_POLYGON_VERTICES, validatePolygon } from '../geometry/polygons';
@@ -12,6 +14,7 @@ import { inspectPlanning } from '../domain/planning';
 const ajv = new Ajv2020({ allErrors: true, strict: true, ownProperties: true });
 const legacyValidator = ajv.compile<YardMap>(legacySchema);
 const currentValidator = ajv.compile<YardMap>(currentSchema);
+const pathValidator = ajv.compile<YardMap>(pathSchema);
 const collections = ['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const;
 function pointer(key: string): string { return key.replace(/~/g, '~0').replace(/\//g, '~1'); }
 
@@ -52,12 +55,19 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   const issues: Issue[] = [];
   checkJsonValues(input, '', issues, 0, new Set());
   if (issues.length) return { ok: false, profile, status: 'invalid', issues };
-  if (input && typeof input === 'object' && 'schemaVersion' in input && input.schemaVersion !== '0.1.0' && input.schemaVersion !== '0.2.0') {
-    return { ok: false, profile, status: 'invalid', issues: [issue('UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', '仅支持 schemaVersion 0.1.0 / 0.2.0；未执行自动迁移。')] };
+  if (input && typeof input === 'object' && 'schemaVersion' in input && input.schemaVersion !== '0.1.0' && input.schemaVersion !== '0.2.0' && input.schemaVersion !== '0.3.0') {
+    return { ok: false, profile, status: 'invalid', issues: [issue('UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', '仅支持 schemaVersion 0.1.0 / 0.2.0 / 0.3.0；未执行自动迁移。')] };
   }
-  const structuralValidator = input && typeof input === 'object' && 'schemaVersion' in input && input.schemaVersion === '0.2.0' ? currentValidator : legacyValidator;
+  const version = input && typeof input === 'object' && 'schemaVersion' in input ? input.schemaVersion : undefined;
+  const structuralValidator = version === '0.3.0' ? pathValidator : version === '0.2.0' ? currentValidator : legacyValidator;
   if (!structuralValidator(input)) return { ok: false, profile, status: 'invalid', issues: (structuralValidator.errors ?? []).map(schemaIssue) };
   const map = input as YardMap;
+  if (map.schemaVersion === '0.3.0') {
+    for (const [id, road] of Object.entries(map.roads)) {
+      if (road.geometry.spans.length !== road.geometry.anchors.length + 1) issues.push(issue('ROAD_SPAN_COUNT', '/roads/' + pointer(id) + '/geometry/spans', '路径 span 数量必须等于内部锚点数量 + 1。'));
+    }
+    if (issues.length) return { ok: false, profile, status: 'invalid', issues };
+  }
   function ref(collection: typeof collections[number], id: string | undefined, path: string): void {
     if (id !== undefined && !Object.hasOwn(map[collection], id)) issues.push(issue('DANGLING_REFERENCE', path, `引用的 ${collection}/${id} 不存在。`));
   }
@@ -107,9 +117,18 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
     }
     if (road.direction === 'unknown') issues.push(issue('UNKNOWN_DIRECTION', path + '/direction', '道路方向尚未定义。', 'warning'));
     if (Object.hasOwn(map.nodes, road.fromNodeId) && Object.hasOwn(map.nodes, road.toNodeId)) {
+      if (hasNonlinearGeometry(road)) {
+        const resolved = getRoadPath(map, id), measured = pathLength(resolved);
+        if (!measured.converged) issues.push(issue('GEOMETRY_NOT_CONVERGED', path + '/geometry', '曲线长度或空间误差未收敛；不能将近似值作为已确认几何。'));
+        resolved.spans.forEach((span, index) => {
+          const a = resolved.anchors[index]!, b = resolved.anchors[index + 1]!;
+          const controls = span.kind === 'cubic' ? [a, span.control1, span.control2, b] : [a, b];
+          if (controls.every(point => point[0] === a[0] && point[1] === a[1])) issues.push(issue('ZERO_LENGTH_SPAN', path + '/geometry/spans/' + index, '路径包含完全零水平长度的 span。'));
+        });
+      }
       const length = roadLength(map, id);
-      if (!Number.isFinite(length)) issues.push(issue('NON_FINITE_GEOMETRY', path + '/shapePoints', '派生二维长度超出有限数值范围。'));
-      else if (length === 0) issues.push(issue('ZERO_LENGTH_ROAD', path + '/shapePoints', '道路二维水平长度为零。'));
+      if (!Number.isFinite(length)) issues.push(issue('NON_FINITE_GEOMETRY', path + (road.geometry ? '/geometry' : '/shapePoints'), '派生二维长度超出有限数值范围。'));
+      else if (length === 0) issues.push(issue('ZERO_LENGTH_ROAD', path + (road.geometry ? '/geometry' : '/shapePoints'), '道路二维水平长度为零。'));
     }
   }
   for (const [id, junction] of Object.entries(map.junctions)) {
@@ -157,16 +176,16 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   for (const [id, service] of Object.entries(map.servicePoints)) {
     const path = '/servicePoints/' + pointer(id);
     ref('nodes', service.nodeId, path + '/nodeId'); ref('facilities', service.facilityId, path + '/facilityId');
-    if (map.schemaVersion === '0.2.0') ref('zones', service.zoneId, path + '/zoneId');
+    if (map.schemaVersion !== '0.1.0') ref('zones', service.zoneId, path + '/zoneId');
     ref('accessPoints', service.accessPointId, path + '/accessPointId'); refs('resources', service.resourceIds, path + '/resourceIds');
     if (service.facilityId && Object.hasOwn(map.facilities, service.facilityId) && !map.facilities[service.facilityId]!.servicePointIds.includes(id)) issues.push(issue('FACILITY_MEMBERSHIP_MISSING', path + '/facilityId', '服务点声明的设施必须反向列出该服务点 ID。'));
     if (service.facilityId && service.accessPointId && Object.hasOwn(map.accessPoints, service.accessPointId)
       && map.accessPoints[service.accessPointId]!.facilityId !== service.facilityId)
       issues.push(issue('SERVICE_ACCESS_FACILITY_CONFLICT', path + '/accessPointId', '服务点与所引用出入口的设施归属不一致。'));
   }
-  if (map.schemaVersion === '0.2.0') {
+  if (map.schemaVersion !== '0.1.0') {
     const services = Object.values(map.servicePoints);
-    const geometrySegments = Object.values(map.roads).reduce((sum, road) => sum + road.shapePoints.length + 1, 0);
+    const geometrySegments = Object.values(map.roads).reduce((sum, road) => sum + roadGeometryAnchors(road).length + 1, 0);
     const work = geometrySegments + services.length * Object.keys(map.roads).length + services.reduce((sum, service) => sum + (service.arrival?.mode === 'explicit_internal' ? service.arrival.internalPath.length * Math.max(1, Object.keys(map.movements).length) : 0), 0);
     if (work > 2_000_000) issues.push(issue('SERVICE_CONNECTION_COMPLEXITY_LIMIT', '/servicePoints', '服务点与道路/转向诊断组合超过 2000000，本轮不能完成接续校验；请拆分地图，不返回未检查的成功。'));
     else for (const summary of inspectServiceConnections(map)) issues.push(...summary.issues);
@@ -203,7 +222,7 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
         issues.push(issue('NEAR_UNCONNECTED_NODES', '/nodes/' + pointer(idB) + '/position', `节点距 ${idA} 不超过 0.5 m，但没有显式直连道路；接近或重合不建立拓扑。`, 'warning')); reported++;
       }
     }
-    const segments = Object.values(map.roads).reduce((sum, road) => sum + road.shapePoints.length + 1, 0);
+    const segments = Object.values(map.roads).reduce((sum, road) => sum + roadGeometryAnchors(road).length + 1, 0);
     if (nearNodes.length * segments <= 2_000_000) {
       for (const [roadId, road] of Object.entries(map.roads)) {
         if (reported >= 100) break;

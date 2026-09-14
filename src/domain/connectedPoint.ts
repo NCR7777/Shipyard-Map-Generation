@@ -59,7 +59,7 @@ function pathEnd(map: YardMap, start: string, arcs: ArcRef[], owner: string): st
 }
 /** Mutates only the caller's disposable candidate. The command layer validates and commits once. */
 export function runConnectedPoint(map: YardMap, command: ConnectedPointCommand, split: ConnectedPointSplit): ConnectedPointResult {
-  if (map.schemaVersion !== '0.2.0') fail('CONNECTED_POINT_SCHEMA', '请先显式升级到支持到达语义的地图版本。');
+  if (map.schemaVersion === '0.1.0') fail('CONNECTED_POINT_SCHEMA', '请先显式升级到支持到达语义的地图版本。');
   if (!['facilities', 'zones'].includes(command.owner?.kind) || !Object.hasOwn(map[command.owner.kind], command.owner.id)) fail('CONNECTED_POINT_OWNER', '请选择现有设施或区域。');
   if (command.kind !== 'accessPoint' && command.kind !== 'servicePoint') fail('CONNECTED_POINT_KIND', '未知的入口/作业点创建动作。');
   if (typeof command.name !== 'string' || !command.name.trim()) fail('CONNECTED_POINT_NAME', '入口或作业点名称不能为空。');

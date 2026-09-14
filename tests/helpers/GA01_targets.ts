@@ -620,6 +620,7 @@ export function GA01RoadCommand(map: YardMap, target: GA01Target, edit: GA01Road
 export function assertGA01RoadChange(before: YardMap, after: YardMap, command: Extract<MapCommand, { type: 'updateRoad' }>, edit: GA01RoadEdit): void {
   assert.equal(after.revision, before.revision + 1); assertGA01Equal(after.coordinateFrame, before.coordinateFrame);
   const old = before.roads[command.id]!, road = after.roads[command.id]!;
+  if (old.geometry || road.geometry) throw new Error('GA01 frozen polyline candidate required');
   const attributed: Record<string, string> = {};
   if (edit === 'shape') {
     assertGA01Equal(road.shapePoints, command.patch.shapePoints, 'exact requested noncollinear road bend');
@@ -629,7 +630,7 @@ export function assertGA01RoadChange(before: YardMap, after: YardMap, command: E
     assertGA01Equal(road.provenance.sourceRefs, [...new Set([...(old.provenance.sourceRefs ?? []), source])]);
   } else {
     for (const field of ['widthM', 'speedLimitMps'] as const) {
-      const actual = road[field], requested = command.patch[field]!;
+      const actual: typeof road.widthM = road[field], requested = command.patch[field]!;
       assert.equal(actual.state, 'known'); assert.equal(requested.state, 'known');
       if (actual.state !== 'known' || requested.state !== 'known') throw new Error('expected explicit parameter value');
       assert.equal(actual.value, requested.value); assert.notDeepEqual(actual, old[field]); assert.ok(actual.sourceRef);

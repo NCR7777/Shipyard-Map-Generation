@@ -1,11 +1,11 @@
 import { newMap } from '../../src/domain/factory';
-import type { YardMap, MapNode } from '../../src/domain/model';
+import type { LegacyYardMap, YardMapV02, MapNode } from '../../src/domain/model';
 
 export function testNode(name: string, x: number, y = 0): MapNode {
   return { name, position: [x, y, 0], kind: 'ordinary', provenance: { category: 'synthetic' } };
 }
 
-export function editorFixture(): YardMap {
+export function editorFixture(): LegacyYardMap | YardMapV02 {
   const map = newMap('map_M1_test', 'M1 synthetic 回归地图', '0.1.0');
   map.metadata.layoutBasis = 'synthetic';
   map.nodes.nA = testNode('A', 0);
@@ -18,7 +18,7 @@ export function editorFixture(): YardMap {
   return map;
 }
 
-export function readonlyFixture(): YardMap {
+export function readonlyFixture(): LegacyYardMap | YardMapV02 {
   const map = editorFixture();
   // M2A implements facilities; unknown behavior must still protect the entire map.
   map.extensionNamespaces['test.future_behavior'] = { version: '1', category: 'behavior' };

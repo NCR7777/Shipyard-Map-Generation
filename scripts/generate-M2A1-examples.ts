@@ -11,6 +11,8 @@ const sourceUrl = new URL('../examples/M2A_synthetic.map.json', import.meta.url)
 const sourceBytes = await readFile(sourceUrl);
 const loaded = loadMap(sourceBytes.toString('utf8'));
 if (!loaded.ok) throw new Error(JSON.stringify(loaded.report));
+if (loaded.map.schemaVersion === '0.3.0') throw new Error('M2A1 example generation requires its original 0.1/0.2 source');
+const sourceRoad = loaded.map.roads.rMain!;
 let map: YardMap = loaded.map;
 const commands: MapCommand[] = [
   { type: 'upgradeSchema', targetVersion: '0.2.0' },
@@ -21,7 +23,7 @@ const commands: MapCommand[] = [
     arrival: { mode: 'node_proxy', transferAssumption: 'excluded_from_model', note: 'synthetic：该节点代表本研究中的区域边界作业位；未建模场内转运明确忽略。此图未声明服务时长、资源容量或运输可达性。' },
     resourceIds: [], provenance: { category: 'synthetic' },
   }, newNode: { id: 'nZoneTarget', node: { ...newNode([80, 30, 0], 'synthetic 区域目标权威节点'), kind: 'service' } } },
-  { type: 'addRoad', id: 'rZoneConnection', road: { ...structuredClone(map.roads.rMain!), name: 'synthetic 区域显式接路', fromNodeId: 'nRoadEast', toNodeId: 'nZoneTarget', shapePoints: [], direction: 'both' } },
+  { type: 'addRoad', id: 'rZoneConnection', road: { ...structuredClone(sourceRoad), name: 'synthetic 区域显式接路', fromNodeId: 'nRoadEast', toNodeId: 'nZoneTarget', shapePoints: [], direction: 'both' } },
 ];
 for (const command of commands) {
   const result = applyMapCommand(map, command);

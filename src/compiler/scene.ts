@@ -1,6 +1,8 @@
+import { isInferredSemantic } from '../domain/semanticPatch';
+import { getRoadPath, boundsOfPath } from '../geometry/roadPath';
 import { sceneCatalog, itemPositions } from './catalog';
 import { zoneServicePointIds } from '../topology/serviceConnections';
-import type { YardMap } from '../domain/model';
+import type { MapRoad, YardMap } from '../domain/model';
 import type { SceneSnapshot } from '../adapters/contracts';
 import { contentHash } from '../domain/serialization';
 import { geometryBounds, roadLength, roadPoints, roadWidthBounds } from '../geometry/roads';
@@ -9,14 +11,14 @@ function sorted<T>(values: Record<string, T>): [string, T][] { return Object.ent
 
 export function toSceneSnapshot(map: YardMap): SceneSnapshot {
   const nodes: SceneSnapshot['nodes'] = sorted(map.nodes).map(([id, node]) => ({ id, name: node.name, kind: node.kind, position: [...node.position] }));
-  const roads: SceneSnapshot['roads'] = sorted(map.roads).map(([id, road]) => ({ id, name: road.name, fromNodeId: road.fromNodeId, toNodeId: road.toNodeId, points: roadPoints(map, id), lengthM: roadLength(map, id), direction: road.direction, widthM: structuredClone(road.widthM) }));
-  const facilities: SceneSnapshot['facilities'] = sorted(map.facilities).map(([id, facility]) => ({ id, name: facility.name, kind: facility.kind, boundary: structuredClone(facility.boundary), accessPointIds: [...facility.accessPointIds], servicePointIds: [...facility.servicePointIds], heightM: structuredClone(facility.heightM) }));
-  const zones: SceneSnapshot['zones'] = sorted(map.zones).map(([id, zone]) => ({ id, servicePointIds: zoneServicePointIds(map, id), name: zone.name, kind: zone.kind, boundary: structuredClone(zone.boundary), passability: zone.passability }));
+  const roads: SceneSnapshot['roads'] = sorted<MapRoad>(map.roads).map(([id, road]) => ({ id, name: road.name, fromNodeId: road.fromNodeId, toNodeId: road.toNodeId, path: structuredClone(getRoadPath(map, id)), points: roadPoints(map, id), lengthM: roadLength(map, id), direction: road.direction, widthM: structuredClone(road.widthM) }));
+  const facilities: SceneSnapshot['facilities'] = sorted(map.facilities).map(([id, facility]) => ({ id, name: facility.name, kind: facility.kind, ...(isInferredSemantic(facility) ? { inferred: true } : {}), boundary: structuredClone(facility.boundary), accessPointIds: [...facility.accessPointIds], servicePointIds: [...facility.servicePointIds], heightM: structuredClone(facility.heightM) }));
+  const zones: SceneSnapshot['zones'] = sorted(map.zones).map(([id, zone]) => ({ id, servicePointIds: zoneServicePointIds(map, id), name: zone.name, kind: zone.kind, ...(isInferredSemantic(zone) ? { inferred: true } : {}), boundary: structuredClone(zone.boundary), passability: zone.passability }));
   const accessPoints: SceneSnapshot['accessPoints'] = sorted(map.accessPoints).map(([id, point]) => ({ id, name: point.name, facilityId: point.facilityId, nodeId: point.nodeId, position: [...map.nodes[point.nodeId]!.position] }));
   const servicePoints: SceneSnapshot['servicePoints'] = sorted(map.servicePoints).map(([id, point]) => ({ id, name: point.name, kind: point.kind, nodeId: point.nodeId, ...(point.facilityId ? { facilityId: point.facilityId } : {}), ...(point.accessPointId ? { accessPointId: point.accessPointId } : {}), ...(point.zoneId ? { zoneId: point.zoneId } : {}), ...(point.arrival ? { arrival: structuredClone(point.arrival) } : {}), position: [...map.nodes[point.nodeId]!.position] }));
   const capabilities = mapCapabilities(map);
   const items = sceneCatalog(map);
-  const roadBounds = roads.map(road => ({ id: road.id, ...roadWidthBounds(road.points, road.widthM) }));
+  const roadBounds = roads.map(road => ({ id: road.id, ...roadWidthBounds([boundsOfPath(road.path).min, boundsOfPath(road.path).max], road.widthM) }));
   return {
     schemaVersion: map.schemaVersion, mapId: map.mapId, mapContentHash: contentHash(map),
     coordinateFrame: structuredClone(map.coordinateFrame), nodes, roads, facilities, zones, accessPoints, servicePoints, items,

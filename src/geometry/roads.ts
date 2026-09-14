@@ -1,11 +1,9 @@
 import type { PhysicalValue, Vec3, YardMap } from '../domain/model';
+import { getRoadPath, flattenPath, pathLength } from './roadPath';
 
 export function roadPoints(map: YardMap, roadId: string): Vec3[] {
-  if (!Object.hasOwn(map.roads, roadId)) throw new Error(`Unknown road: ${roadId}`);
-  const road = map.roads[roadId]!;
-  if (!Object.hasOwn(map.nodes, road.fromNodeId) || !Object.hasOwn(map.nodes, road.toNodeId))
-    throw new Error(`Dangling endpoint: ${roadId}`);
-  return [map.nodes[road.fromNodeId]!.position, ...road.shapePoints, map.nodes[road.toNodeId]!.position].map(p => [...p]);
+  const path = getRoadPath(map, roadId);
+  return path.spans.some(span => span.kind === 'cubic') ? flattenPath(path).samples.map(sample => sample.position) : path.anchors.map(point => [...point]);
 }
 
 export function polylineLength2D(points: readonly Vec3[]): number {
@@ -19,7 +17,8 @@ export function polylineLength2D(points: readonly Vec3[]): number {
 }
 
 export function roadLength(map: YardMap, roadId: string): number {
-  return polylineLength2D(roadPoints(map, roadId));
+  const path = getRoadPath(map, roadId);
+  return path.spans.some(span => span.kind === 'cubic') ? pathLength(path).lengthM : polylineLength2D(path.anchors);
 }
 
 export function geometryBounds(points: readonly Vec3[]): { min: Vec3; max: Vec3 } | null {

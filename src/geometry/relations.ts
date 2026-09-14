@@ -101,6 +101,22 @@ function pointSegmentDistance(point: Vec3, a: Vec3, b: Vec3): number {
   const t = lengthSquared ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / lengthSquared)) : 0;
   return Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy);
 }
+/** Minimum XY distance to every outer and hole boundary, including segment interiors.
+ * A zero result is conservative at the shared polygon predicate tolerance.
+ */
+export function polylineBoundaryDistance(points: readonly Vec3[], polygon: Polygon, work: GeometryWork): number {
+  const boundary = edges(polygon);
+  let minimum = Infinity;
+  if (points.length === 1) for (const [a, b] of boundary) {
+    work(); minimum = Math.min(minimum, pointSegmentDistance(points[0]!, a, b));
+  }
+  for (let i = 1; i < points.length; i++) for (const [c, d] of boundary) {
+    work(); const a = points[i - 1]!, b = points[i]!;
+    if (segmentsIntersect(a, b, c, d)) return 0;
+    minimum = Math.min(minimum, pointSegmentDistance(a, c, d), pointSegmentDistance(b, c, d), pointSegmentDistance(c, a, b), pointSegmentDistance(d, a, b));
+  }
+  return minimum;
+}
 /** Union of segment capsules = constant-width polyline with round caps/joins.
  * A strict distance test excludes mere boundary contact. No tessellation error.
  */

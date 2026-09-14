@@ -1,3 +1,4 @@
+import { isInferredSemantic } from '../domain/semanticPatch';
 import type { ArcRef, Issue, ServicePoint, YardMap } from '../domain/model';
 import { pointInRing } from '../geometry/polygons';
 import { roadLength } from '../geometry/roads';
@@ -84,7 +85,7 @@ function inspectWithLengthCache(map: YardMap, servicePointId: string, lengths: M
     summary.internalPathStatus = 'not_required';
     if (!arrival.note.trim()) add('PROXY_ASSUMPTION_EMPTY', '/arrival/note', '节点代理必须写明未建模场内转运的处理边界。', 'error');
     const facility = point.facilityId && Object.hasOwn(map.facilities, point.facilityId) ? map.facilities[point.facilityId] : undefined;
-    if (node && facility?.kind === 'workshop' && pointInRing(node.position, facility.boundary.outer) === 'inside'
+    if (node && facility?.kind === 'workshop' && !isInferredSemantic(facility) && pointInRing(node.position, facility.boundary.outer) === 'inside'
       && facility.boundary.holes.every(ring => pointInRing(node.position, ring) === 'outside'))
       add('PROXY_INSIDE_BUILDING', '/nodeId', '节点代理位于厂房外环内部且不在孔洞中；请核对边界/入口位置，不能以代理声明代替穿墙路线。');
     add('SERVICE_ROUTE_UNCHECKED', '/arrival', '代理目标已声明，但全网起点可达性、转向、资源及物理通行仍未校验。', 'warning', false);

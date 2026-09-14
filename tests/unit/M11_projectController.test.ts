@@ -356,7 +356,7 @@ const editorState = (drawing: Partial<DrawingConfig> = {}): EditorState => ({ ca
 describe('stable drawing configuration in independent editor state', () => {
   it('normalizes old camera-only and partial settings, retaining explicit false and zero', () => {
     expect(validateEditorState({ camera })).toEqual(editorState());
-    expect(validateEditorState({ camera, drawing: { snapGrid: 0, snapNodes: false, facilityKind: 'quay' } })).toEqual(editorState({ facilityKind: 'quay' }));
+    expect(validateEditorState({ camera, drawing: { snapGrid: 0, snapNodes: false, facilityKind: 'quay' } })).toEqual(editorState({ facilityKind: 'quay', snapNodes: false }));
     const legacySixFields = {
       snapGrid: 10, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer',
       facilityMovePolicy: 'withAssociatedNodes', zoneMovePolicy: 'boundaryOnly',
@@ -365,13 +365,14 @@ describe('stable drawing configuration in independent editor state', () => {
     expect(validateEditorState({ camera, drawing: { showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false } }))
       .toEqual(editorState({ showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false }));
     const normalized = validateEditorState({ camera });
-    normalized.drawing.snapNodes = true; normalized.camera.scale = 100;
-    expect(DEFAULT_DRAWING_CONFIG.snapNodes).toBe(false);
+    normalized.drawing.snapNodes = false; normalized.camera.scale = 100;
+    expect(DEFAULT_DRAWING_CONFIG.snapNodes).toBe(true);
     expect(camera.scale).toBe(2);
   });
 
   it.each([
     null, [], { snapGrid: null }, { snapGrid: -1 }, { snapGrid: 2 }, { snapGrid: NaN }, { snapGrid: Infinity },
+    { roadWidthM: 0 }, { roadWidthM: Infinity }, { roadWidthM: 1001 }, { roadDirection: 'unknown' },
     { snapGrid: '5' }, { snapNodes: 0 }, { snapNodes: null }, { facilityKind: 'ship' }, { zoneKind: 'road' },
     { facilityMovePolicy: 'all' }, { zoneMovePolicy: null }, { tool: 'select' }, { snapGrid: undefined },
     { showRoadBands: null }, { showRoadBands: 0 }, { showRoadBands: 'false' },
@@ -600,7 +601,7 @@ describe('DP1 label mode migration at the existing persistence boundary', () => 
     const record = structuredClone(store.rows.get('project_A'));
     store.views.set('project_A', { camera, drawing: { showLabels: false, snapGrid: 0, snapNodes: false } });
     const restored = new ProjectController(store); const recovery = await restored.initialize();
-    expect(recovery!.editorState).toEqual(editorState({ labelMode: 'off' }));
+    expect(recovery!.editorState).toEqual(editorState({ labelMode: 'off', snapNodes: false }));
     expect(recovery!.warnings).toEqual([]);
     await restored.saveEditorState(recovery!.editorState!);
     expect(store.views.get('project_A')!.drawing).not.toHaveProperty('showLabels');

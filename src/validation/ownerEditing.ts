@@ -1,3 +1,4 @@
+import { isInferredSemantic } from '../domain/semanticPatch';
 import type { Issue, Polygon, Vec3, YardMap } from '../domain/model';
 import { sameValue } from '../domain/value';
 import { pointOwner, roadOwner } from '../domain/ownerEditing';
@@ -64,7 +65,7 @@ export function inspectOwnerGeometryEdit(before: YardMap, after: YardMap, geomet
       for (const [facilityId, facility] of Object.entries(after.facilities)) {
         const previous = before.facilities[facilityId];
         const boundaryChanged = previous && !sameValue(previous.boundary, facility.boundary);
-        if (!previous || facility.kind !== 'workshop' || ownerId === facilityId || preserved.has(id) && !boundaryChanged || !moved && !widthChanged && !boundaryChanged) continue;
+        if (!previous || facility.kind !== 'workshop' || isInferredSemantic(facility) || ownerId === facilityId || preserved.has(id) && !boundaryChanged || !moved && !widthChanged && !boundaryChanged) continue;
         // Explicit internal routes may enter their own workshop; an arbitrary adjacent road may not gain that permission.
         const permittedInternal = Object.values(after.servicePoints).some(point => pointOwner(point) === facilityId && point.arrival?.mode === 'explicit_internal' && point.arrival.internalPath.some(arc => arc.roadId === id));
         if (permittedInternal) continue;

@@ -14,7 +14,7 @@ const TOPOLOGY_SOURCE: Source = {
   description: '用户确认的节点、道路细分及连接引用修改；细分几何沿用原道路来源，新增通行声明为设计假设，未经现场核验。',
 };
 const TOPOLOGY_FIELDS = {
-  nodes: ['position'], roads: ['fromNodeId', 'toNodeId', 'shapePoints'],
+  nodes: ['position'], roads: ['fromNodeId', 'toNodeId', 'shapePoints', 'geometry'],
   junctions: ['nodeIds', 'model', 'resourceIds'], movements: ['junctionId', 'incomingArc', 'outgoingArc', 'allowed', 'resourceIds'],
   accessPoints: ['nodeId'], servicePoints: ['nodeId', 'arrival'], resources: ['appliesTo'],
 } as const;
@@ -72,7 +72,7 @@ export function recordGeometrySources(before: YardMap, after: YardMap, refs: rea
     const kind = ref.kind as keyof typeof FIELDS;
     const previous = before[kind][ref.id], next = after[kind][targetId];
     if (!previous || !next) continue;
-    const field = FIELDS[kind];
+    const field = kind === 'roads' && after.schemaVersion === '0.3.0' ? 'geometry' : FIELDS[kind];
     if (!sameValue((previous as unknown as Record<string, unknown>)[field], (next as unknown as Record<string, unknown>)[field])) changes.push({ provenance: next.provenance, field });
     if (kind === 'facilities' || kind === 'zones') {
       const oldSlots = (previous.extensions?.[PLANNING_NAMESPACE] as { slots?: { id: string; boundary: unknown }[] } | undefined)?.slots ?? [];

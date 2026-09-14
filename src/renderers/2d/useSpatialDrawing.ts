@@ -6,13 +6,20 @@ import { screenToWorld, worldToScreen, type Camera, type Vec2 } from '../../geom
 import type { Tool } from './MapCanvas';
 export interface SnapOptions { gridM: number | null; nodes: boolean }
 export const isSpatialTool = (tool: Tool) => tool.startsWith('facility') || tool.startsWith('zone');
-export const isRectangleTool = (tool: Tool) => tool === 'facilityRect' || tool === 'zoneRect';
+export const isRectangleTool = (tool: Tool) => tool === 'facilityRect' || tool === 'zoneRect' || tool === 'facilityOrientedRect' || tool === 'zoneOrientedRect';
+export const isOrientedRectangleTool = (tool: Tool) => tool === 'facilityOrientedRect' || tool === 'zoneOrientedRect';
+export function orientedRectangleVertices(a: Vec3, b: Vec3, side: Vec3): Vec3[] {
+  const dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
+  if (length < 0.01) throw new Error('矩形基边至少为 0.01 m。');
+  const height = ((side[0] - a[0]) * -dy + (side[1] - a[1]) * dx) / length;
+  return [a, b, [b[0] - dy / length * height, b[1] + dx / length * height, a[2]], [a[0] - dy / length * height, a[1] + dx / length * height, a[2]]];
+}
 export function snapPosition(screen: Vec2, camera: Camera, nodes: SceneSnapshot['nodes'], options?: SnapOptions, excluded = new Set<string>(), z = 0): { world: Vec3; nodeId?: string } {
   const world = screenToWorld(screen, camera, z);
   if (options?.nodes) {
     let closest: { id: string; distance: number; position: Vec3 } | null = null;
     for (const node of nodes) {
-      if (excluded.has(node.id)) continue;
+      if (excluded.has(node.id) || Math.abs(node.position[2] - z) > 1e-6) continue;
       const p = worldToScreen(node.position, camera); const distance = Math.hypot(screen[0] - p[0], screen[1] - p[1]);
       if (distance <= 12 && (!closest || distance < closest.distance)) closest = { id: node.id, distance, position: node.position };
     }
@@ -30,9 +37,22 @@ export function useSpatialDrawing(tool: Tool, readonly: boolean, camera: Camera,
     if (readonly || !isSpatialTool(tool) || vertices.length < 3) return;
     try { emit(polygonFromVertices(vertices)); } catch (reason) { setError(reason instanceof Error ? reason.message : '多边形输入无效。'); }
   }
-  function click(world: Vec3, screen: Vec2) {
+  function project(world: Vec3, shift: boolean): Vec3 {
+    const anchor = vertices.at(-1);
+    if (!shift || !anchor || isRectangleTool(tool)) return world;
+    return Math.abs(world[0] - anchor[0]) >= Math.abs(world[1] - anchor[1]) ? [world[0], anchor[1], anchor[2]] : [anchor[0], world[1], anchor[2]];
+  }
+  function dragRectangle(a: Vec3, b: Vec3) {
+    if (readonly || !isRectangleTool(tool) || isOrientedRectangleTool(tool)) return;
+    try { emit(rectanglePolygon([Math.min(a[0], b[0]), Math.min(a[1], b[1]), a[2]], Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]))); } catch (reason) { setError(reason instanceof Error ? reason.message : '矩形输入无效。'); }
+  }
+  function click(world: Vec3, screen: Vec2, complete = false, shift = false) {
+    world = project(world, shift);
     if (readonly || !isSpatialTool(tool)) return;
-    if (isRectangleTool(tool)) {
+    if (isOrientedRectangleTool(tool)) {
+      if (vertices.length < 2) setVertices(points => [...points, world]);
+      else { try { emit(polygonFromVertices(orientedRectangleVertices(vertices[0]!, vertices[1]!, world))); } catch (reason) { setError(reason instanceof Error ? reason.message : '矩形输入无效。'); } }
+    } else if (isRectangleTool(tool)) {
       if (!vertices.length) setVertices([world]);
       else {
         const first = vertices[0]!;
@@ -40,6 +60,7 @@ export function useSpatialDrawing(tool: Tool, readonly: boolean, camera: Camera,
         catch (reason) { setError(reason instanceof Error ? reason.message : '矩形输入无效。'); }
       }
     } else {
+      if (complete && vertices.length >= 3) { finish(); return; }
       const first = vertices[0] ? worldToScreen(vertices[0], camera) : null;
       if (vertices.length >= 3 && first && Math.hypot(first[0] - screen[0], first[1] - screen[1]) <= 12) finish();
       else setVertices(points => [...points, world]);
@@ -53,5 +74,5 @@ export function useSpatialDrawing(tool: Tool, readonly: boolean, camera: Camera,
     }
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   });
-  return { vertices, error, click, finish, cancel: () => { setVertices([]); setError(''); } };
+  return { vertices, error, click, finish, project, dragRectangle, cancel: () => { setVertices([]); setError(''); } };
 }

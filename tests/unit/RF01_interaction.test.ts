@@ -5,7 +5,7 @@ import { validateEditorState, ProjectPersistenceError, DEFAULT_DRAWING_CONFIG } 
 const context = { projectId: 'project_one', changeToken: 3, mapContentHash: 'before' };
 describe('RF01 exclusive interaction and editor-only preferences', () => {
   it('replaces the single dialog, preserves activity on cancel, and clears both on project restore', () => {
-    const drawing = interactionReducer(initialInteraction, { type: 'activity', activity: { kind: 'road', value: { fromNodeId: 'n1', points: [] }, context } });
+    const drawing = interactionReducer(initialInteraction, { type: 'activity', activity: { kind: 'road', value: { fromNodeId: 'n1', points: [],spans:[],continuity:'corner' }, context } });
     const opened = interactionReducer(drawing, { type: 'dialog', dialog: { kind: 'save', value: { target: 'browser' }, context } });
     const replaced = interactionReducer(opened, { type: 'dialog', dialog: { kind: 'leave', value: { label: 'leave', action: () => {} }, context } as EditorDialog });
     expect(replaced.dialog?.kind).toBe('leave');
