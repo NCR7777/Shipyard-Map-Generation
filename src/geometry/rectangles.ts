@@ -21,6 +21,16 @@ const originalBoundary = (frame: RectangleFrame): Polygon => {
   return { outer: [[...a], [...b], [...c], [...d], [...a]], holes: [] };
 };
 
+/** Two points fix one side; the third contributes only signed perpendicular width. */
+export function orientedRectangleVertices(a: Vec3, b: Vec3, side: Vec3): Vec3[] {
+  if (![a, b, side].every(finitePoint) || b[2] !== a[2] || side[2] !== a[2]) throw new RangeError('矩形三点必须为同一水平面的有限米制坐标。');
+  const dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
+  if (!Number.isFinite(length) || length < MIN_RECTANGLE_SIZE_M) throw new RangeError(`矩形基边至少为 ${MIN_RECTANGLE_SIZE_M} m。`);
+  const nx = -dy / length, ny = dx / length;
+  const width = (side[0] - a[0]) * nx + (side[1] - a[1]) * ny;
+  if (!Number.isFinite(width) || Math.abs(width) < MIN_RECTANGLE_SIZE_M) throw new RangeError(`矩形垂直宽度至少为 ${MIN_RECTANGLE_SIZE_M} m。`);
+  return [[...a], [...b], [b[0] + nx * width, b[1] + ny * width, a[2]], [a[0] + nx * width, a[1] + ny * width, a[2]]];
+}
 /** Derive only: unreliable, nonrectangular and holed boundaries retain their original geometry. */
 export function rectangleFrame(boundary: Polygon): RectangleFrame | null {
   if (boundary.holes.length || boundary.outer.length !== 5 || !boundary.outer.every(finitePoint) || validatePolygon(boundary).length) return null;
@@ -78,14 +88,35 @@ export function resizeRectangleCorner(frame: RectangleFrame, corner: RectangleCo
   return { boundary: resizeRectangleDimensions(frame, widthM, heightM, corner), widthM, heightM, clamped: widthM !== requestedWidth || heightM !== requestedHeight };
 }
 
+function editableRing(boundary: Polygon, ringIndex: number, vertexIndex: number) {
+  const ring = [boundary.outer, ...boundary.holes][ringIndex];
+  if (!Number.isInteger(ringIndex) || !ring || !Number.isInteger(vertexIndex) || vertexIndex < 0 || vertexIndex >= ring.length - 1)
+    throw new RangeError('必须选择有效环上的非闭合顶点。');
+  return ring;
+}
 /** Ring 0 is the outer ring; subsequent indices are holes. Final validity remains the domain command's job. */
 export function movePolygonVertex(boundary: Polygon, ringIndex: number, vertexIndex: number, position: Vec3): Polygon {
-  const ring = [boundary.outer, ...boundary.holes][ringIndex];
-  if (!Number.isInteger(ringIndex) || !ring || !Number.isInteger(vertexIndex) || vertexIndex < 0 || vertexIndex >= ring.length - 1 || !finitePoint(position))
-    throw new RangeError('必须选择有效的非闭合顶点，并输入三个有限米制坐标。');
+  editableRing(boundary, ringIndex, vertexIndex);
+  if (!finitePoint(position)) throw new RangeError('顶点坐标必须为三个有限米制数值。');
   const result = structuredClone(boundary);
   const target = ringIndex === 0 ? result.outer : result.holes[ringIndex - 1]!;
   target[vertexIndex] = [...position];
   if (vertexIndex === 0) target[target.length - 1] = [...position];
+  return result;
+}
+
+/** Split one edge at its midpoint without changing the represented boundary. */
+export function insertPolygonVertex(boundary: Polygon, ringIndex: number, edgeIndex: number): Polygon {
+  const ring = editableRing(boundary, ringIndex, edgeIndex), a = ring[edgeIndex]!, b = ring[edgeIndex + 1]!;
+  const result = structuredClone(boundary), target = ringIndex === 0 ? result.outer : result.holes[ringIndex - 1]!;
+  target.splice(edgeIndex + 1, 0, [a[0] / 2 + b[0] / 2, a[1] / 2 + b[1] / 2, a[2] / 2 + b[2] / 2]);
+  return result;
+}
+/** Deleting a corner keeps winding and closure; the domain rejects any resulting invalid polygon. */
+export function removePolygonVertex(boundary: Polygon, ringIndex: number, vertexIndex: number): Polygon {
+  const ring = editableRing(boundary, ringIndex, vertexIndex);
+  if (ring.length <= 4) throw new RangeError('每个环至少保留三个顶点。');
+  const result = structuredClone(boundary), target = ringIndex === 0 ? result.outer : result.holes[ringIndex - 1]!;
+  target.splice(vertexIndex, 1); target[target.length - 1] = [...target[0]!];
   return result;
 }

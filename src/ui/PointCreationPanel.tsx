@@ -1,4 +1,4 @@
-import type { ArcRef, Issue, ServicePoint, Vec3, YardMap } from '../domain/model';
+import type { ArcRef, Issue, Provenance, ServicePoint, Vec3, YardMap } from '../domain/model';
 import { newNode } from '../domain/factory';
 import type { MapCommand, Selection } from '../domain/commands';
 import { Modal } from './Modal';
@@ -8,14 +8,26 @@ import type { ConnectedPointCommand, ConnectedPointConnection } from '../domain/
 import type { PointPickResult } from '../renderers/2d/MapCanvas';
 import { commandSupport } from '../domain/commands';
 import { ConnectedPointFields } from './ConnectedPointFields';
+import { pointInRing } from '../geometry/polygons';
 
 export interface PointCreationDraft {
   kind: 'accessPoints' | 'servicePoints'; name: string;
   ownerKind: 'none' | 'facility' | 'zone'; facilityId: string; zoneId: string; accessPointId: string;
   serviceKind: ServicePoint['kind']; nodeMode: 'existing' | 'new'; nodeId: string; position: string[];
-  resourceIds?: string[]; simple?: boolean; connection?: ConnectedPointConnection; ids?: { pointId: string; nodeId: string; connectorRoadId: string; junctionId: string; sourceId: string };
+  resourceIds?: string[]; simple?: boolean; connectionMode?: 'deferred' | 'connected'; connection?: ConnectedPointConnection; ids?: { pointId: string; nodeId: string; connectorRoadId: string; junctionId: string; sourceId: string };
   connectorDirection?: 'both' | 'forward' | 'backward' | 'unknown'; connectorWidth?: string; approvedMovements?: { id: string; incomingArc: ArcRef; outgoingArc: ArcRef }[];
   canvasMode: 'existing' | 'new' | 'road' | 'path' | null; arrival: ServiceArrivalDraft;
+}
+/** Candidate data must be reset explicitly before switching to independent point creation. */
+export function hasPointConnectionCandidate(draft: PointCreationDraft): boolean {
+  return !!draft.connection || !!draft.accessPointId || !!draft.resourceIds?.length || !!draft.approvedMovements?.length
+    || !!draft.connectorWidth?.trim() || !!draft.connectorDirection && draft.connectorDirection !== 'unknown'
+    || draft.arrival.mode !== 'undeclared' || !!draft.arrival.note.trim() || !!draft.arrival.entryNodeId || !!draft.arrival.internalPath.length;
+}
+export function setPointConnectionMode(draft: PointCreationDraft, mode: 'deferred' | 'connected'): PointCreationDraft {
+  if (mode === 'connected') return { ...draft, connectionMode: mode };
+  return { ...draft, connectionMode: mode, canvasMode: null, nodeMode: 'new', nodeId: '', accessPointId: '', connection: undefined,
+    resourceIds: [], approvedMovements: [], connectorWidth: '', connectorDirection: 'unknown', arrival: makeServiceArrivalDraft(undefined) };
 }
 export function makePointCreationDraft(kind: PointCreationDraft['kind'], selection: Selection, map: YardMap): PointCreationDraft {
   const owners = [...(selection.facilities ?? []).map(id => ({ kind: 'facility' as const, id })), ...(selection.zones ?? []).map(id => ({ kind: 'zone' as const, id }))];
@@ -29,7 +41,7 @@ export function makePointCreationDraft(kind: PointCreationDraft['kind'], selecti
 export function applyPointPick(draft: PointCreationDraft, result: PointPickResult): PointCreationDraft {
   if (draft.simple && (draft.canvasMode === 'road' || draft.canvasMode === 'path')) {
     if (draft.canvasMode === 'path') return draft;
-    return { ...draft, connection: 'roadId' in result ? { kind: 'road', roadId: result.roadId, distanceM: result.distanceM, nodeId: '', newRoadIds: ['', ''] } : 'nodeId' in result ? { kind: 'node', nodeId: result.nodeId } : undefined, canvasMode: null };
+    return { ...draft, connectionMode: 'connected', connection: 'roadId' in result ? { kind: 'road', roadId: result.roadId, distanceM: result.distanceM, nodeId: '', newRoadIds: ['', ''] } : 'nodeId' in result ? { kind: 'node', nodeId: result.nodeId } : undefined, canvasMode: null };
   }
   return 'nodeId' in result ? { ...draft, nodeMode: 'existing', nodeId: result.nodeId, canvasMode: null }
     : { ...draft, nodeMode: 'new', position: result.position.map(String), canvasMode: null };
@@ -39,26 +51,42 @@ function inputIssue(code: string, message: string): Issue {
 }
 export function buildPointCreationCommand(draft: PointCreationDraft, map: YardMap, allocateId: (prefix: string) => string):
   { ok: true; id: string; kind: PointCreationDraft['kind']; command: MapCommand } | { ok: false; issues: Issue[] } {
-  if (draft.simple) return buildConnectedPointCreation(draft, map, allocateId);
+  const deferred = draft.simple && draft.connectionMode === 'deferred';
+  if (draft.simple && !deferred) return buildConnectedPointCreation(draft, map, allocateId);
   const reject = (code: string, message: string) => ({ ok: false as const, issues: [inputIssue(code, message)] });
-  if (!draft.name.trim() || (draft.kind === 'accessPoints' && !draft.facilityId)) return reject('POINT_INPUT_REQUIRED', '请填写名称；入口必须明确选择设施。');
+  const name = draft.name.trim() || (deferred ? draft.kind === 'accessPoints' ? '入口' : '作业点' : '');
+  if (!name || (draft.kind === 'accessPoints' && !draft.facilityId)) return reject('POINT_INPUT_REQUIRED', '请填写名称；入口必须明确选择设施。');
   if (draft.nodeMode === 'new' && (draft.position.length !== 3 || draft.position.some(value => !value.trim() || !Number.isFinite(Number(value))))) return reject('POINT_POSITION_REQUIRED', '请在画布点选或输入专用节点的 XYZ 米制位置；不使用设施中心。');
   if (draft.nodeMode === 'existing' && !map.nodes[draft.nodeId]) return reject('POINT_NODE_REQUIRED', '请选择有效已有节点。');
   if (draft.ownerKind === 'facility' && !map.facilities[draft.facilityId]) return reject('POINT_OWNER_REQUIRED', '请选择明确的所属设施。');
   if (draft.ownerKind === 'zone' && !map.zones[draft.zoneId]) return reject('POINT_OWNER_REQUIRED', '请选择明确的所属区域。');
   if (map.schemaVersion === '0.1.0' && (draft.ownerKind === 'zone' || draft.arrival.mode !== 'undeclared')) return reject('POINT_VERSION_UPGRADE_REQUIRED', '区域归属与到达语义需要显式升级到 0.2.0。');
+  let provenance: Provenance = { category: 'synthetic' };
+  if (deferred) {
+    if (draft.nodeMode !== 'new') return reject('POINT_DEFERRED_NODE', '稍后接路模式创建独立节点；复用已有节点请使用高级关联。');
+    if (hasPointConnectionCandidate(draft)) return reject('POINT_DEFERRED_CANDIDATE', '仍有接路或到达候选；请明确重置候选后再创建独立点。');
+    const owner = draft.ownerKind === 'facility' ? map.facilities[draft.facilityId] : draft.ownerKind === 'zone' ? map.zones[draft.zoneId] : undefined;
+    if (!owner || draft.kind === 'accessPoints' && draft.ownerKind !== 'facility') return reject('POINT_OWNER_REQUIRED', '请先明确选择所属建筑或区域；入口归属建筑。');
+    const position = draft.position.map(Number) as Vec3;
+    if (owner.boundary.outer.some(point => Math.abs(point[2] - position[2]) > 1e-6)) return reject('POINT_OWNER_PLANE', '点位必须与所选对象处于同一明确水平面。');
+    const onHole = owner.boundary.holes.some(hole => pointInRing(position, hole) !== 'outside');
+    if (draft.kind === 'accessPoints' ? pointInRing(position, owner.boundary.outer) !== 'boundary' || onHole : pointInRing(position, owner.boundary.outer) === 'outside' || onHole)
+      return reject('POINT_OWNER_POSITION', draft.kind === 'accessPoints' ? '入口必须位于所属建筑的外边界。' : '作业点必须位于所属对象范围内，不能落入孔洞。');
+    const sourceRefs = owner.provenance.sourceRefs?.slice();
+    provenance = { category: 'drawing', ...(sourceRefs?.length ? { sourceRefs } : {}), note: '人工点选位置；仅创建独立节点，接路及到达语义待补，不代表现场核验。' };
+  }
   const arrivalDraft = draft.ownerKind === 'facility' ? { ...draft.arrival, entryNodeId: '' } : draft.arrival;
   const parsed = draft.kind === 'servicePoints' ? parseServiceArrivalDraft(arrivalDraft) : { ok: true as const, arrival: undefined };
   if (!parsed.ok) return reject('POINT_ARRIVAL_REQUIRED', parsed.message);
   const nodeId = draft.nodeMode === 'new' ? allocateId('node') : draft.nodeId;
-  const newPointNode = draft.nodeMode === 'new' ? { id: nodeId, node: { ...newNode(draft.position.map(Number) as Vec3, draft.name + '节点'), kind: draft.kind === 'accessPoints' ? 'access' as const : 'service' as const } } : undefined;
+  const newPointNode = draft.nodeMode === 'new' ? { id: nodeId, node: { ...newNode(draft.position.map(Number) as Vec3, name + '节点'), provenance, kind: draft.kind === 'accessPoints' ? 'access' as const : 'service' as const } } : undefined;
   const id = allocateId(draft.kind === 'accessPoints' ? 'access' : 'service');
   const command: MapCommand = draft.kind === 'accessPoints'
-    ? { type: 'addAccessPoint', id, accessPoint: { name: draft.name, facilityId: draft.facilityId, nodeId, provenance: { category: 'synthetic' } }, ...(newPointNode ? { newNode: newPointNode } : {}) }
-    : { type: 'addServicePoint', id, servicePoint: { name: draft.name, kind: draft.serviceKind, nodeId,
+    ? { type: 'addAccessPoint', id, accessPoint: { name, facilityId: draft.facilityId, nodeId, provenance }, ...(newPointNode ? { newNode: newPointNode } : {}) }
+    : { type: 'addServicePoint', id, servicePoint: { name, kind: draft.serviceKind, nodeId,
       ...(draft.ownerKind === 'facility' ? { facilityId: draft.facilityId, ...(draft.accessPointId ? { accessPointId: draft.accessPointId } : {}) } : {}),
       ...(draft.ownerKind === 'zone' ? { zoneId: draft.zoneId } : {}),
-      ...(parsed.arrival ? { arrival: parsed.arrival } : {}), resourceIds: [], provenance: { category: 'synthetic' } }, ...(newPointNode ? { newNode: newPointNode } : {}) };
+      ...(parsed.arrival ? { arrival: parsed.arrival } : {}), resourceIds: [], provenance }, ...(newPointNode ? { newNode: newPointNode } : {}) };
   return { ok: true, id, kind: draft.kind, command };
 }
 export function PointCreationPanel({ draft, map, readonly = false, issues, onChange, onCreate, onCancel }: {
@@ -98,6 +126,8 @@ export function buildConnectedPointCreation(draft: PointCreationDraft, map: Yard
   if (!draft.name.trim()) return reject('请填写入口或作业点名称。');
   const owner = draft.ownerKind === 'facility' ? { kind: 'facilities' as const, id: draft.facilityId } : { kind: 'zones' as const, id: draft.zoneId };
   if (!map[owner.kind][owner.id]) return reject('请先明确选择所属设施或区域。');
+  if (draft.kind === 'servicePoints' && draft.arrival.mode === 'node_proxy' && (draft.connection || draft.approvedMovements?.length || draft.connectorWidth?.trim() || draft.connectorDirection && draft.connectorDirection !== 'unknown' || draft.arrival.entryNodeId || draft.arrival.internalPath.length))
+    return reject('入口交接不会使用接入线或内部路径候选；请保留原到达方式，或先切换为稍后接路并明确重置候选。');
   const ids = draft.ids ?? { pointId: allocateId(draft.kind === 'accessPoints' ? 'access' : 'service'), nodeId: allocateId('node'), connectorRoadId: allocateId('road'), junctionId: allocateId('junction'), sourceId: allocateId('source') };
   const base = { type: 'createConnectedPoint' as const, pointId: ids.pointId, name: draft.name, resourceIds: draft.resourceIds ?? [], source: { id: ids.sourceId, name: '人工规划关联点', description: '在编辑器中明确选择归属、连接和到达方式。' } };
   let command: ConnectedPointCommand;
@@ -105,7 +135,7 @@ export function buildConnectedPointCreation(draft: PointCreationDraft, map: Yard
     if (owner.kind !== 'facilities' || !draft.accessPointId || !draft.arrival.note.trim()) return reject('入口交接须选同属设施的入口，并明确场内转运如何核算。');
     command = { ...base, kind: 'servicePoint', owner, serviceKind: draft.serviceKind, arrival: { mode: 'node_proxy', accessPointId: draft.accessPointId, transferAssumption: draft.arrival.transferAssumption, note: draft.arrival.note } };
   } else {
-    if (draft.position.some(v => !v.trim() || !Number.isFinite(Number(v)))) return reject('请先在画布放置入口或内部作业位置。');
+    if (draft.position.length !== 3 || draft.position.some(v => !v.trim() || !Number.isFinite(Number(v)))) return reject('请先在画布放置入口或内部作业位置。');
     if (!draft.connection) return reject('请在画布明确选择接入道路或节点。');
     const connection: ConnectedPointConnection = draft.connection.kind === 'node' ? draft.connection : { ...draft.connection, nodeId: draft.connection.nodeId || allocateId('node'), newRoadIds: draft.connection.newRoadIds[0] ? draft.connection.newRoadIds : [allocateId('road'), allocateId('road')] };
     const width = draft.connectorWidth?.trim();

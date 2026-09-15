@@ -4,9 +4,10 @@ import { loadMap } from '../../src/domain/load';
 import { contentHash, serializeMap } from '../../src/domain/serialization';
 import { createSession, editSession, redoSession, undoSession } from '../../src/editor/session';
 import { screenToWorld, worldToScreen } from '../../src/geometry/coordinates';
-import { rectanglePolygon, transformPolygon, validatePolygon } from '../../src/geometry/polygons';
-import { MIN_RECTANGLE_SIZE_M, movePolygonVertex, rectangleFrame, resizeRectangleCorner, resizeRectangleDimensions, type RectangleCorner } from '../../src/geometry/rectangles';
+import { rectanglePolygon, polygonFromVertices, polygonArea2D, transformPolygon, validatePolygon } from '../../src/geometry/polygons';
+import { MIN_RECTANGLE_SIZE_M, orientedRectangleVertices, insertPolygonVertex, removePolygonVertex, movePolygonVertex, rectangleFrame, resizeRectangleCorner, resizeRectangleDimensions, type RectangleCorner } from '../../src/geometry/rectangles';
 import { associatedFixture, rectangle } from '../helpers/M2A_fixtures';
+import { newMap, newFacility } from '../../src/domain/factory';
 
 function rotatedRectangle(): Polygon {
   const angle = Math.PI / 6;
@@ -165,5 +166,88 @@ describe('existing domain transactions own resized boundaries', () => {
     expect(refused.issues.some(issue => issue.code === 'POLYGON_SELF_INTERSECTION')).toBe(true);
     expect(refused.session).toBe(result.session);
     expect(refused.session.past).toHaveLength(1);
+  });
+});
+
+describe('three-point rectangles and polygon canvas vertex operations', () => {
+  it.each([0, 0.37, Math.PI / 2, Math.PI, -1.2])('uses only perpendicular width for an arbitrary base direction %s and retains constrained editing', angle => {
+    for (const sideSign of [-1, 1]) {
+      const a: Vec3 = [133, -42, 7], b: Vec3 = [a[0] + 40 * Math.cos(angle), a[1] + 40 * Math.sin(angle), 7];
+      // The third point is far beyond the end of the base: its along-edge component must not skew the rectangle.
+      const side: Vec3 = [a[0] + 99 * Math.cos(angle) - sideSign * 12 * Math.sin(angle), a[1] + 99 * Math.sin(angle) + sideSign * 12 * Math.cos(angle), 7];
+      const before = structuredClone([a, b, side]), vertices = orientedRectangleVertices(a, b, side), boundary = polygonFromVertices(vertices);
+      expect(vertices[0]).toEqual(a); expect(vertices[1]).toEqual(b);
+      // Existing outer-ring normalization reverses clockwise input; that swaps its first edge without moving any corner.
+      expectRightAngles(boundary, sideSign > 0 ? 40 : 12, sideSign > 0 ? 12 : 40); expect(polygonArea2D(boundary)).toBeCloseTo(480, 9);
+      expect(boundary.outer.every(point => point[2] === 7)).toBe(true);
+      const frame = rectangleFrame(boundary)!; expect(frame).not.toBeNull();
+      const resized = resizeRectangleDimensions(frame, 60, 18);
+      expectRightAngles(resized, 60, 18); expect(resized.outer[0]).toEqual(boundary.outer[0]);
+      expect([a, b, side]).toEqual(before);
+      vertices[0]![0] += 100; expect(a).toEqual(before[0]);
+    }
+  });
+
+  it('rejects a missing base, collinear side, too-small perpendicular width, nonfinite and nonplanar input', () => {
+    const a: Vec3 = [0, 0, 3], b: Vec3 = [20, 0, 3];
+    for (const side of [[100, 0, 3], [100, 0.001, 3], [NaN, 10, 3], [100, Infinity, 3], [100, 10, 4]] as Vec3[]) {
+      expect(() => orientedRectangleVertices(a, b, side)).toThrow(RangeError);
+    }
+    expect(() => orientedRectangleVertices(a, a, [0, 10, 3])).toThrow(RangeError);
+    expect(() => orientedRectangleVertices(a, [0.001, 0, 3], [0, 10, 3])).toThrow(RangeError);
+    expect(() => orientedRectangleVertices(a, [20, 0, 4], [0, 10, 3])).toThrow(RangeError);
+  });
+
+  it.each([0, 1])('inserts and removes midpoints on every edge of ring %s, preserving shape, winding, closure and the other rings', ringIndex => {
+    const boundary: Polygon = { ...rectangle(0, 0, 100, 100), holes: [[[40, 40, 0], [40, 60, 0], [60, 60, 0], [60, 40, 0], [40, 40, 0]]] };
+    const before = structuredClone(boundary), rings = [boundary.outer, ...boundary.holes];
+    for (let edge = 0; edge < 4; edge++) {
+      const added = insertPolygonVertex(boundary, ringIndex, edge), actual = [added.outer, ...added.holes][ringIndex]!;
+      const a = rings[ringIndex]![edge]!, b = rings[ringIndex]![edge + 1]!;
+      expect(actual[edge + 1]).toEqual(a.map((value, axis) => (value + b[axis]!) / 2));
+      expect(actual).toHaveLength(6); expect(actual.at(-1)).toEqual(actual[0]);
+      expect(validatePolygon(added)).toEqual([]); expect(polygonArea2D(added)).toBe(polygonArea2D(boundary));
+      expect(removePolygonVertex(added, ringIndex, edge + 1)).toEqual(boundary);
+      expect(ringIndex === 0 ? added.holes : added.outer).toEqual(ringIndex === 0 ? boundary.holes : boundary.outer);
+    }
+    for (const ring of [0, 1]) {
+      const removed = removePolygonVertex(boundary, ring, 0), result = [removed.outer, ...removed.holes][ring]!;
+      expect(result).toHaveLength(4); expect(result[0]).toEqual(rings[ring]![1]); expect(result.at(-1)).toEqual(result[0]);
+    }
+    expect(boundary).toEqual(before);
+  });
+
+  it('requires at least three distinct ring positions and refuses closed-point or invalid-ring indices without mutation', () => {
+    const triangle = polygonFromVertices([[0, 0, 0], [10, 0, 0], [0, 10, 0]]), before = structuredClone(triangle);
+    expect(() => removePolygonVertex(triangle, 0, 1)).toThrow(RangeError);
+    for (const operation of [insertPolygonVertex, removePolygonVertex]) {
+      expect(() => operation(triangle, 0, 3)).toThrow(RangeError);
+      expect(() => operation(triangle, -1, 0)).toThrow(RangeError);
+      expect(() => operation(triangle, 1, 0)).toThrow(RangeError);
+      expect(() => operation(triangle, 0, 0.5)).toThrow(RangeError);
+    }
+    expect(triangle).toEqual(before);
+  });
+
+  it.each(['facility', 'zone'] as const)('commits %s insertion once and keeps every associated point, road and identity stable', kind => {
+    const map = associatedFixture(), session = createSession(map, true);
+    const original = kind === 'facility' ? map.facilities.fA!.boundary : map.zones.zA!.boundary;
+    const boundary = insertPolygonVertex(original, 0, 3);
+    const result = editSession(session, kind === 'facility' ? { type: 'updateFacility', id: 'fA', patch: { boundary } } : { type: 'updateZone', id: 'zA', patch: { boundary } });
+    expect(result.ok, JSON.stringify(result.issues)).toBe(true); expect(result.session.past).toHaveLength(1);
+    for (const field of ['nodes', 'roads', 'accessPoints', 'servicePoints', 'resources'] as const) expect(result.session.map[field]).toEqual(map[field]);
+    const changed = kind === 'facility' ? result.session.map.facilities.fA! : result.session.map.zones.zA!;
+    expect(changed.boundary).toEqual(boundary); expect(changed.provenance.fieldSources?.boundary).toBe('source_editor_geometry');
+    expect(undoSession(result.session).map).toEqual(map);
+  });
+
+  it('rejects deleting an outer corner that would expose an existing hole and retains the original session', () => {
+    const map = newMap('polygon-delete-rollback', 'synthetic geometry regression', '0.3.0');
+    map.facilities.f = newFacility({ ...rectangle(0, 0, 100, 100), holes: [[[40, 40, 0], [40, 60, 0], [60, 60, 0], [60, 40, 0], [40, 40, 0]]] }, 'holed building', 'building');
+    const session = createSession(map, true), boundary = removePolygonVertex(map.facilities.f.boundary, 0, 1);
+    expect(validatePolygon(boundary).length).toBeGreaterThan(0);
+    const result = editSession(session, { type: 'updateFacility', id: 'f', patch: { boundary } });
+    expect(result.ok).toBe(false); expect(result.session).toBe(session); expect(result.session.past).toHaveLength(0);
+    expect(serializeMap(result.session.map)).toBe(serializeMap(map));
   });
 });

@@ -175,10 +175,13 @@ describe('GA01-B bounded operation dependencies', () => {
     const plain = fixture(); plain.junctions = {}; plain.movements = {}; plain.resources = {};
     expect(run(plain, { type: 'updateNode', id: 'a', patch: { position: [1, 2, 3] } }).map.nodes.a!.position).toEqual([1, 2, 3]);
   });
-  it('retains creation/copy limits, requires explicit deletion dependencies and safely splits references', () => {
+  it('allows independent nodes, retains raw road/copy limits and requires explicit network maintenance', () => {
     const map = fixture();
+    const added = run(map, { type: 'addNode', id: 'new', node: newNode([30, 0, 0]) }).map;
+    expect(added.nodes.new!.position).toEqual([30, 0, 0]);
+    expect(added.roads).toEqual(map.roads); expect(added.movements).toEqual(map.movements); expect(added.resources).toEqual(map.resources);
     for (const command of [
-      { type: 'addNode', id: 'new', node: newNode([30, 0, 0]) },
+      { type: 'addRoad', id: 'new', road: newRoad('a', 'c') },
       { type: 'duplicateSelection', selection: { nodes: ['a'], roads: [] }, delta: [1, 0, 0], idMap: { a: 'new' } },
     ] as MapCommand[]) reject(map, command, 'OPERATION_DEPENDENCIES_UNSUPPORTED');
     reject(map, { type: 'deleteSelection', selection: { nodes: ['a'], roads: [] } }, 'TOPOLOGY_DELETE_DEPENDENCIES');

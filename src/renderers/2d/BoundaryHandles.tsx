@@ -3,7 +3,7 @@ import { Circle, Layer } from 'react-konva';
 import type { Node, KonvaEventObject } from 'konva/lib/Node';
 import type { Polygon, Vec3 } from '../../domain/model';
 import { screenToWorld, worldToScreen, type Camera } from '../../geometry/coordinates';
-import { rectangleFrame, resizeRectangleCorner, movePolygonVertex, type RectangleFrame, type RectangleCorner } from '../../geometry/rectangles';
+import { rectangleFrame, resizeRectangleCorner, movePolygonVertex, insertPolygonVertex, removePolygonVertex, type RectangleFrame, type RectangleCorner } from '../../geometry/rectangles';
 
 export interface BoundaryTarget { kind: 'facilities' | 'zones'; id: string; boundary: Polygon }
 export interface BoundaryPreview extends BoundaryTarget { widthM?: number; heightM?: number; clamped?: boolean }
@@ -26,7 +26,7 @@ interface Drag {
   camera: Camera; focus: Element | null; preview: BoundaryPreview; pointerStart: { clientX: number; clientY: number }; pointerId: number | null;
 }
 
-/** Screen-sized controls; only drag end can request a domain transaction. */
+/** Screen-sized controls; each completed edit requests one domain transaction. */
 export function BoundaryHandles(props: Props) {
   const current = useRef(props); current.current = props;
   const drag = useRef<Drag | null>(null);
@@ -107,14 +107,30 @@ export function BoundaryHandles(props: Props) {
   const target = props.target;
   const frame = props.mode === 'auto' ? rectangleFrame(target.boundary) : null;
   const boundary = props.preview?.kind === target.kind && props.preview.id === target.id ? props.preview.boundary : target.boundary;
-  return <Layer>{[boundary.outer, ...boundary.holes].flatMap((ring, ringIndex) => ring.slice(0, -1).map((point, vertexIndex) => {
+  function editVertex(ringIndex: number, index: number, remove = false) {
+    if (drag.current || frame || props.contextKey !== current.current.contextKey) return;
+    props.onError('');
+    try {
+      const next = (remove ? removePolygonVertex : insertPolygonVertex)(target.boundary, ringIndex, index);
+      if (!props.onCommit(target.kind, target.id, next, props.mapHash, props.changeToken)) props.onError('边界修改未通过校验或地图已变化，已保留原边界。');
+    } catch (error) { props.onError(error instanceof Error ? error.message : '无法修改该顶点。'); }
+  }
+  return <Layer>{!frame && [boundary.outer, ...boundary.holes].flatMap((ring, ringIndex) => ring.slice(0, -1).map((point, edgeIndex) => {
+    const next = ring[edgeIndex + 1]!;
+    const [x, y] = worldToScreen([point[0] / 2 + next[0] / 2, point[1] / 2 + next[1] / 2, point[2]], props.camera);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return <Circle key={'insert:' + ringIndex + ':' + edgeIndex} name="boundary-insert-handle" x={x} y={y} radius={4} hitStrokeWidth={8}
+      fill="#d5f1e5" stroke="#087c54" strokeWidth={1.5}
+      onMouseDown={event => { event.cancelBubble = true; }}
+      onClick={event => { event.cancelBubble = true; if (event.evt.button === 0) editVertex(ringIndex, edgeIndex); }}/>
+  }))}{[boundary.outer, ...boundary.holes].flatMap((ring, ringIndex) => ring.slice(0, -1).map((point, vertexIndex) => {
     const [x, y] = worldToScreen(point, props.camera);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     return <Circle _useStrictMode key={ringIndex + ':' + vertexIndex} name="boundary-handle"
       x={x} y={y} radius={5} hitStrokeWidth={12} fill={ringIndex ? '#e9dcff' : '#fff'}
       stroke={frame ? '#9a4c0d' : '#66518e'} strokeWidth={2} draggable
       onMouseDown={event => { event.cancelBubble = true; }}
-      onClick={event => { event.cancelBubble = true; }}
+      onClick={event => { event.cancelBubble = true; if (event.evt.button === 0 && event.evt.altKey) editVertex(ringIndex, vertexIndex, true); }}
       onDragStart={event => {
         event.cancelBubble = true;
         const latest = current.current;

@@ -484,6 +484,14 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
       const retainedNodes = command.type === 'mergeNodes' ? [command.targetNodeId]
         : command.type === 'splitRoad' || command.type === 'connectNodeToRoad' ? [command.nodeId] : [];
       const initial: CommandAffectedRef[] = [...changed, ...retainedNodes.map(id => ({ kind: 'nodes' as const, id }))];
+      // Orphan cleanup previews its candidate nodes, including shared nodes that will be kept.
+      if (command.type === 'deleteSelection' && command.orphanNodes === 'deleteUnused') for (const ref of changed) {
+        if (ref.kind !== 'accessPoints' && ref.kind !== 'servicePoints' || Object.hasOwn(candidate[ref.kind], ref.id)) continue;
+        const point = map[ref.kind][ref.id];
+        if (point) initial.push({ kind: 'nodes', id: point.nodeId });
+        const arrival = ref.kind === 'servicePoints' ? map.servicePoints[ref.id]?.arrival : undefined;
+        if (arrival?.mode === 'explicit_internal' && arrival.entryNodeId) initial.push({ kind: 'nodes', id: arrival.entryNodeId });
+      }
       const collect = (state: YardMap) => {
         const present = initial.filter(ref => ref.kind === 'extensions' || ref.kind === 'slots' || (ref.kind === 'siteBoundary' ? state.siteBoundary !== null : Object.hasOwn(state[ref.kind], ref.id)));
         const nodes = new Set(present.filter(ref => ref.kind === 'nodes').map(ref => ref.id));
@@ -500,32 +508,8 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
       if (planning.present && !planning.supported) return { allowed: false, issues: [problem('TOPOLOGY_PLANNING_DEPENDENCY', '候选拓扑不能保持已有静态规划契约。'), ...planning.issues], affectedRefs };
       return { allowed: true, issues: [], affectedRefs, geometryPreservedRoadIds, ...(connected ? { proposedMovements: connected.proposedMovements } : {}) };
     }
-    if (advanced && command.type !== 'renameMap') fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '此对象组合或操作尚无引用维护规则；已支持的节点/道路拓扑操作请单独选择。');
-    if ('selection' in command) {
-      const selected = command.type === 'duplicateSelection' ? closureSelection(map, command.selection) : assertSelection(map, command.selection);
-      if (command.type === 'deleteSelection') {
-        if (command.facilityPolicy === 'withAssociatedPoints') addFacilityMembers(map, selected);
-        if (command.zonePolicy === 'withAssociatedPoints') addZoneMembers(map, selected);
-      }
-      if (command.type === 'duplicateSelection' && (Object.values(map.junctions).some(junction => junction.nodeIds.some(id => selected.nodes.includes(id))) || Object.values(map.movements).some(movement => selected.roads.includes(movement.incomingArc.roadId) || selected.roads.includes(movement.outgoingArc.roadId)))) fail('TOPOLOGY_COPY_DEPENDENCIES', '复制闭包包含路口或转向，尚无复制其许可与资源的维护规则。');
-      const complete = normalizeSelection(selected);
-      const affectedRefs: CommandAffectedRef[] = SELECTION_KINDS.flatMap(kind => complete[kind].map(id => ({ kind, id })));
-      for (const kind of ['accessPoints', 'servicePoints'] as const) for (const id of complete[kind]) {
-        const point = map[kind][id]!;
-        if (point.facilityId) affectedRefs.push({ kind: 'facilities', id: point.facilityId });
-        if (kind === 'servicePoints' && map.servicePoints[id]!.zoneId) affectedRefs.push({ kind: 'zones', id: map.servicePoints[id]!.zoneId! });
-        if (command.type === 'deleteSelection' && command.orphanNodes === 'deleteUnused') {
-          affectedRefs.push({ kind: 'nodes', id: point.nodeId });
-          if (kind === 'servicePoints') {
-            const arrival = map.servicePoints[id]!.arrival;
-            if (arrival?.mode === 'explicit_internal' && arrival.entryNodeId) affectedRefs.push({ kind: 'nodes', id: arrival.entryNodeId });
-          }
-        }
-      }
-      return { allowed: true, issues: [], affectedRefs };
-    }
     const additions = { addNode: 'nodes', addRoad: 'roads', addFacility: 'facilities', addZone: 'zones', addAccessPoint: 'accessPoints', addServicePoint: 'servicePoints' } as const;
-    if (command.type in additions) {
+    if (command.type in additions && (!advanced || command.type !== 'addRoad')) {
       const add = command as Extract<MapCommand, { type: keyof typeof additions }>;
       const affectedRefs: CommandAffectedRef[] = [{ kind: additions[add.type], id: add.id }];
       if (add.type === 'addRoad') {
@@ -537,6 +521,18 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
         affectedRefs.push({ kind: 'nodes', id: add.servicePoint.nodeId });
         if (add.servicePoint.facilityId) affectedRefs.push({ kind: 'facilities', id: add.servicePoint.facilityId });
         if (add.servicePoint.zoneId) affectedRefs.push({ kind: 'zones', id: add.servicePoint.zoneId });
+      }
+      return { allowed: true, issues: [], affectedRefs };
+    }
+    if (advanced && command.type !== 'renameMap') fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '此对象组合或操作尚无引用维护规则；已支持的节点/道路拓扑操作请单独选择。');
+    if (command.type === 'duplicateSelection') {
+      const complete = closureSelection(map, command.selection);
+      if (Object.values(map.junctions).some(junction => junction.nodeIds.some(id => complete.nodes.includes(id))) || Object.values(map.movements).some(movement => complete.roads.includes(movement.incomingArc.roadId) || complete.roads.includes(movement.outgoingArc.roadId))) fail('TOPOLOGY_COPY_DEPENDENCIES', '复制闭包包含路口或转向，尚无复制其许可与资源的维护规则。');
+      const affectedRefs: CommandAffectedRef[] = SELECTION_KINDS.flatMap(kind => complete[kind].map(id => ({ kind, id })));
+      for (const kind of ['accessPoints', 'servicePoints'] as const) for (const id of complete[kind]) {
+        const point = map[kind][id]!;
+        if (point.facilityId) affectedRefs.push({ kind: 'facilities', id: point.facilityId });
+        if (kind === 'servicePoints' && map.servicePoints[id]!.zoneId) affectedRefs.push({ kind: 'zones', id: map.servicePoints[id]!.zoneId! });
       }
       return { allowed: true, issues: [], affectedRefs };
     }
@@ -707,6 +703,9 @@ function copySelection(map: YardMap, command: Extract<MapCommand, { type: 'dupli
 }
 function deleteSelection(map: YardMap, command: Extract<MapCommand, { type: 'deleteSelection' }>): void {
   const selected = assertSelection(map, command.selection);
+  if (command.facilityPolicy !== undefined && !['reject', 'withAssociatedPoints'].includes(command.facilityPolicy)
+    || command.zonePolicy !== undefined && !['reject', 'withAssociatedPoints'].includes(command.zonePolicy)
+    || command.orphanNodes !== undefined && !['keep', 'deleteUnused'].includes(command.orphanNodes)) fail('INVALID_DELETE_POLICY', '未知关联对象删除策略。');
   for (const id of selected.facilities) {
     const facility = map.facilities[id]!;
     if ((facility.accessPointIds.length || facility.servicePointIds.length) && command.facilityPolicy !== 'withAssociatedPoints') fail('FACILITY_HAS_POINTS', '设施有关联点，请明确选择一并删除成员点并处理其节点。', '/facilities/' + id);
@@ -718,18 +717,27 @@ function deleteSelection(map: YardMap, command: Extract<MapCommand, { type: 'del
   for (const kind of ['accessPoints', 'servicePoints'] as const) for (const id of deleted[kind]) candidateNodes.add(map[kind][id]!.nodeId);
   for (const id of deleted.servicePoints) { const arrival = map.servicePoints[id]!.arrival; if (arrival?.mode === 'explicit_internal' && arrival.entryNodeId) candidateNodes.add(arrival.entryNodeId); }
   for (const [id, service] of Object.entries(map.servicePoints)) if (!deleted.servicePoints.includes(id) && service.accessPointId && deleted.accessPoints.includes(service.accessPointId)) fail('ENTITY_IN_USE', '服务点仍引用待删除入口，请显式一并选择服务点。', '/servicePoints/' + id + '/accessPointId');
+  const removedRoads = new Set(deleted.roads);
+  if (command.topologyPolicy === 'cascade') for (const [id, road] of Object.entries(map.roads)) if (deleted.nodes.includes(road.fromNodeId) || deleted.nodes.includes(road.toNodeId)) removedRoads.add(id);
+  rejectOpaqueTopologyReferences(map, [...SELECTION_KINDS.flatMap(kind => deleted[kind]), ...removedRoads]);
   for (const id of deleted.accessPoints) { facilityMember(map, 'accessPointIds', id, map.accessPoints[id]!.facilityId); delete map.accessPoints[id]; }
   for (const id of deleted.servicePoints) { facilityMember(map, 'servicePointIds', id, map.servicePoints[id]!.facilityId); delete map.servicePoints[id]; }
-  for (const kind of ['facilities', 'zones', 'roads'] as const) for (const id of deleted[kind]) delete map[kind][id];
+  for (const kind of ['facilities', 'zones'] as const) for (const id of deleted[kind]) delete map[kind][id];
+  // Selected business members are already gone; the existing network transaction maintains only explicit network dependencies.
+  deleteNetwork(map, { ...command, selection: deleted });
   const uses = (nodeId: string): string | null => {
     for (const [id, road] of Object.entries(map.roads)) for (const field of ['fromNodeId', 'toNodeId'] as const) if (road[field] === nodeId) return '/roads/' + id + '/' + field;
     for (const kind of ['accessPoints', 'servicePoints'] as const) for (const [id, point] of Object.entries(map[kind])) if (point.nodeId === nodeId) return '/' + kind + '/' + id + '/nodeId';
     for (const [id, point] of Object.entries(map.servicePoints)) if (point.arrival?.mode === 'explicit_internal' && point.arrival.entryNodeId === nodeId) return '/servicePoints/' + id + '/arrival/entryNodeId';
+    for (const [id, junction] of Object.entries(map.junctions)) if (junction.nodeIds.includes(nodeId)) return '/junctions/' + id + '/nodeIds';
+    for (const [id, resource] of Object.entries(map.resources)) if (resource.appliesTo.some(ref => ref.entityType === 'nodes' && ref.entityId === nodeId)) return '/resources/' + id + '/appliesTo';
     return null;
   };
-  for (const id of deleted.nodes) { const path = uses(id); if (path) fail('ENTITY_IN_USE', '节点 ' + id + ' 仍被引用；保留它或显式一并选择依赖对象。', path); }
-  if (command.orphanNodes === 'deleteUnused') for (const id of candidateNodes) if (!uses(id)) deleted.nodes.push(id);
-  for (const id of deleted.nodes) delete map.nodes[id];
+  if (command.orphanNodes === 'deleteUnused') {
+    const unusedNodes = [...candidateNodes].filter(id => Object.hasOwn(map.nodes, id) && !uses(id));
+    rejectOpaqueTopologyReferences(map, unusedNodes);
+    for (const id of unusedNodes) delete map.nodes[id];
+  }
 }
 interface TopologyEditRecord { operation: string; removedNodes: string[]; removedRoads: string[]; removedMovements: string[]; removedJunctions: string[]; retainedId?: string }
 interface Lineage { version: '1.0.0'; roadSplits: (SplitMapping & { distanceM: number; originalLengthM: number })[]; topologyEdits?: TopologyEditRecord[] }
@@ -815,8 +823,7 @@ function splitRoadAndSetWidth(map: YardMap, command: Extract<MapCommand, { type:
 }
 
 function isTopologyCommand(command: MapCommand): boolean {
-  return ['splitRoad', 'splitRoadAndSetWidth', 'mergeNodes', 'connectNodeToRoad', 'suppressDegree2Node'].includes(command.type)
-    || command.type === 'deleteSelection' && !['facilities', 'zones', 'accessPoints', 'servicePoints'].some(kind => (command.selection[kind as keyof Selection]?.length ?? 0) > 0);
+  return ['splitRoad', 'splitRoadAndSetWidth', 'mergeNodes', 'connectNodeToRoad', 'suppressDegree2Node', 'deleteSelection'].includes(command.type);
 }
 function preservedTopologyGeometry(map: YardMap, command: MapCommand): readonly string[] {
   if(command.type==='splitRoadAndSetWidth')return [widthSplitCommand(map,command).newRoadIds[command.direction==='backward'?1:0]];
@@ -844,12 +851,7 @@ function executeTopology(map: YardMap, command: MapCommand): SplitMapping | unde
 function executeTopologyMutation(map: YardMap, command: MapCommand): SplitMapping | undefined {
   if (command.type === 'splitRoad') return splitRoad(map, command);
   if (command.type === 'splitRoadAndSetWidth') return splitRoadAndSetWidth(map, command);
-  if (command.type === 'deleteSelection') {
-    const roads = new Set(command.selection.roads);
-    if (command.topologyPolicy === 'cascade') for (const [id, road] of Object.entries(map.roads)) if (command.selection.nodes.includes(road.fromNodeId) || command.selection.nodes.includes(road.toNodeId)) roads.add(id);
-    rejectOpaqueTopologyReferences(map, [...command.selection.nodes, ...roads]);
-    deleteNetwork(map, command); return;
-  }
+  if (command.type === 'deleteSelection') { deleteSelection(map, command); return; }
   if (command.type === 'mergeNodes') rejectOpaqueTopologyReferences(map, command.sourceNodeId === command.targetNodeId ? [] : [command.sourceNodeId]);
   if (command.type === 'suppressDegree2Node') rejectOpaqueTopologyReferences(map, [command.nodeId, ...Object.keys(map.roads).filter(id => id !== command.retainedRoadId && (map.roads[id]!.fromNodeId === command.nodeId || map.roads[id]!.toNodeId === command.nodeId))]);
   if (command.type === 'mergeNodes' || command.type === 'connectNodeToRoad' || command.type === 'suppressDegree2Node') return runTopology(map, command, splitRoad);
@@ -944,7 +946,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
         } break;
       }
       case 'duplicateSelection': copySelection(next, command); break;
-      case 'deleteSelection': if (isTopologyCommand(command)) executeTopology(next, command); else deleteSelection(next, command); break;
+      case 'deleteSelection': executeTopology(next, command); break;
       case 'splitRoad': mapping = splitRoad(next, command); break;
       case 'splitRoadAndSetWidth': mapping = splitRoadAndSetWidth(next, command); break;
       case 'mergeNodes': case 'connectNodeToRoad': case 'suppressDegree2Node': mapping = executeTopology(next, command); break;

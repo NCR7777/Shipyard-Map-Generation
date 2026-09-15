@@ -4,16 +4,12 @@ import type { SceneSnapshot } from '../../adapters/contracts';
 import { polygonFromVertices, rectanglePolygon } from '../../geometry/polygons';
 import { screenToWorld, worldToScreen, type Camera, type Vec2 } from '../../geometry/coordinates';
 import type { Tool } from './MapCanvas';
+import { orientedRectangleVertices, MIN_RECTANGLE_SIZE_M } from '../../geometry/rectangles';
+export { orientedRectangleVertices } from '../../geometry/rectangles';
 export interface SnapOptions { gridM: number | null; nodes: boolean }
 export const isSpatialTool = (tool: Tool) => tool.startsWith('facility') || tool.startsWith('zone');
 export const isRectangleTool = (tool: Tool) => tool === 'facilityRect' || tool === 'zoneRect' || tool === 'facilityOrientedRect' || tool === 'zoneOrientedRect';
 export const isOrientedRectangleTool = (tool: Tool) => tool === 'facilityOrientedRect' || tool === 'zoneOrientedRect';
-export function orientedRectangleVertices(a: Vec3, b: Vec3, side: Vec3): Vec3[] {
-  const dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
-  if (length < 0.01) throw new Error('矩形基边至少为 0.01 m。');
-  const height = ((side[0] - a[0]) * -dy + (side[1] - a[1]) * dx) / length;
-  return [a, b, [b[0] - dy / length * height, b[1] + dx / length * height, a[2]], [a[0] - dy / length * height, a[1] + dx / length * height, a[2]]];
-}
 export function snapPosition(screen: Vec2, camera: Camera, nodes: SceneSnapshot['nodes'], options?: SnapOptions, excluded = new Set<string>(), z = 0): { world: Vec3; nodeId?: string } {
   const world = screenToWorld(screen, camera, z);
   if (options?.nodes) {
@@ -50,13 +46,17 @@ export function useSpatialDrawing(tool: Tool, readonly: boolean, camera: Camera,
     world = project(world, shift);
     if (readonly || !isSpatialTool(tool)) return;
     if (isOrientedRectangleTool(tool)) {
-      if (vertices.length < 2) setVertices(points => [...points, world]);
+      if (vertices.length < 2) {
+        const a = vertices[0], length = a ? Math.hypot(world[0] - a[0], world[1] - a[1]) : 1;
+        if (!world.every(Number.isFinite) || !Number.isFinite(length) || length < MIN_RECTANGLE_SIZE_M || a && world[2] !== a[2]) { setError(`请选择同一水平面上的有效基边，长度至少 ${MIN_RECTANGLE_SIZE_M} m。`); return; }
+        setVertices(points => [...points, [...world]]); setError('');
+      }
       else { try { emit(polygonFromVertices(orientedRectangleVertices(vertices[0]!, vertices[1]!, world))); } catch (reason) { setError(reason instanceof Error ? reason.message : '矩形输入无效。'); } }
     } else if (isRectangleTool(tool)) {
       if (!vertices.length) setVertices([world]);
       else {
         const first = vertices[0]!;
-        try { emit(rectanglePolygon([Math.min(first[0], world[0]), Math.min(first[1], world[1]), 0], Math.abs(first[0] - world[0]), Math.abs(first[1] - world[1]))); }
+        try { emit(rectanglePolygon([Math.min(first[0], world[0]), Math.min(first[1], world[1]), first[2]], Math.abs(first[0] - world[0]), Math.abs(first[1] - world[1]))); }
         catch (reason) { setError(reason instanceof Error ? reason.message : '矩形输入无效。'); }
       }
     } else {

@@ -165,6 +165,8 @@ export function deleteNetwork(map: YardMap, command: Extract<MapCommand, {
             junctions.add(id);
         }
     const removed = new Set([...nodes].map(id => 'nodes/' + id).concat([...roads].map(id => 'roads/' + id), [...movements].map(id => 'movements/' + id), [...junctions].map(id => 'junctions/' + id)));
+    for (const kind of ['facilities', 'zones', 'accessPoints', 'servicePoints'] as const)
+        for (const id of command.selection[kind] ?? []) removed.add(kind + '/' + id);
     for (const [id, resource] of Object.entries(map.resources))
         if (resource.appliesTo.some(ref => removed.has(ref.entityType + '/' + ref.entityId))) {
             if (!cascade)

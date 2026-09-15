@@ -25,6 +25,7 @@ import { pointAt, tangentAt, projectToPath, flattenPath, immutablePathCopy, type
 import { previewDraftPath, lastDraftJoin, type DraftRoad, type TraceConnection } from '../../editor/roadDrawing';
 export type { DraftRoad, TraceConnection } from '../../editor/roadDrawing';
 import { RoadGeometryHandles } from './RoadGeometryHandles';
+import { projectPolyline } from '../../geometry/roads';
 import { rectangleFrame } from '../../geometry/rectangles';
 import { BoundaryHandles, type BoundaryTarget, type BoundaryPreview } from './BoundaryHandles';
 import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '../../geometry/coordinates';
@@ -32,7 +33,7 @@ import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '..
 export type Tool = 'select' | 'node' | 'road' | 'curve' | 'measure' | 'pan' | 'facilityRect' | 'facilityPolygon' | 'zoneRect' | 'zonePolygon' | 'facilityOrientedRect' | 'zoneOrientedRect';
 export const isRoadTool = (tool: Tool) => tool === 'road' || tool === 'curve';
 export type PointPickResult = { nodeId: string } | { position: Vec3 } | { roadId: string; distanceM: number; position: Vec3 };
-export interface PointPick { mode: 'existing' | 'new' | 'road' | 'path' | 'relocate'; nodeId?: string; position?: Vec3; selectedRoadIds?: string[]; eligibleRoadIds?: string[] }
+export interface PointPick { mode: 'existing' | 'new' | 'road' | 'path' | 'relocate'; nodeId?: string; position?: Vec3; selectedRoadIds?: string[]; eligibleRoadIds?: string[]; outerBoundary?: readonly Vec3[] }
 export type TopologyTarget = { kind: 'nodes'; id: string; position: Vec3 } | { kind: 'roads'; id: string; position: Vec3; distanceM: number };
 interface Props {
   onPointIdentities?: SpatialLayerProps['onPointIdentities'];
@@ -176,6 +177,7 @@ export function MapCanvas(props: Props) {
   const [traceTarget, setTraceTarget] = useState<TopologyTarget | null>(null);
   const [previewDelta, setPreviewDelta] = useState<Vec3 | null>(null);
   const [rubberEnd, setRubberEnd] = useState<Vec3 | null>(null);
+  const [boundarySnap, setBoundarySnap] = useState<Vec3 | null>(null);
   const [pickNotice, setPickNotice] = useState('');
   const [boundaryPreview, setBoundaryPreview] = useState<BoundaryPreview | null>(null);
   const [boundaryActive, setBoundaryActive] = useState(false);
@@ -216,7 +218,7 @@ export function MapCanvas(props: Props) {
     setPathPreview(null); dragStart.current = null; setPreviewDelta(null); setTopologyTarget(null); setTraceTarget(null); setWidthPreview(null); widthDragging.current = false;
     stage.current?.find((node: Konva.Node) => node.isDragging()).forEach(node => node.stopDrag());
   }, [props.draftResetToken, props.scene.mapContentHash, props.boundaryChangeToken, props.selection, props.readonly, props.tool]);
-  useEffect(() => { setPickNotice(''); }, [props.pointPick?.mode]);
+  useEffect(() => { setPickNotice(''); setBoundarySnap(null); }, [props.pointPick?.mode, props.pointPick?.outerBoundary]);
   const drawing = useSpatialDrawing(props.tool, props.readonly || !!props.pointPick, props.camera, props.onPolygonCreate, props.draftResetToken);
   const drawingDirty = drawing.vertices.length > 0;
   const boundaryTarget = useMemo<BoundaryTarget | null>(() => {
@@ -318,9 +320,22 @@ export function MapCanvas(props: Props) {
     if (props.splitPickRoadId) { pickSplit(screen); return; }
     drawAt(screen, event.evt.altKey, event.evt.detail > 1, event.evt.shiftKey);
   }
+  function boundaryProjection(screen: Vec2) {
+    const camera = props.frameCamera.read(), ring = props.pointPick?.outerBoundary;
+    const projected = ring && projectPolyline(screenToWorld(screen, camera), ring);
+    return projected && projected.offsetM * camera.scale <= 12 ? projected.position : null;
+  }
+  function pickPosition(screen: Vec2) {
+    if (props.pointPick?.outerBoundary) {
+      const position = boundaryProjection(screen);
+      if (!position) { setPickNotice('请靠近高亮外边界点选；绿色圆点表示实际入口位置。'); return; }
+      props.onPointPick?.({ position }); return;
+    }
+    props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, props.pointPick?.mode === 'relocate' ? { gridM: props.snap?.gridM ?? null, nodes: false } : props.snap).world });
+  }
   function pickNode(id: string) {
     if (!props.pointPick || props.readonly) return;
-    if (props.pointPick.mode === 'relocate') { const screen = pointer(); if (screen) props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, { gridM: props.snap?.gridM ?? null, nodes: false }).world }); return; }
+    if (props.pointPick.mode === 'relocate' || props.pointPick.mode === 'new' && props.pointPick.outerBoundary) { const screen = pointer(); if (screen) pickPosition(screen); return; }
     if (props.pointPick.mode === 'existing' || props.pointPick.mode === 'road') props.onPointPick?.({ nodeId: id });
     else {
       const node = nodeById.get(id);
@@ -332,7 +347,7 @@ export function MapCanvas(props: Props) {
     if (props.backgrounds?.adjustingId || boundaryActiveRef.current) return;
     if (props.pointPick) {
       if (props.readonly) return;
-      if (props.pointPick.mode === 'new' || props.pointPick.mode === 'relocate') props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, props.pointPick.mode === 'relocate' ? { gridM: props.snap?.gridM ?? null, nodes: false } : props.snap).world });
+      if (props.pointPick.mode === 'new' || props.pointPick.mode === 'relocate') pickPosition(screen);
       else setPickNotice('请选择已有节点或入口/服务点标记；背景、道路中部和附近坐标不代表已有节点。');
       return;
     }
@@ -545,7 +560,9 @@ export function MapCanvas(props: Props) {
         if(props.tool==='measure'){measurement.movePointer(screenToWorld(point,props.frameCamera.read()));return;}
         const drawingPointer = !!props.pointPick || props.tool === 'node' || isRoadTool(props.tool) || isSpatialTool(props.tool);
         const snapped = drawingPointer ? snapPosition(point, props.frameCamera.read(), props.scene.nodes, props.pointPick?.mode === 'relocate' ? { gridM: props.snap?.gridM ?? null, nodes: false } : props.snap) : null;
-        const world = snapped?.world ?? screenToWorld(point, props.frameCamera.read());
+        const projectedBoundary = props.pointPick?.outerBoundary ? boundaryProjection(point) : null;
+        setBoundarySnap(projectedBoundary);
+        const world = projectedBoundary ?? snapped?.world ?? screenToWorld(point, props.frameCamera.read());
         if (cursorOutput.current) cursorOutput.current.textContent = `X ${world[0].toFixed(3)} m · Y ${world[1].toFixed(3)} m`;
         if (drawingPointer) { setTraceDisconnected(event.evt.altKey); const target = isRoadTool(props.tool) ? traceCandidate(point, event.evt.altKey) : null; setTraceTarget(target); setRubberEnd(isSpatialTool(props.tool) ? drawing.project(world, event.evt.shiftKey) : target?.position ?? world); setSnapKey(target ? target.kind + '/' + target.id : snapped?.nodeId ? 'nodes/' + snapped.nodeId : null); }
       }}
@@ -614,6 +631,8 @@ export function MapCanvas(props: Props) {
       </Layer>
       <Layer listening={false}>
         {props.tool==='measure'&&<MeasurementOverlay state={measurement.state} camera={props.camera}/>}
+        {props.pointPick?.outerBoundary && <Line points={props.pointPick.outerBoundary.flatMap(point => worldToScreen(point, props.camera))} stroke="#058565" strokeWidth={3} dash={[7, 4]}/>}
+        {props.pointPick?.outerBoundary && boundarySnap && (() => { const [x,y] = worldToScreen(boundarySnap, props.camera); return <Circle x={x} y={y} radius={7} fill="#fff" stroke="#058565" strokeWidth={3}/>; })()}
         {props.runtime?.mapContentHash === props.scene.mapContentHash && props.runtime.vehicles.map(vehicle => {
           const [x,y]=worldToScreen(vehicle.position,props.camera), color=vehicle.state==='gap'?'#9d7353':vehicle.state==='travel'?'#075cbb':'#ba780e';
           return <Group key={'vehicle/'+vehicle.vehicleId}>
@@ -648,6 +667,7 @@ export function MapCanvas(props: Props) {
       {boundaryPreview.widthM === undefined ? '顶点预览' : '局部宽 ' + roundTick(boundaryPreview.widthM) + ' m × 高 ' + roundTick(boundaryPreview.heightM!) + ' m'}
       {boundaryPreview.clamped ? ' · 最小边长 0.01 m' : ''} · 松开应用，Esc 取消；仅修改边界
     </output>}
+    {boundaryTarget && boundaryMode === 'polygon' && !boundaryPreview && <div className="point-pick-instruction">拖动顶点改轮廓；点边中点加点；Alt + 点顶点删点；Esc 取消拖动。</div>}
     {boundaryError && <div role="alert" style={{ position: 'absolute', bottom: 38, left: 14, right: 14, background: '#fff4ed', padding: 8 }}>{boundaryError}</div>}
     <output className="sr-only" data-testid="boundary-handles" data-count={boundaryHandleCount} data-mode={boundaryMode}>{boundaryHandleCount} 个边界控制柄</output>
     {drawing.vertices.length > 0 && <div style={{ position: 'absolute', top: 34, left: 14, padding: 8, background: '#fff', border: '1px solid #c9d6d8', borderRadius: 6, zIndex: 2 }}>
@@ -657,7 +677,7 @@ export function MapCanvas(props: Props) {
     </div>}
     {props.draftRoad && <div className="point-pick-instruction" data-testid="road-draft-instruction"><span>{props.draftRoad.spans.length} 段草稿 · {props.tool === 'curve' ? props.draftRoad.curveEnd ? '点击曲线经过位置' : '点击下一段终点，再点弯曲位置' : '点击下一点；Enter / 双击完成'}；R / C 接续直线或曲线。{draftJoin&&<strong> 当前接续：{draftJoin==='smooth'?'平滑':'折角'}。</strong>}绿圈接路，Alt 不连接</span><button onClick={props.onRoadFinish} disabled={props.draftRoad.points.length < 2 || !!props.draftRoad.curveEnd}>完成道路</button></div>}
     {widthPreview && <output className="point-pick-instruction" data-testid="road-width-preview">人工影像估计宽度 {widthPreview.widthM.toFixed(2)} m · 松开应用</output>}
-    {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.mode === 'path' ? '绿色为已选内部路径；青色为从末端沿已声明方向可继续选择的本对象道路。' : props.pointPick.mode === 'road' ? '点选接入道路或路口；仅生成候选，确认后才显式接路。' : props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
+    {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.outerBoundary ? '点选高亮外边界附近，入口会吸附到绿色圆点；不移动建筑，不自动接路。' : props.pointPick.mode === 'path' ? '绿色为已选内部路径；青色为从末端沿已声明方向可继续选择的本对象道路。' : props.pointPick.mode === 'road' ? '点选接入道路或路口；仅生成候选，确认后才显式接路。' : props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
     <div className="canvas-label">LOCAL XY · 米制 · Z ↑</div>
     <output ref={cursorOutput} className="canvas-cursor" data-testid="cursor-position">本地 XY · 米制</output>
     {details && cardRect && props.labelMode !== 'off' && !props.frameCamera.navigating && !pressed.current && <div className="focus-details" style={{ left: cardRect.x, top: cardRect.y, right: 'auto' }} role="tooltip" data-testid="focus-details"><strong>{details.name || details.id}</strong><code>{details.id}</code><span>{details.source}</span></div>}

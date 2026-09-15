@@ -137,3 +137,7 @@
 .selected-road-actions { display: flex; flex: none; gap: 3px; align-items: center; white-space: nowrap; }
 .selected-road-actions button { min-height: 30px; font-size: 12px; padding: 4px 7px; }
 .trace-width select { max-width: 210px; padding: 4px; }
+
+.drawing-shapes { display: flex; gap: 8px; align-items: center; }
+.drawing-shapes label { display: flex; gap: 4px; align-items: center; white-space: nowrap; font-size: 12px; }
+.drawing-shapes select { min-height: 32px; max-width: 108px; }
