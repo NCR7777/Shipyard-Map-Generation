@@ -58,6 +58,7 @@ interface Props {
   movingJunctionIds?: readonly string[];
   rigidRoadIds?: readonly string[];
   roadDisplay: Pick<DrawingConfig, 'showRoadBands' | 'showRoadCenterlines' | 'showOrdinaryNodes'>;
+  fillOpacity?: Pick<DrawingConfig, 'roadFillOpacity' | 'facilityFillOpacity' | 'zoneFillOpacity'>;
   roadShapePreview?: { roadId: string; shapePoints: Vec3[]; mapContentHash: string } | null;
   camera: Camera;
   frameCamera: ReturnType<typeof useFrameCamera>;
@@ -514,7 +515,7 @@ export function MapCanvas(props: Props) {
     (altPressed.current ? props.onDuplicate : props.onTranslate)?.([value[0] - origin[0], value[1] - origin[1], 0], dragToken.current);
   });
   const spatialProps: SpatialLayerProps = {
-    onPointIdentities: props.onPointIdentities, comparisonMode: props.comparisonMode, hiddenTypes: props.hiddenTypes, visibleKeys: display.keys, onHover: hover, canDrag: props.canDrag,
+    onPointIdentities: props.onPointIdentities, comparisonMode: props.comparisonMode, fillOpacity: props.fillOpacity, hiddenTypes: props.hiddenTypes, visibleKeys: display.keys, onHover: hover, canDrag: props.canDrag,
     scene: props.scene, camera: props.camera, selection: props.selection, previewDelta, boundaryPreview,
     snap: props.snap, readonly: props.readonly, selecting: !props.pointPick && props.tool === 'select', drawingRoad: !props.pointPick && isRoadTool(props.tool), movingNodeIds: selectedNodeIds,
     disableDrag: !!props.splitPickRoadId || props.hasUnappliedInput || boundaryActive, pickingPoint: !!props.pointPick, onPickNode: pickNode,
@@ -567,14 +568,15 @@ export function MapCanvas(props: Props) {
         {props.roadDisplay.showRoadBands && visibleRoads.map(road => road.bandWidthPx !== null &&
           <Path key={road.id} roadId={road.id} name="road-band" data={road.pathData}
             stroke={props.selection.roads.includes(road.id) ? '#efbb82' : '#b7d0db'}
-            opacity={props.comparisonMode ? 0.25 : 1} strokeWidth={road.bandWidthPx} hitStrokeWidth={Math.max(14, road.bandWidthPx)} lineCap="round" lineJoin="round"
+            opacity={(props.fillOpacity?.roadFillOpacity ?? 1) * (props.comparisonMode ? 0.25 : 1)} strokeWidth={road.bandWidthPx} hitStrokeWidth={Math.max(14, road.bandWidthPx)} lineCap="round" lineJoin="round"
             onMouseEnter={onRoadEnter} onMouseLeave={onShapeLeave} onClick={onRoadClick} />)}
         {visibleRoads.map(road => {
           // Unknown/unrestricted/not-applicable (or unprojectable) never become a fabricated band.
-          const auxiliary = road.bandWidthPx === null;
-          if (!props.roadDisplay.showRoadCenterlines && !(props.roadDisplay.showRoadBands && auxiliary)) return null;
+          const auxiliary = road.bandWidthPx === null, selected = props.selection.roads.includes(road.id);
+          // Keep the selection cue visible when the displayed road band is transparent.
+          if (!props.roadDisplay.showRoadCenterlines && !(props.roadDisplay.showRoadBands && (auxiliary || selected))) return null;
           return <Path key={road.id} roadId={road.id} name="road-centerline" data={road.pathData}
-            stroke={props.pointPick?.selectedRoadIds?.includes(road.id) ? '#16834b' : props.pointPick?.eligibleRoadIds?.includes(road.id) ? '#078ca0' : props.selection.roads.includes(road.id) ? '#ad5f17' : auxiliary ? '#a76c24' : '#216b88'}
+            stroke={props.pointPick?.selectedRoadIds?.includes(road.id) ? '#16834b' : props.pointPick?.eligibleRoadIds?.includes(road.id) ? '#078ca0' : selected ? '#ad5f17' : auxiliary ? '#a76c24' : '#216b88'}
             strokeWidth={2} hitStrokeWidth={14} dash={auxiliary ? [7, 5] : undefined} lineCap="round" lineJoin="round"
             onMouseEnter={onRoadEnter} onMouseLeave={onShapeLeave} onClick={onRoadClick} />;
         })}

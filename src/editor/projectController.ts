@@ -22,6 +22,9 @@ export interface DrawingConfig {
   showRoadBands: boolean;
   showRoadCenterlines: boolean;
   showOrdinaryNodes: boolean;
+  roadFillOpacity: number;
+  facilityFillOpacity: number;
+  zoneFillOpacity: number;
   facilityKind: Facility['kind'];
   zoneKind: Zone['kind'];
   facilityMovePolicy: FacilityMovePolicy;
@@ -31,6 +34,7 @@ export const DEFAULT_DRAWING_CONFIG: Readonly<DrawingConfig> = Object.freeze({
   hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
   snapGrid: 0, snapNodes: true, roadWidthM: 12, roadDirection: 'both', connectNewCrossings: true, facilityKind: 'building', zoneKind: 'unclassified',
   showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: false,
+  roadFillOpacity: 1, facilityFillOpacity: 0.2, zoneFillOpacity: 0.2,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
 });
 export interface BackgroundLayerPreference { visible: boolean; opacity: number; locked: boolean }
@@ -151,11 +155,12 @@ export function validateEditorState(value: unknown): EditorState {
     || typeof drawing.connectNewCrossings !== 'boolean'
     || !Number.isFinite(drawing.roadWidthM) || drawing.roadWidthM <= 0 || drawing.roadWidthM > 1000 || !['both', 'forward', 'backward'].includes(drawing.roadDirection)
     || typeof drawing.showRoadBands !== 'boolean' || typeof drawing.showRoadCenterlines !== 'boolean' || typeof drawing.showOrdinaryNodes !== 'boolean'
+    || [drawing.roadFillOpacity, drawing.facilityFillOpacity, drawing.zoneFillOpacity].some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)
     || !['building', 'workshop', 'yard', 'assembly', 'dock', 'quay', 'other'].includes(drawing.facilityKind)
     || !['unclassified', 'work', 'buffer', 'waiting', 'water', 'obstacle', 'drivable', 'forbidden'].includes(drawing.zoneKind)
     || !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(drawing.facilityMovePolicy)
     || !['boundaryOnly', 'withAssociatedNodes', 'withStaticContents'].includes(drawing.zoneMovePolicy)) {
-    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置的吸附数值、布尔值、对象类型或移动策略无效。');
+    throw new ProjectPersistenceError('EDITOR_STATE_INVALID', '绘图配置的吸附数值、不透明度、布尔值、对象类型或移动策略无效。');
   }
   let workbench: WorkbenchPreferences | undefined;
   if ('workbench' in value) {

@@ -56,6 +56,23 @@ async function started(store = new ControlledStore()) {
 }
 
 describe('M1.1 browser-project persistence coordination (fault-injection unit port)', () => {
+  it('restores bounded fill opacity as view preferences without changing the map', async () => {
+    const { controller, store, map } = await started();
+    const originalJson = serializeMap(map);
+    await controller.save(map, 'checkpoint');
+    const view = { camera: { offsetX: 0, offsetY: 0, scale: 1 }, drawing: { roadFillOpacity: 0, facilityFillOpacity: 0.35, zoneFillOpacity: 1 } };
+    await controller.saveEditorState(view);
+    const recovered = await new ProjectController(store).initialize();
+    expect(recovered?.editorState?.drawing).toMatchObject(view.drawing);
+    expect(serializeMap(recovered!.map)).toBe(originalJson);
+    expect(validateEditorState({ camera: view.camera }).drawing).toMatchObject({ roadFillOpacity: 1, facilityFillOpacity: 0.2, zoneFillOpacity: 0.2 });
+    for (const field of ['roadFillOpacity', 'facilityFillOpacity', 'zoneFillOpacity']) {
+      for (const value of [NaN, Infinity, -0.01, 1.01, '0.5', null]) {
+        expect(() => validateEditorState({ ...view, drawing: { [field]: value } })).toThrow(ProjectPersistenceError);
+      }
+    }
+  });
+
   it('S01 saves without exporting and restores through the shared load pipeline', async () => {
     const { controller, store, map } = await started();
     expect(store.rows.size).toBe(0);

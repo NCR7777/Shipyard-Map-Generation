@@ -3,6 +3,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import type { SceneSnapshot, SceneItem, SceneKind } from '../../adapters/contracts';
 import type { Selection } from '../../domain/commands';
 import type { Vec3 } from '../../domain/model';
+import type { DrawingConfig } from '../../editor/projectController';
 import { worldToScreen, type Camera } from '../../geometry/coordinates';
 import { snapPosition, type SnapOptions } from './useSpatialDrawing';
 import type { BoundaryPreview } from './BoundaryHandles';
@@ -10,6 +11,7 @@ import { useCurrentCallback } from '../../ui/useCurrentCallback';
 
 export interface SpatialLayerProps {
   comparisonMode?: boolean;
+  fillOpacity?: Pick<DrawingConfig, 'roadFillOpacity' | 'facilityFillOpacity' | 'zoneFillOpacity'>;
   onPointIdentities?: (identities: { kind: 'accessPoints' | 'servicePoints'; id: string }[]) => void;
   hiddenTypes?: readonly SceneKind[]; canDrag?: (kind: keyof Selection, id: string) => boolean;
   visibleKeys?: ReadonlySet<string>; onHover?: (key: string | null) => void;
@@ -89,9 +91,11 @@ export function SpatialLayer(props: SpatialLayerProps) {
     }));
     if (!anchor.every(Number.isFinite) || rings.some(ring => ring.some(point => !point.every(Number.isFinite)))) return null;
     const fill = item.entityType === 'facilities' ? '#c7e3df' : item.kind === 'water' ? '#bad8ef' : item.kind === 'obstacle' || item.kind === 'forbidden' ? '#ead0cc' : '#e8e3c6';
+    const opacity = (item.entityType === 'facilities' ? props.fillOpacity?.facilityFillOpacity ?? 0.2 : props.fillOpacity?.zoneFillOpacity ?? 0.2) * (props.comparisonMode ? 24 / 53 : 1);
+    const alpha = Math.round(opacity * 255).toString(16).padStart(2, '0');
     return <Group _useStrictMode key={item.entityType + item.id} x={anchor[0]} y={anchor[1]} draggable={!props.disableDrag && props.selecting && !props.readonly && (props.canDrag?.(item.entityType, item.id) ?? true)}
       entityKind={item.entityType} entityId={item.id} {...events}>
-      <Shape fill={fill + (props.comparisonMode ? '18' : '35')} dash={item.kind === 'building' || item.kind === 'unclassified' ? [6, 3] : item.inferred ? [2, 3] : undefined} stroke={selected ? '#d57921' : item.entityType === 'facilities' ? '#497e75' : '#929174'} strokeWidth={selected ? 3 : 1.5} fillRule="evenodd"
+      <Shape name="spatial-polygon" entityKind={item.entityType} entityId={item.id} fill={fill + alpha} dash={item.kind === 'building' || item.kind === 'unclassified' ? [6, 3] : item.inferred ? [2, 3] : undefined} stroke={selected ? '#d57921' : item.entityType === 'facilities' ? '#497e75' : '#929174'} strokeWidth={selected ? 3 : 1.5} fillRule="evenodd"
         sceneFunc={(context, shape) => { context.beginPath(); for (const ring of rings) { ring.forEach((point, index) => { if (!index) context.moveTo(point[0]!, point[1]!); else context.lineTo(point[0]!, point[1]!); }); context.closePath(); } context.fillStrokeShape(shape); }} />
     </Group>;
   })}</>;

@@ -42,6 +42,7 @@ async function projectPoint(page: Page, xy: readonly number[]) {
 async function screenshot(page:Page,info:TestInfo,name:string) { await page.screenshot({path:info.outputPath(name+'.png'),fullPage:true}); }
 
 test('BG01 real calibrated editor: transforms, history, independent vectors, display prefs, save/refresh/switch and JSON roundtrip', async ({page,browser},info)=>{
+  test.setTimeout(90000); // Multiple raster transforms, project restores and JSON roundtrips; assertion timeouts stay unchanged.
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   const {original,calibration}=await added(page);
   let map=await current(page);const id=Object.keys(map.backgroundLayers)[0]!;
@@ -206,6 +207,7 @@ test('BG01 calibrated raster pixels stay aligned across camera zoom/pan; hidden 
 });
 
 test('BG01 real CIMC checkpoint save and same-SHA recovery after stored image corruption and deletion', async ({ page }, info) => {
+  test.setTimeout(90000); // Full image-byte fault injection and repeated recovery exceed the short-test budget.
   const { original } = await added(page);
   const baseline = await current(page), baselineHash = await hash(page);
   const layerId = Object.keys(baseline.backgroundLayers)[0]!;
