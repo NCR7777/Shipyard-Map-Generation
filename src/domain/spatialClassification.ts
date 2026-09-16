@@ -15,7 +15,7 @@ const COLLECTIONS = ['nodes', 'roads', 'junctions', 'movements', 'facilities', '
 const builtin = (kind: SpatialCollection, entries: [string, string][]): SpatialClassDefinition[] => entries.map(([id, label]) => ({ id, label, appliesTo: [kind] }));
 export const BUILTIN_SPATIAL_CLASSES: readonly SpatialClassDefinition[] = [
   ...builtin('facilities', [['building', '通用建筑'], ['workshop', '生产厂房'], ['warehouse', '仓库'], ['office', '办公楼'], ['residential', '宿舍/生活建筑'], ['power_house', '动力站房'], ['maintenance_workshop', '维修厂房'], ['paint_workshop', '涂装厂房'], ['assembly_workshop', '装配厂房'], ['security_house', '门卫室']]),
-  ...builtin('zones', [['unclassified', '未分类区域'], ['dry_dock', '干船坞'], ['yard', '堆场'], ['assembly_yard', '总组场地'], ['quay', '码头作业区'], ['water', '水域'], ['parking', '停车区'], ['buffer', '缓冲区'], ['slipway', '船台区域'], ['logistics', '物流作业区'], ['road_reserve', '道路预留区'], ['restricted', '禁入区']]),
+  ...builtin('zones', [['unclassified', '未分类区域'], ['dock_unspecified', '船坞（类型待确认）'], ['dry_dock', '岸式干船坞'], ['floating_dock', '浮船坞（当前占位）'], ['yard', '堆场'], ['assembly_yard', '总组场地'], ['quay', '码头作业区'], ['water', '水域'], ['parking', '停车区'], ['buffer', '缓冲区'], ['slipway', '船台区域'], ['logistics', '物流作业区'], ['road_reserve', '道路预留区'], ['restricted', '禁入区']]),
 ];
 export class SpatialClassificationError extends Error {
   constructor(readonly code: string, message: string, readonly path: string) { super(message); }

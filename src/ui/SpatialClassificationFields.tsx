@@ -1,3 +1,5 @@
+import { SpatialColorSwatch } from './SpatialColorLegend';
+import { spatialClassColor } from '../compiler/spatialColors';
 import type { YardMap } from '../domain/model';
 import { getSpatialClasses, type SpatialClassification, type SpatialCollection } from '../domain/spatialClassification';
 import { sameValue } from '../domain/value';
@@ -34,19 +36,28 @@ export function editSpatialDepthDraft(initial: SpatialClassification | undefined
 export function SpatialClassificationFields({ map, collection, draft, initial, onChange, disabled, unsupported }: {
   map: YardMap; collection: SpatialCollection; draft: SpatialClassificationDraft; initial?: SpatialClassification; onChange(value: SpatialClassificationDraft): void; disabled: boolean; unsupported: boolean;
 }) {
+  const classes = getSpatialClasses(map, collection);
   const label = collection === 'facilities' ? '建筑分类' : '区域分类';
-  const showDepth = collection === 'zones' && (draft.classId === 'dry_dock' || draft.depth !== '' || draft.reference !== '');
+  const showDepth = collection === 'zones' && (draft.classId === 'dry_dock' || initial?.depthM !== undefined || draft.depth !== '' || draft.reference !== '');
+  const dockDescription = collection !== 'zones' ? '' : draft.classId === 'dock_unspecified'
+    ? '船坞类型尚未确认；请依据结构或可靠资料区分岸式干船坞与浮船坞，不能只凭影像中是否看见水判断。'
+    : draft.classId === 'dry_dock'
+      ? '岸式干船坞是可进水、关门后抽排水的岸上坞池；上方可有厂房，建筑轮廓与船坞区域允许叠加。'
+      : draft.classId === 'floating_dock'
+        ? '浮船坞是通过压载水升沉的浮式设备；这里的区域只记录其当前平面占位，不代表固定岸上坞池。'
+        : '';
   return <section aria-label="详细用途与深度">
-    <label className="field-label">{label}<select aria-label={label} disabled={disabled} value={draft.classId} onChange={event => onChange({ ...draft, classId: event.target.value })}>
-      <option value="" disabled>未设置详细分类</option>{getSpatialClasses(map, collection).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+    <label className="field-label"><span className="spatial-color-label" title="应用属性后更新地图颜色">{!unsupported && classes.some(item => item.id === draft.classId) && <SpatialColorSwatch color={spatialClassColor(collection, draft.classId)}/>} {label}</span><select aria-label={label} disabled={disabled} value={draft.classId} onChange={event => onChange({ ...draft, classId: event.target.value })}>
+      <option value="" disabled>未设置详细分类</option>{classes.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
-    <p className="field-note">分类不改变基础类型、通行声明或几何。自定义分类在左侧“建筑与区域分类”中管理。</p>
+    <p className="field-note">建筑描实体边界，区域描功能占地，两者允许叠加。分类不改变通行声明或几何；自定义分类在左侧管理。</p>
+    {dockDescription && <p className="field-note">{dockDescription}</p>}
     {unsupported && <p className="field-note">此分类数据版本尚不支持，已保留原内容；普通属性仍可编辑。</p>}
     {showDepth && <fieldset disabled={disabled}><legend>干船坞深度</legend>
       <label className="field-label">深度 (m)<input aria-label="干船坞深度 (m)" type="number" min="0" step="any" value={draft.depth} placeholder="未知" onChange={event => onChange(editSpatialDepthDraft(initial, draft, { depth: event.target.value, incomplete: event.target.validity.badInput }))}/></label>
       <label className="field-label">参照面说明<input aria-label="深度参照面" value={draft.reference} onChange={event => onChange(editSpatialDepthDraft(initial, draft, { reference: event.target.value }))}/></label>
       <label className="field-label">来源<select aria-label="深度来源" value={draft.sourceRef} onChange={event => onChange({ ...draft, sourceRef: event.target.value })}><option value="">本次设计假设（未经实测）</option>{Object.entries(map.sources).map(([id, source]) => <option key={id} value={id}>{source.name} · {source.category}</option>)}</select></label>
-      <p className="field-note">空白为未知；已知深度必须注明参照面与来源。这是从注明参照面向下至坞底的结构深度，不等于水深或建筑高度；不改变边界 Z；切换区域分类仍保留已填深度。</p>
+      <p className="field-note">空白为未知；已知值须注明参照面与来源。此值为参照面向下至坞底的结构深度，不等于坞口水深、允许吃水或建筑高度；不改变边界 Z，切换分类仍保留原值。</p>
     </fieldset>}
   </section>;
 }

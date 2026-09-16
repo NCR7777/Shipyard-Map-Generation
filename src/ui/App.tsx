@@ -1,3 +1,5 @@
+import { SpatialColorLegend, SpatialColorSwatch, SPATIAL_COLOR_HINT } from './SpatialColorLegend';
+import { spatialClassColor, legacySpatialAppearance } from '../compiler/spatialColors';
 import { SpatialClassManager } from './SpatialClassManager';
 import { getSpatialClasses, spatialClassificationEditable } from '../domain/spatialClassification';
 import { ResultsPanel, type ResultsOverlay } from './ResultsPanel';
@@ -93,6 +95,7 @@ export function App() {
   const zoneClasses = useMemo(() => getSpatialClasses(session.map, 'zones'), [session.map]);
   const facilityClassificationId = facilityClasses.some(item => item.id === drawingConfig.facilityClassificationId) ? drawingConfig.facilityClassificationId : 'building';
   const zoneClassificationId = zoneClasses.some(item => item.id === drawingConfig.zoneClassificationId) ? drawingConfig.zoneClassificationId : 'unclassified';
+  const classesEditable = useMemo(() => spatialClassificationEditable(session.map), [session.map]);
   const facilityMovePolicy = 'withStaticContents' as const, zoneMovePolicy = 'withStaticContents' as const;
   const [roadBatch, setRoadBatch] = interaction.dialogField('roadBatch');
   const [roadPreset, setRoadPreset] = interaction.dialogField('roadPreset');
@@ -1158,10 +1161,10 @@ export function App() {
           </div>
         </details><details className="workbench-settings"><summary>建筑与区域分类</summary><div className="spatial-controls">
           <p className="field-note">默认分类仅用于随后新画的对象；建筑与区域分别管理，不改变通行、尺寸或已有对象。</p>
-          <label className="field-label">新建筑分类<select aria-label="新建筑分类" value={facilityClassificationId} disabled={readonly || !spatialClassificationEditable(session.map)} onChange={event => updateDrawingConfig({ facilityClassificationId: event.target.value })}>{facilityClasses.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-          <label className="field-label">新区域分类<select aria-label="新区域分类" value={zoneClassificationId} disabled={readonly || !spatialClassificationEditable(session.map)} onChange={event => updateDrawingConfig({ zoneClassificationId: event.target.value })}>{zoneClasses.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-          <button disabled={readonly || !spatialClassificationEditable(session.map)} onClick={() => requestLeave('管理自定义分类', () => setSpatialClassesDialog(true))}>管理自定义分类</button>
-        </div></details><details className="workbench-settings"><summary>绘图与显示设置</summary>        <div className="spatial-controls">
+          <label className="field-label"><span className="spatial-color-label" title={SPATIAL_COLOR_HINT}><SpatialColorSwatch color={classesEditable ? spatialClassColor('facilities', facilityClassificationId) : legacySpatialAppearance('facilities', facilityKind).color}/>新建筑分类</span><select aria-label="新建筑分类" value={facilityClassificationId} disabled={readonly || !classesEditable} onChange={event => updateDrawingConfig({ facilityClassificationId: event.target.value })}>{facilityClasses.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <label className="field-label"><span className="spatial-color-label" title={SPATIAL_COLOR_HINT}><SpatialColorSwatch color={classesEditable ? spatialClassColor('zones', zoneClassificationId) : legacySpatialAppearance('zones', zoneKind).color}/>新区域分类</span><select aria-label="新区域分类" value={zoneClassificationId} disabled={readonly || !classesEditable} onChange={event => updateDrawingConfig({ zoneClassificationId: event.target.value })}>{zoneClasses.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <button disabled={readonly || !classesEditable} onClick={() => requestLeave('管理自定义分类', () => setSpatialClassesDialog(true))}>管理自定义分类</button>
+        </div></details><SpatialColorLegend scene={scene}/><details className="workbench-settings"><summary>绘图与显示设置</summary>        <div className="spatial-controls">
           <label className="check-field"><input type="checkbox" aria-label="拓扑吸附" checked={topologySnap} disabled={readonly} onChange={event => { const enabled = event.target.checked; requestLeave('切换拓扑吸附', () => { setTopologySnap(enabled); setDraftResetToken(value => value + 1); }); }}/>拓扑吸附（释放后明确确认）</label>
           <label className="check-field"><input type="checkbox" aria-label="节点吸附" disabled={!projects.ready || projects.transitioning} checked={snapNodes} onChange={event => updateDrawingConfig({ snapNodes: event.target.checked })} />同层节点 / 道路中心线接路吸附（Alt 临时关闭）</label>
           <label className="check-field"><input type="checkbox" aria-label="本项目新路平交相连" checked={drawingConfig.connectNewCrossings} onChange={event => updateDrawingConfig({ connectNewCrossings: event.target.checked })}/>本项目新路平交相连（Alt 本次不连）</label>

@@ -1,3 +1,4 @@
+import type { SpatialAppearance } from '../compiler/spatialColors';
 import type { ResolvedPath } from '../geometry/roadPath';
 import type { AccessPoint, CoordinateFrame, Facility, MapNode, PhysicalValue, Polygon, ServicePoint, Vec3, YardMap, Zone } from '../domain/model';
 
@@ -17,8 +18,8 @@ export interface SceneSnapshot {
   coordinateFrame: CoordinateFrame;
   nodes: { id: string; name: string; kind: MapNode['kind']; position: Vec3 }[];
   roads: { id: string; name: string; fromNodeId: string; toNodeId: string; path: ResolvedPath; points: Vec3[]; lengthM: number; direction?: 'both' | 'forward' | 'backward' | 'unknown'; widthM: PhysicalValue }[];
-  facilities: ({ id: string; inferred?: boolean } & Pick<Facility, 'name' | 'kind' | 'boundary' | 'accessPointIds' | 'servicePointIds' | 'heightM'>)[];
-  zones: ({ id: string; inferred?: boolean; servicePointIds: string[] } & Pick<Zone, 'name' | 'kind' | 'boundary' | 'passability'>)[];
+  facilities: ({ id: string; inferred?: boolean; appearance?: SpatialAppearance } & Pick<Facility, 'name' | 'kind' | 'boundary' | 'accessPointIds' | 'servicePointIds' | 'heightM'>)[];
+  zones: ({ id: string; inferred?: boolean; appearance?: SpatialAppearance; servicePointIds: string[] } & Pick<Zone, 'name' | 'kind' | 'boundary' | 'passability'>)[];
   accessPoints: ({ id: string; position: Vec3 } & Pick<AccessPoint, 'name' | 'facilityId' | 'nodeId'>)[];
   servicePoints: ({ id: string; position: Vec3 } & Pick<ServicePoint, 'name' | 'kind' | 'facilityId' | 'accessPointId' | 'nodeId' | 'zoneId' | 'arrival'>)[];
   bounds: { min: Vec3; max: Vec3 } | null;
