@@ -424,10 +424,17 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
       const previous = map[kind][update.id]! as unknown as Record<string, unknown>;
       const changed = Object.keys(update.patch).filter(key => !sameValue(previous[key], (update.patch as Record<string, unknown>)[key]));
       const namedOnly = changed.every(key => key === 'name') && !('newNode' in update && update.newNode) && !('entranceAdjustments' in update && update.entranceAdjustments?.length);
-      const localSemantic = (kind === 'facilities' || kind === 'zones') && changed.every(key => key === 'name' || key === 'kind') && !('entranceAdjustments' in update && update.entranceAdjustments?.length);
-      const localNode = kind === 'nodes' && changed.every(key => key === 'name' || key === 'position');
-      const localRoad = kind === 'roads' && changed.every(key => ['name', 'shapePoints', 'geometry', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps'].includes(key));
-      if (advanced && !namedOnly && !localSemantic && !localNode && !localRoad && !((kind === 'facilities' || kind === 'zones') && changed.every(key => key === 'name' || key === 'boundary') && canChangeBoundary(map, kind, update.id))) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '该字段涉及高级引用或静态内容；仅开放已检查的点路字段与边界/刚体联动。', '/' + kind + '/' + update.id);
+      if (advanced) {
+        const localFields: Record<typeof kind, readonly string[]> = {
+          nodes: ['name', 'position'], roads: ['name', 'shapePoints', 'geometry', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps'],
+          facilities: ['name', 'kind', 'heightM', 'boundary'], zones: ['name', 'kind', 'passability', 'boundary'],
+          accessPoints: ['name'], servicePoints: ['name', 'kind'],
+        };
+        const unsupported = changed.find(field => !localFields[kind].includes(field)) ?? ('newNode' in update && update.newNode ? 'nodeId' : undefined);
+        if (unsupported) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '字段 ' + unsupported + ' 尚无此地图的引用维护规则；请保留该关联，或使用明确的接路/关联操作。', '/' + kind + '/' + update.id + '/' + unsupported);
+        const changesBoundary = changed.includes('boundary') || update.type === 'updateFacility' && !!update.entranceAdjustments?.length;
+        if ((kind === 'facilities' || kind === 'zones') && changesBoundary && !canChangeBoundary(map, kind, update.id)) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '边界关联独立资产或叠加对象，尚无同步维护规则；其他普通字段可单独修改。', '/' + kind + '/' + update.id + '/boundary');
+      }
       if (kind === 'roads' && ((changed.includes('shapePoints') || changed.includes('geometry')) || changed.includes('widthM')) && (map.roads[update.id]!.corridorPolygon || (changed.includes('shapePoints') || changed.includes('geometry')) && map.roads[update.id]!.observedLengthM)) fail('ROAD_GEOMETRY_DEPENDENCY', '道路含人工边界或登记长度，尚不支持同步编辑相关几何。', '/roads/' + update.id);
       if (kind === 'nodes' && changed.includes('position')) {
         const impact = selectionImpact(map, { nodes: [update.id], roads: [] });
@@ -958,7 +965,10 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   if (!report.ok) return { ok: false, issues: report.issues };
   if (inspectPlanning(input).present) {
     const planning = inspectPlanning(next);
-    if (!planning.supported) return { ok: false, issues: [problem('STATIC_CONTENTS_INVALID', '变换后静态槽位契约不再有效，整个事务已拒绝。'), ...planning.issues] };
+    if (!planning.supported) {
+      const first = planning.issues[0];
+      return { ok: false, issues: [problem('STATIC_CONTENTS_INVALID', '修改后静态规划契约冲突：' + (first ? first.jsonPath + '：' + first.message : '已有声明无法保持一致。') + ' 整个事务已拒绝。', first?.jsonPath), ...planning.issues] };
+    }
   }
   if (contentHash(input) === contentHash(next)) return { ok: true, map: input, changed: false, ...(command.type === 'upgradeSchema' ? { migrationChanges: [] } : {}) };
   // Only the existing transform command can establish that owner and service received the same rigid transform.

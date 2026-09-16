@@ -159,7 +159,7 @@ export function inspectPlanning(map: YardMap): PlanningInspection {
     } else if (kind === 'servicePoints') {
       const e = record(value, ['capability', 'handling'], ['capability', 'handling'], path);
       if (e) {
-        if (map.servicePoints[id]?.kind !== 'other') warn('VALUE', path, 'The declared combined handling capability requires service kind other.');
+        if (map.servicePoints[id]?.kind !== 'other') warn('VALUE', path, '已声明装载和卸载能力（loading_and_unloading），服务类型必须保持 kind=other（其他）；不能仅改为停车等其他类型。');
         choice(e, 'capability', ['loading_and_unloading'], path);
         choice(e, 'handling', ['reserved_slot_transfer_in_service_time'], path);
       }

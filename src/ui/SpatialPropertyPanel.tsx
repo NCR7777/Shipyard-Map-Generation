@@ -59,16 +59,8 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
   const selection = useMemo<Selection>(() => ({ ...normalizeSelection({ nodes: [], roads: [] }), [selected.kind === 'facility' ? 'facilities' : 'zones']: [selected.id] }), [selected.kind, selected.id]);
   const support = useMemo(() => commandSupport(map, { type: 'translateSelection', selection, delta: [0, 0, 0], facilityMovePolicy, zoneMovePolicy }), [map, selection, facilityMovePolicy, zoneMovePolicy]);
   const impact = useMemo(() => support.impact ?? selectionImpact(map, { nodes: [], roads: [] }), [map, support]);
-  const permissions = useMemo(() => {
-    return {
-      boundary: canEditBoundary(map, selected.kind === 'facility' ? 'facilities' : 'zones', selected.id),
-      classification: commandSupport(map, selected.kind === 'facility'
-        ? { type: 'updateFacility', id: selected.id, patch: { kind: selected.value.kind === 'workshop' ? 'yard' : 'workshop' } }
-        : { type: 'updateZone', id: selected.id, patch: { kind: selected.value.kind === 'work' ? 'buffer' : 'work' } }).allowed,
-    };
-  }, [map, selected.kind, selected.id, selected.value]);
-  const boundaryReadonly = readonly || !permissions.boundary;
-  const classificationReadonly = readonly || !permissions.classification;
+  const boundaryAllowed = useMemo(() => canEditBoundary(map, selected.kind === 'facility' ? 'facilities' : 'zones', selected.id), [map, selected.kind, selected.id]);
+  const boundaryReadonly = readonly || !boundaryAllowed;
   usePropertyDraft(draftContext, basePending || moving || rotating || pivotPending, applyDraft, onDraftChange);
   function applyDraft(): boolean {
     if (moving && rotating) { setError('平移和旋转都有未应用参数，请先完成其中一种变换，再保存。'); return false; }
@@ -131,8 +123,8 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
   return <div className="property-content spatial-property">
     <div className="entity-kind">{selected.kind === 'facility' ? '设施边界' : '独立区域'}</div>
     <label className="field-label">名称<input aria-label="名称" disabled={readonly} value={name} onChange={event => setName(event.target.value)} /></label>
-    <label className="field-label">类型<select aria-label={selected.kind === 'facility' ? '设施类型' : '区域类型'} disabled={classificationReadonly} value={kind} onChange={event => setKind(event.target.value as typeof kind)}>{(selected.kind === 'facility' ? facilityKinds : zoneKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    {selected.kind === 'zone' && <label className="field-label">通行声明<select aria-label="区域通行声明" disabled={classificationReadonly} value={passability} onChange={event => setPassability(event.target.value as Zone['passability'])}><option value="unknown">未知</option><option value="allowed">允许</option><option value="forbidden">禁止</option><option value="explicit_access_only">仅显式接入</option></select></label>}
+    <label className="field-label">类型<select aria-label={selected.kind === 'facility' ? '设施类型' : '区域类型'} disabled={readonly} value={kind} onChange={event => setKind(event.target.value as typeof kind)}>{map.schemaVersion === '0.3.0' && <option value={selected.kind === 'facility' ? 'building' : 'unclassified'}>{selected.kind === 'facility' ? '通用建筑（用途待补）' : '通用区域（用途待补）'}</option>}{(selected.kind === 'facility' ? facilityKinds : zoneKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    {selected.kind === 'zone' && <label className="field-label">通行声明<select aria-label="区域通行声明" disabled={readonly} value={passability} onChange={event => setPassability(event.target.value as Zone['passability'])}><option value="unknown">未知</option><option value="allowed">允许</option><option value="forbidden">禁止</option><option value="explicit_access_only">仅显式接入</option></select></label>}
     <div className="measurement-card spatial-measure"><span>世界 XY 包围盒与净面积（派生）</span><p>宽 <output data-testid="polygon-width">{Number((maxX - minX).toPrecision(12))}</output> m × 高 <output data-testid="polygon-height">{Number((maxY - minY).toPrecision(12))}</output> m</p><p>面积 <output data-testid="polygon-area">{Number(polygonArea2D(selected.value.boundary).toPrecision(12))}</output> m²</p></div>
     {selected.kind === 'facility' && <>
       <p className="field-note">{selected.value.accessPointIds.length} 个入口 · {selected.value.servicePointIds.length} 个服务点。高度：{selected.value.heightM.state === 'known' ? selected.value.heightM.value + ' m' : selected.value.heightM.state}。</p>
