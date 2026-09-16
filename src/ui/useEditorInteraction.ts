@@ -10,6 +10,7 @@ import type { PointCreationDraft } from './PointCreationPanel';
 export interface DialogValues {
   roadBatch: { ids: string[]; scope?: 'selection'|'continuous' };
   roadPreset: { roadId: string };
+  spatialClasses: true;
   boundaryRepair: { kind: 'facilities' | 'zones'; id: string; boundary: Polygon; command: import('../domain/commands').MapCommand; issues: Issue[]; allowed: boolean };
   new: true; copy: true; upgrade: true; delete: true; rotate: true; split: true;
   recent: true; storageConflict: true;

@@ -27,7 +27,7 @@ async function importMap(page: Page, map: YardMap) {
   await expect(page.getByTestId('facilities-item-fA')).toBeVisible();
 }
 async function rectangle(page: Page, kind: 'facility' | 'zone', a: [number, number], b: [number, number]) {
-  await page.getByRole('button', { name: kind === 'facility' ? '矩形设施' : '矩形区域', exact: true }).click();
+  await page.getByRole('button', { name: kind === 'facility' ? '矩形建筑' : '矩形区域', exact: true }).click();
   await clickWorld(page, ...a); await clickWorld(page, ...b);
   return page.getByLabel('稳定 ID', { exact: true }).inputValue();
 }
@@ -158,7 +158,7 @@ test('N25 unapplied service properties block dragging and require explicit decis
 
 test('N25 an unfinished polygon survives canceling a tool switch and disappears only after explicit discard', async ({ page }, info) => {
   await ready(page);
-  await page.getByRole('button', { name: '多边形设施', exact: true }).click();
+  await page.getByRole('button', { name: '多边形建筑', exact: true }).click();
   await clickWorld(page, 0, 0); await clickWorld(page, 20, 0);
   await expect(page.getByTestId('unapplied-inputs')).toBeVisible();
   await page.getByRole('button', { name: '节点', exact: true }).click();
@@ -167,7 +167,7 @@ test('N25 an unfinished polygon survives canceling a tool switch and disappears 
   await expect(page.getByTestId('facilities-count')).toHaveText('1');
   const first = await download(page, info, 'polygon-draft-preserved.map.json');
   expect(Object.values(first.facilities)[0]!.boundary.outer).toEqual([[0, 0, 0], [20, 0, 0], [20, 20, 0], [0, 0, 0]]);
-  await page.getByRole('button', { name: '多边形设施', exact: true }).click();
+  await page.getByRole('button', { name: '多边形建筑', exact: true }).click();
   await clickWorld(page, 40, 0); await clickWorld(page, 60, 0);
   await page.getByRole('button', { name: '节点', exact: true }).click();
   await guard(page).getByRole('button', { name: '丢弃未应用输入并继续', exact: true }).click();

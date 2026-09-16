@@ -43,7 +43,7 @@ export async function drawingAction(page: Page, name: string): Promise<void> {
 }
 export async function drawingControl(page: Page, label: string): Promise<Locator> {
   await openDrawingSettings(page);
-  return page.getByLabel(label, { exact: true });
+  return revealProperty(page, label);
 }
 export async function openChecks(page: Page): Promise<void> {
   const button = page.getByRole('button', { name: '检查与问题', exact: true });

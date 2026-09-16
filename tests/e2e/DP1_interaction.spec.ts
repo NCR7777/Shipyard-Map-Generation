@@ -183,7 +183,7 @@ test('DP16 label mode leaves unapplied numeric edits and polygon drafts intact',
   await expect(page.getByRole('dialog', { name: '未应用输入保护', exact: true })).not.toBeVisible();
   await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('52.75');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
-  await page.getByRole('button', { name: '多边形设施', exact: true }).click();
+  await page.getByRole('button', { name: '多边形建筑', exact: true }).click();
   const point = await screen(page, [25, 25]); await page.mouse.click(point.x, point.y);
   await expect(page.getByText('1 个顶点 · Enter 完成', { exact: true })).toBeVisible();
   await page.getByTestId('label-mode').selectOption('off');

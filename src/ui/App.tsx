@@ -1,3 +1,5 @@
+import { SpatialClassManager } from './SpatialClassManager';
+import { getSpatialClasses, spatialClassificationEditable } from '../domain/spatialClassification';
 import { ResultsPanel, type ResultsOverlay } from './ResultsPanel';
 import { CompletionPanel } from './CompletionPanel';
 import { buildCodexPackage, downloadPackage } from '../adapters/codexPackage';
@@ -84,7 +86,13 @@ export function App() {
   const [copyRetainFacility, setCopyRetainFacility] = useState(false);
   const [drawingConfig, setDrawingConfig] = useState<DrawingConfig>(() => ({ ...DEFAULT_DRAWING_CONFIG }));
   const drawingRef = useRef(drawingConfig); drawingRef.current = drawingConfig;
-  const { facilityKind, zoneKind, snapGrid, snapNodes, showRoadBands, showRoadCenterlines, showOrdinaryNodes, hiddenTypes, lockedTypes, labelMode } = drawingConfig;
+  const { zoneKind, snapGrid, snapNodes, showRoadBands, showRoadCenterlines, showOrdinaryNodes, hiddenTypes, lockedTypes, labelMode } = drawingConfig;
+  const facilityKind = ['building', 'workshop', 'other'].includes(drawingConfig.facilityKind) ? drawingConfig.facilityKind : 'building';
+  const [spatialClassesDialog, setSpatialClassesDialog] = interaction.dialogField('spatialClasses');
+  const facilityClasses = useMemo(() => getSpatialClasses(session.map, 'facilities'), [session.map]);
+  const zoneClasses = useMemo(() => getSpatialClasses(session.map, 'zones'), [session.map]);
+  const facilityClassificationId = facilityClasses.some(item => item.id === drawingConfig.facilityClassificationId) ? drawingConfig.facilityClassificationId : 'building';
+  const zoneClassificationId = zoneClasses.some(item => item.id === drawingConfig.zoneClassificationId) ? drawingConfig.zoneClassificationId : 'unclassified';
   const facilityMovePolicy = 'withStaticContents' as const, zoneMovePolicy = 'withStaticContents' as const;
   const [roadBatch, setRoadBatch] = interaction.dialogField('roadBatch');
   const [roadPreset, setRoadPreset] = interaction.dialogField('roadPreset');
@@ -237,7 +245,7 @@ export function App() {
   });
   function currentDraftContext(): DraftContext { return { projectId: projects.activeProjectId() ?? null, changeToken: sessionRef.current.changeToken, mapContentHash: contentHash(sessionRef.current.map) }; }
   const draftContext = useMemo(() => currentDraftContext(), [projects.state.active?.projectId, session.changeToken, session.map]);
-  const unapplied = relocatingPoint !== null || backgroundDirty || propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || (pointDraft !== null && !pointDraft.continuous) || copyDialog || rotateDialog || splitDialog || splitPicking || topologyDraft !== null;
+  const unapplied = relocatingPoint !== null || backgroundDirty || propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || (pointDraft !== null && !pointDraft.continuous) || copyDialog || rotateDialog || splitDialog || splitPicking || topologyDraft !== null || spatialClassesDialog !== null;
   const scene = useMemo(() => toSceneSnapshot(session.map), [session.map]);
   const saveGuard = useRef({ browserDirty: true, unapplied: false });
   saveGuard.current = { browserDirty: projects.editorDirty || projects.state.active?.draftHash !== scene.mapContentHash, unapplied: unapplied || boundaryEditing };
@@ -639,9 +647,10 @@ export function App() {
   function addPolygon(kind: 'facilities' | 'zones', boundary: Polygon) {
     const id = uid(kind === 'facilities' ? 'facility' : 'zone');
     const generic = kind === 'facilities' ? facilityKind === 'building' : zoneKind === 'unclassified';
-    const command: MapCommand = generic ? { type: 'quickTraceBoundary', kind: kind === 'facilities' ? 'building' : 'area', boundary } : kind === 'facilities'
-      ? { type: 'addFacility', id, facility: newFacility(boundary, '建筑' + String(scene.facilities.length + 1).padStart(3, '0'), facilityKind) }
-      : { type: 'addZone', id, zone: newZone(boundary, '区域' + String(scene.zones.length + 1).padStart(3, '0'), zoneKind) };
+    const classification = spatialClassificationEditable(sessionRef.current.map) ? { classId: kind === 'facilities' ? facilityClassificationId : zoneClassificationId } : undefined;
+    const command: MapCommand = generic ? { type: 'quickTraceBoundary', kind: kind === 'facilities' ? 'building' : 'area', boundary, classification } : kind === 'facilities'
+      ? { type: 'addFacility', id, facility: newFacility(boundary, '建筑' + String(scene.facilities.length + 1).padStart(3, '0'), facilityKind), classification }
+      : { type: 'addZone', id, zone: newZone(boundary, '区域' + String(scene.zones.length + 1).padStart(3, '0'), zoneKind), classification };
     let accepted = false;
     requestLeave('提交绘制的空间对象', () => { accepted = apply(command); if (accepted) setSelection(emptySelection()); }, propertyDirty || mapName !== session.map.metadata.name);
     return accepted;
@@ -1147,14 +1156,21 @@ export function App() {
             {resolvedBackgroundPreferences.comparisonMode && <p className="field-note">影像对照模式已开启，会进一步淡化填充。</p>}
             <button className="subtle-button full-width" disabled={!projects.ready || projects.transitioning} onClick={() => updateDrawingConfig({ roadFillOpacity: DEFAULT_DRAWING_CONFIG.roadFillOpacity, facilityFillOpacity: DEFAULT_DRAWING_CONFIG.facilityFillOpacity, zoneFillOpacity: DEFAULT_DRAWING_CONFIG.zoneFillOpacity })}>恢复默认不透明度</button>
           </div>
-        </details><details className="workbench-settings"><summary>绘图与显示设置</summary>        <div className="spatial-controls">
+        </details><details className="workbench-settings"><summary>建筑与区域分类</summary><div className="spatial-controls">
+          <p className="field-note">默认分类仅用于随后新画的对象；建筑与区域分别管理，不改变通行、尺寸或已有对象。</p>
+          <label className="field-label">新建筑分类<select aria-label="新建筑分类" value={facilityClassificationId} disabled={readonly || !spatialClassificationEditable(session.map)} onChange={event => updateDrawingConfig({ facilityClassificationId: event.target.value })}>{facilityClasses.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <label className="field-label">新区域分类<select aria-label="新区域分类" value={zoneClassificationId} disabled={readonly || !spatialClassificationEditable(session.map)} onChange={event => updateDrawingConfig({ zoneClassificationId: event.target.value })}>{zoneClasses.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <button disabled={readonly || !spatialClassificationEditable(session.map)} onClick={() => requestLeave('管理自定义分类', () => setSpatialClassesDialog(true))}>管理自定义分类</button>
+        </div></details><details className="workbench-settings"><summary>绘图与显示设置</summary>        <div className="spatial-controls">
           <label className="check-field"><input type="checkbox" aria-label="拓扑吸附" checked={topologySnap} disabled={readonly} onChange={event => { const enabled = event.target.checked; requestLeave('切换拓扑吸附', () => { setTopologySnap(enabled); setDraftResetToken(value => value + 1); }); }}/>拓扑吸附（释放后明确确认）</label>
           <label className="check-field"><input type="checkbox" aria-label="节点吸附" disabled={!projects.ready || projects.transitioning} checked={snapNodes} onChange={event => updateDrawingConfig({ snapNodes: event.target.checked })} />同层节点 / 道路中心线接路吸附（Alt 临时关闭）</label>
           <label className="check-field"><input type="checkbox" aria-label="本项目新路平交相连" checked={drawingConfig.connectNewCrossings} onChange={event => updateDrawingConfig({ connectNewCrossings: event.target.checked })}/>本项目新路平交相连（Alt 本次不连）</label>
           <label className="field-label">网格吸附<select aria-label="网格吸附" disabled={!projects.ready || projects.transitioning} value={snapGrid} onChange={event => updateDrawingConfig({ snapGrid: Number(event.target.value) as DrawingConfig['snapGrid'] })}><option value="0">关闭</option><option value="1">1 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
-          <label className="field-label">设施类型<select aria-label="新建设施类型" value={facilityKind} disabled={readonly} onChange={event => updateDrawingConfig({ facilityKind: event.target.value as Facility['kind'] })}>{Object.entries({ building: '通用建筑（用途待补）', workshop: '厂房', yard: '堆场', assembly: '总组', dock: '坞区', quay: '码头', other: '其他' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
-          <label className="field-label">区域类型<select aria-label="新建区域类型" value={zoneKind} disabled={readonly} onChange={event => updateDrawingConfig({ zoneKind: event.target.value as Zone['kind'] })}>{Object.entries({ unclassified: '通用区域（用途待补）', work: '作业', buffer: '缓冲', waiting: '等待', water: '水域', obstacle: '障碍', forbidden: '禁入', drivable: '可行驶' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
-          <div className="tool-grid">{([{ id: 'node', label: '节点' }, { id: 'facilityRect', label: '矩形设施' }, { id: 'facilityOrientedRect', label: '三点斜矩形建筑' }, { id: 'facilityPolygon', label: '多边形设施' }, { id: 'zoneRect', label: '矩形区域' }, { id: 'zoneOrientedRect', label: '三点斜矩形区域' }] as const).map(item => <button key={item.id} onClick={() => changeTool(item.id)} disabled={readonly}>{item.label}</button>)}</div>
+          <details><summary>高级绘图兼容类型</summary>
+          <label className="field-label">建筑基础类型<select aria-label="新建设施类型" value={facilityKind} disabled={readonly} onChange={event => updateDrawingConfig({ facilityKind: event.target.value as Facility['kind'] })}>{Object.entries({ building: '通用建筑（用途待补）', workshop: '厂房', other: '其他建筑' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+          <label className="field-label">区域基础类型<select aria-label="新建区域类型" value={zoneKind} disabled={readonly} onChange={event => updateDrawingConfig({ zoneKind: event.target.value as Zone['kind'] })}>{Object.entries({ unclassified: '通用区域（用途待补）', work: '作业', buffer: '缓冲', waiting: '等待', water: '水域', obstacle: '障碍', forbidden: '禁入', drivable: '可行驶' }).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
+          </details>
+          <div className="tool-grid">{([{ id: 'node', label: '节点' }, { id: 'facilityRect', label: '矩形建筑' }, { id: 'facilityOrientedRect', label: '三点斜矩形建筑' }, { id: 'facilityPolygon', label: '多边形建筑' }, { id: 'zoneRect', label: '矩形区域' }, { id: 'zoneOrientedRect', label: '三点斜矩形区域' }] as const).map(item => <button key={item.id} onClick={() => changeTool(item.id)} disabled={readonly}>{item.label}</button>)}</div>
           <div className="tool-grid"><button onClick={() => openPointDialog('accessPoints')} disabled={readonly}>添加入口</button><button onClick={() => openPointDialog('servicePoints')} disabled={readonly}>添加服务点</button></div>
           <div className="property-subheading">道路显示</div>
           <label className="check-field"><input type="checkbox" aria-label="显示道路带" disabled={!projects.ready || projects.transitioning} checked={showRoadBands} onChange={event => updateDrawingConfig({ showRoadBands: event.target.checked })} />显示道路带</label>
@@ -1206,6 +1222,7 @@ export function App() {
     {recentDialog && <Modal title="最近项目" onCancel={() => setRecentDialog(false)}><p>浏览器数据按站点保存，可能被清理；请保留导出备份。切换前将确认保存当前已提交版本。</p><div className="recent-projects">{projects.recent.map(item => <button key={item.projectId} data-testid={'project-item-' + item.projectId} onClick={() => void openProject(item.projectId)}><strong>{item.name}</strong><small>{item.projectId} · 存储版本 {item.storageVersion} · {new Date(item.updatedAt).toLocaleString()}</small></button>)}</div><div className="dialog-actions"><button data-cancel onClick={() => setRecentDialog(false)}>关闭</button></div></Modal>}
     {storageConflictDialog && !frameConfirmation && <Modal title="重新载入浏览器版本" onCancel={() => setStorageConflictDialog(false)}><p>重新载入会放弃当前未保存输入。建议先“保留当前恢复副本”；其他标签页已保存版本不会被覆盖。</p><div className="dialog-actions"><button data-cancel onClick={() => setStorageConflictDialog(false)}>取消</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button className="danger-button" onClick={() => void reloadStoredProject()}>明确放弃并重新载入</button></div></Modal>}
     {fileConflict && !frameConfirmation && <Modal title="外部文件内容已变化" onCancel={() => setFileConflict(null)}><p>文件 {fileConflict.name} 与已确认基线不同。当前地图保持不变，写回前会再次读取外部内容。</p><p>{localMessage}</p>{fileConflict.issues.map((issue, index) => <p key={index} className="inline-error">{issue.code} · {issue.jsonPath || "/"} · {issue.message}</p>)}<div className="dialog-actions"><button data-cancel onClick={() => setFileConflict(null)}>取消</button><button onClick={() => void openNative(true)}>重新载入文件</button><button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => void writeNative(true)}>文件另存为</button>{overwriteReady?.token === fileConflict.token ? <button className="danger-button" onClick={() => void writeNative(false, fileConflict.token)}>明确覆盖外部版本</button> : <button onClick={() => void prepareOverwrite()} disabled={!fileConflict.loaded?.ok}>先保存双方恢复副本</button>}</div><p className="field-note">写前比对不能锁定其他应用；不保证跨应用原子写入。非法外部文件保留原件，不能直接覆盖。</p></Modal>}
+    {spatialClassesDialog && <SpatialClassManager map={session.map} onApply={apply} onCancel={() => setSpatialClassesDialog(null)}/>}
     {roadBatch && <RoadBatchPanel map={session.map} ids={roadBatch.ids} scope={roadBatch.scope} onApply={apply} onCancel={() => setRoadBatch(null)}/>}
     {roadPreset && <Modal title="后续新道路预设" onCancel={() => setRoadPreset(null)}><p>将此道路的宽度与方向用于本工程随后新画的道路。旧道路和导入地图不受影响；新路净高、承载与速度保持未知。</p><button onClick={() => setRoadPreset(null)}>取消</button><button onClick={() => { const road = session.map.roads[roadPreset.roadId]; if (road) updateDrawingConfig({ ...(road.widthM.state === 'known' ? { roadWidthM: road.widthM.value } : {}), ...(road.direction !== 'unknown' ? { roadDirection: road.direction } : {}) }); setRoadPreset(null); }}>确认使用此预设</button></Modal>}
     {boundaryRepair && <Modal title="轮廓局部修复预览" onCancel={() => setBoundaryRepair(null)}><p>内部道路与储位尺寸保持不变。虚线显示拟校正轮廓与可安全重新贴边的专用入口。</p>{boundaryRepair.issues.map((issue, i) => <p key={i}>{issue.message}</p>)}{!boundaryRepair.allowed && <p>当前候选无法安全维护关联。请取消后先在“编辑内部”调整出界内容，再校正轮廓。</p>}<button onClick={() => setBoundaryRepair(null)}>取消轮廓修改</button><button disabled={!boundaryRepair.allowed} onClick={() => { if (apply(boundaryRepair.command)) setBoundaryRepair(null); }}>确认轮廓与入口局部修复</button></Modal>}

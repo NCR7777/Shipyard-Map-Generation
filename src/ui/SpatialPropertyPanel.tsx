@@ -9,6 +9,9 @@ import './spatial.css';
 import { PointPropertyPanel } from './PointPropertyPanel';
 import { zoneServicePointIds } from '../topology/serviceConnections';
 import { usePropertyDraft, type PropertyDraftProps } from '../editor/drafts';
+import { getSpatialClassification, spatialClassificationEditable } from '../domain/spatialClassification';
+import { sameValue } from '../domain/value';
+import { makeSpatialClassificationDraft, parseSpatialClassificationDraft, SpatialClassificationFields } from './SpatialClassificationFields';
 export type SpatialSelection =
   | { kind: 'facility'; id: string; value: Facility }
   | { kind: 'zone'; id: string; value: Zone }
@@ -26,7 +29,8 @@ export interface SpatialPanelProps extends PropertyDraftProps {
 }
 const makeRings = (polygon: Polygon) => [polygon.outer, ...polygon.holes].map(ring => ring.slice(0, -1).map(point => point.map(String)));
 const numberVector = (values: string[]): Vec3 | null => values.length === 3 && values.every(value => value.trim() && Number.isFinite(Number(value))) ? values.map(Number) as Vec3 : null;
-const facilityKinds: [Facility['kind'], string][] = [['workshop', '厂房'], ['yard', '堆场'], ['assembly', '总组区'], ['dock', '船坞'], ['quay', '码头'], ['other', '其他']];
+const facilityKinds: [Facility['kind'], string][] = [['workshop', '厂房'], ['other', '其他建筑']];
+const legacyFacilityKinds: Partial<Record<Facility['kind'], string>> = { yard: '堆场', assembly: '总组区', dock: '船坞', quay: '码头' };
 const zoneKinds: [Zone['kind'], string][] = [['work', '作业区'], ['buffer', '缓冲区'], ['waiting', '等待区'], ['water', '水域'], ['obstacle', '障碍区'], ['drivable', '可通行区'], ['forbidden', '禁入区']];
 
 export function SpatialPropertyPanel(props: SpatialPanelProps) {
@@ -36,6 +40,12 @@ export function SpatialPropertyPanel(props: SpatialPanelProps) {
 function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilityMovePolicy, zoneMovePolicy = 'boundaryOnly', boundaryEditMode = 'auto', onBoundaryModeChange, draftContext, onDraftChange, propertyUnits = DEFAULT_PROPERTY_UNITS, onPropertyUnitsChange, onPlaceAction }: SpatialPanelProps & { selected: Extract<SpatialSelection, { kind: 'facility' | 'zone' }> }) {
   const [name, setName] = useState(selected.value.name); const [kind, setKind] = useState(selected.value.kind);
   const [passability, setPassability] = useState<Zone['passability']>(selected.kind === 'zone' ? selected.value.passability : 'unknown');
+  const collection = selected.kind === 'facility' ? 'facilities' : 'zones';
+  const initialClassification = getSpatialClassification(map, collection, selected.id);
+  const [classification, setClassification] = useState(() => makeSpatialClassificationDraft(initialClassification));
+  const classificationPending = !sameValue(classification, makeSpatialClassificationDraft(initialClassification));
+  const classificationEditable = spatialClassificationEditable(map, collection, selected.id);
+  const [depthSourceId] = useState(() => 'source_' + crypto.randomUUID());
   const [rings, setRings] = useState(() => makeRings(selected.value.boundary));
   const rectangle = rectangleFrame(selected.value.boundary);
   const rectangular = rectangle !== null && boundaryEditMode === 'auto';
@@ -50,7 +60,7 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
   const [pivot, setPivot] = useState(initialPivot);
   const [error, setError] = useState('');
   const ringsPending = JSON.stringify(rings) !== JSON.stringify(makeRings(selected.value.boundary));
-  const basePending = dimensionsPending || name !== selected.value.name || kind !== selected.value.kind || JSON.stringify(rings) !== JSON.stringify(makeRings(selected.value.boundary)) || (selected.kind === 'zone' && passability !== selected.value.passability);
+  const basePending = classificationPending || dimensionsPending || name !== selected.value.name || kind !== selected.value.kind || ringsPending || (selected.kind === 'zone' && passability !== selected.value.passability);
   const moving = delta.some(value => value !== '0'); const rotating = angle !== '0';
   const pivotPending = JSON.stringify(pivot) !== JSON.stringify(initialPivot);
   useEffect(() => { onDirtyChange?.(basePending || moving || rotating || pivotPending); return () => onDirtyChange?.(false); }, [basePending, moving, rotating, pivotPending, onDirtyChange]);
@@ -84,10 +94,13 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
       const closed = parsed.map(ring => [...ring as Vec3[], [...ring[0]!] as Vec3] as unknown as Polygon['outer']);
       boundary = { outer: closed[0]!, holes: closed.slice(1) };
     }
+    const parsedClassification = parseSpatialClassificationDraft(initialClassification, classification);
+    if (!parsedClassification.ok) { setError(parsedClassification.message); return false; }
+    const details = { ...(parsedClassification.classification ? { classification: parsedClassification.classification } : {}), ...(parsedClassification.needsAssumption ? { designAssumption: { id: depthSourceId, name: '干船坞深度设计假设', description: '人工声明的干船坞深度，参照面：' + classification.reference.trim() + '；未经实测。' } } : {}) };
     const command: MapCommand = selected.kind === 'facility'
-      ? { type: 'updateFacility', id: selected.id, patch: changedFields(selected.value, { name, kind: kind as Facility['kind'], boundary }) }
-      : { type: 'updateZone', id: selected.id, patch: changedFields(selected.value, { name, kind: kind as Zone['kind'], boundary, passability }) };
-    if (!Object.keys(command.patch).length) { setError(''); setRings(makeRings(selected.value.boundary)); setDimensions([String(rectangle?.widthM ?? ''), String(rectangle?.heightM ?? '')]); return true; }
+      ? { type: 'updateFacility', id: selected.id, patch: changedFields(selected.value, { name, kind: kind as Facility['kind'], boundary }), ...details }
+      : { type: 'updateZone', id: selected.id, patch: changedFields(selected.value, { name, kind: kind as Zone['kind'], boundary, passability }), ...details };
+    if (!Object.keys(command.patch).length && !parsedClassification.classification) { setError(''); setRings(makeRings(selected.value.boundary)); setDimensions([String(rectangle?.widthM ?? ''), String(rectangle?.heightM ?? '')]); return true; }
     const accepted = onApply(command);
     if (accepted) {
       const acceptedRectangle = rectangleFrame(boundary);
@@ -121,10 +134,14 @@ function PolygonPanel({ selected, map, readonly, onApply, onDirtyChange, facilit
     setRings(current => [...current, [[x1, y1, z], [x1, y2, z], [x2, y2, z], [x2, y1, z]].map(point => point.map(String))]);
   }
   return <div className="property-content spatial-property">
-    <div className="entity-kind">{selected.kind === 'facility' ? '设施边界' : '独立区域'}</div>
+    <div className="entity-kind">{selected.kind === 'facility' ? legacyFacilityKinds[selected.value.kind] ? '历史设施边界' : '建筑边界' : '独立区域'}</div>
     <label className="field-label">名称<input aria-label="名称" disabled={readonly} value={name} onChange={event => setName(event.target.value)} /></label>
-    <label className="field-label">类型<select aria-label={selected.kind === 'facility' ? '设施类型' : '区域类型'} disabled={readonly} value={kind} onChange={event => setKind(event.target.value as typeof kind)}>{map.schemaVersion === '0.3.0' && <option value={selected.kind === 'facility' ? 'building' : 'unclassified'}>{selected.kind === 'facility' ? '通用建筑（用途待补）' : '通用区域（用途待补）'}</option>}{(selected.kind === 'facility' ? facilityKinds : zoneKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <details><summary>高级兼容类型</summary>
+    <label className="field-label">{selected.kind === 'facility' ? '建筑基础类型' : '区域基础类型'}<select aria-label={selected.kind === 'facility' ? '设施类型' : '区域类型'} disabled={readonly} value={kind} onChange={event => setKind(event.target.value as typeof kind)}>{map.schemaVersion === '0.3.0' && <option value={selected.kind === 'facility' ? 'building' : 'unclassified'}>{selected.kind === 'facility' ? '通用建筑（用途待补）' : '通用区域（用途待补）'}</option>}{selected.kind === 'facility' && legacyFacilityKinds[selected.value.kind] && <option value={selected.value.kind}>历史设施 · {legacyFacilityKinds[selected.value.kind]}</option>}{(selected.kind === 'facility' ? facilityKinds : zoneKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    {selected.kind === 'facility' && legacyFacilityKinds[selected.value.kind] && <p className="field-note">这是历史设施记录，原类型与引用保留；不会自动转换成建筑或区域。</p>}
+    </details>
     {selected.kind === 'zone' && <label className="field-label">通行声明<select aria-label="区域通行声明" disabled={readonly} value={passability} onChange={event => setPassability(event.target.value as Zone['passability'])}><option value="unknown">未知</option><option value="allowed">允许</option><option value="forbidden">禁止</option><option value="explicit_access_only">仅显式接入</option></select></label>}
+    <SpatialClassificationFields map={map} collection={collection} draft={classification} initial={initialClassification} onChange={setClassification} disabled={readonly || !classificationEditable} unsupported={!classificationEditable}/>
     <div className="measurement-card spatial-measure"><span>世界 XY 包围盒与净面积（派生）</span><p>宽 <output data-testid="polygon-width">{Number((maxX - minX).toPrecision(12))}</output> m × 高 <output data-testid="polygon-height">{Number((maxY - minY).toPrecision(12))}</output> m</p><p>面积 <output data-testid="polygon-area">{Number(polygonArea2D(selected.value.boundary).toPrecision(12))}</output> m²</p></div>
     {selected.kind === 'facility' && <>
       <p className="field-note">{selected.value.accessPointIds.length} 个入口 · {selected.value.servicePointIds.length} 个服务点。高度：{selected.value.heightM.state === 'known' ? selected.value.heightM.value + ' m' : selected.value.heightM.state}。</p>

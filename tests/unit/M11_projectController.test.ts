@@ -73,6 +73,18 @@ describe('M1.1 browser-project persistence coordination (fault-injection unit po
     }
   });
 
+  it('restores separate building and zone classification defaults without changing map data', async () => {
+    const { controller, store, map } = await started();
+    await controller.save(map, 'checkpoint');
+    const view = { camera: { offsetX: 0, offsetY: 0, scale: 1 }, drawing: { facilityClassificationId: 'custom_class_001', zoneClassificationId: 'dry_dock' } };
+    await controller.saveEditorState(view);
+    const recovered = await new ProjectController(store).initialize();
+    expect(recovered?.editorState?.drawing).toMatchObject(view.drawing);
+    expect(serializeMap(recovered!.map)).toBe(serializeMap(map));
+    expect(validateEditorState({ camera: view.camera }).drawing).toMatchObject({ facilityClassificationId: 'building', zoneClassificationId: 'unclassified' });
+    for (const field of ['facilityClassificationId', 'zoneClassificationId']) for (const value of ['', ' ', null, 12, 'x'.repeat(201)]) expect(() => validateEditorState({ ...view, drawing: { [field]: value } })).toThrow(ProjectPersistenceError);
+  });
+
   it('S01 saves without exporting and restores through the shared load pipeline', async () => {
     const { controller, store, map } = await started();
     expect(store.rows.size).toBe(0);

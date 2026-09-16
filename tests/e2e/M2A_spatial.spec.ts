@@ -48,7 +48,7 @@ async function dimensions(page: Page, width: number, height: number, area: numbe
   await expect.poll(() => value('polygon-area')).toBe(area);
 }
 async function drawFacility(page: Page) {
-  await page.getByRole('button', { name: '矩形设施', exact: true }).click();
+  await page.getByRole('button', { name: '矩形建筑', exact: true }).click();
   await clickWorld(page, 0, 0);
   await clickWorld(page, 60, 30);
   await dimensions(page, 60, 30, 1800);
@@ -113,7 +113,7 @@ test('G04 a 100-step real facility drag with associated nodes is one undo transa
 
 test('G05 real polygon drawing closes explicitly and invalid numeric vertices leave the previous map intact', async ({ page }, info) => {
   await ready(page);
-  await page.getByRole('button', { name: '多边形设施', exact: true }).click();
+  await page.getByRole('button', { name: '多边形建筑', exact: true }).click();
   for (const [x, y] of [[0, 0], [60, 0], [60, 30], [0, 30]]) await clickWorld(page, x!, y!);
   await page.keyboard.press('Enter');
   await dimensions(page, 60, 30, 1800);
@@ -137,7 +137,7 @@ test('G08 an absent background never removes rendered facilities, areas or autho
   expect(await download(page, info, 'missing-background-preserved.map.json')).toEqual(map);
 });
 
-test('G02 rejects undeclared workshop crossing then explicitly reclassifies a synthetic open yard with stable entrance/service JSON links', async ({ page }, info) => {
+test('G02 rejects undeclared workshop crossing then explicitly changes a synthetic generic facility with stable entrance/service JSON links', async ({ page }, info) => {
   await ready(page);
   const facilityId = await drawFacility(page);
   await drawingAction(page, '添加入口');
@@ -180,11 +180,11 @@ test('G02 rejects undeclared workshop crossing then explicitly reclassifies a sy
   await page.getByRole('dialog', { name: '未应用输入保护', exact: true }).getByRole('button', { name: '丢弃未应用输入并继续', exact: true }).click();
   await page.getByRole('button', { name: '选择', exact: true }).click();
   await page.getByTestId('facilities-item-' + facilityId).click();
-  // This synthetic positive branch explicitly models an open yard, not an implicit road through a workshop.
-  await page.getByLabel('设施类型', { exact: true }).selectOption('yard');
+  // This synthetic positive branch explicitly switches to the legacy generic other kind; workshop crossing remains rejected above.
+  await (await revealProperty(page, '设施类型')).selectOption('other');
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
-  const yardMap = structuredClone(beforeRoad); yardMap.revision++; yardMap.facilities[facilityId]!.kind = 'yard';
-  expect(await download(page, info, 'explicit-open-yard.map.json')).toEqual(yardMap);
+  const otherMap = structuredClone(beforeRoad); otherMap.revision++; otherMap.facilities[facilityId]!.kind = 'other';
+  expect(await download(page, info, 'explicit-generic-other.map.json')).toEqual(otherMap);
   await page.getByRole('button', { name: '检查与问题', exact: true }).click();
   await page.getByRole('button', { name: '适应地图', exact: true }).click();
   await page.getByRole('button', { name: '道路折线', exact: true }).click();
@@ -192,7 +192,7 @@ test('G02 rejects undeclared workshop crossing then explicitly reclassifies a sy
   await expect(page.getByTestId('road-count')).toHaveText('1');
   await saved(page);
   const original = await download(page, info, 'created-associated.map.json');
-  expect(original.facilities[facilityId]!.kind).toBe('yard');
+  expect(original.facilities[facilityId]!.kind).toBe('other');
   expect(Object.hasOwn(Object.values(original.roads)[0]!, 'owner')).toBe(false);
   expect(original.facilities[facilityId]!.accessPointIds).toEqual([accessId]);
   expect(original.facilities[facilityId]!.servicePointIds).toEqual([serviceId]);

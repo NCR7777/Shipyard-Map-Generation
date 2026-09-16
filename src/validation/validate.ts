@@ -10,6 +10,7 @@ import type { Polygon } from '../domain/model';
 import { inspectServiceConnections } from '../topology/serviceConnections';
 import { mapCapabilities } from '../domain/capabilities';
 import { inspectPlanning } from '../domain/planning';
+import { inspectSpatialClassification } from '../domain/spatialClassification';
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, ownProperties: true });
 const legacyValidator = ajv.compile<YardMap>(legacySchema);
@@ -250,6 +251,7 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
     issues.push(issue('TURN_RULES_UNSPECIFIED', '/movements', '未定义转向连接；共享节点只定义几何关联，M2A 未执行路径可达性检查。', 'warning'));
   const planning = inspectPlanning(map);
   issues.push(...planning.issues);
+  issues.push(...inspectSpatialClassification(map).issues);
   const capabilities = mapCapabilities(map, planning);
   for (const reason of capabilities.reasons) issues.push(issue('UNSUPPORTED_EDIT_CAPABILITY', '', reason, 'warning'));
   if (capabilities.unchecked.length) issues.push(issue('MISSING_CHECKS', '', `本次未校验：${capabilities.unchecked.join(', ')}。`, 'warning'));

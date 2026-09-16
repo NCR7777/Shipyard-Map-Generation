@@ -20,6 +20,7 @@ import { allocateMapIds, runQuickTrace, type QuickTraceCommand } from './drawing
 import { runSemanticPatch, recordManualSemanticChanges, type ApplySemanticPatchCommand } from './semanticPatch';
 import { runResearchAccess, type ApplyResearchAccessCommand } from './researchAccess';
 import { upgradeMapToV03 } from './upgradeV03';
+import { SPATIAL_CLASSIFICATION_NAMESPACE, SpatialClassificationError, applySpatialClassification, setSpatialClasses, spatialClassificationEditable, type SpatialClassification, type SetSpatialClassesCommand } from './spatialClassification';
 import { isStraightRoad, transformRoadGeometry, withRoadAnchors, roadForMap, getRoadPath, hasNonlinearGeometry, pathLength, poseAtDistance, splitPath, pathToRoadGeometry, type ResolvedPath } from '../geometry/roadPath';
 
 export interface Selection { nodes: string[]; roads: string[]; facilities?: string[]; zones?: string[]; accessPoints?: string[]; servicePoints?: string[] }
@@ -44,10 +45,11 @@ export type MapCommand =
   | { type: 'addRoad'; id: string; road: MapRoad; designAssumption?: DesignAssumption }
   | { type: 'updateNode'; id: string; patch: Partial<Pick<MapNode, 'name' | 'position'>> }
   | { type: 'updateRoad'; id: string; patch: Partial<Pick<MapRoad, 'name' | 'shapePoints' | 'geometry' | 'direction' | 'widthM' | 'heightLimitM' | 'massLimitKg' | 'speedLimitMps'>>; designAssumption?: DesignAssumption }
-  | { type: 'addFacility'; id: string; facility: Facility }
-  | { type: 'updateFacility'; id: string; entranceAdjustments?: { id: string; position: Vec3 }[]; patch: Partial<Pick<Facility, 'name' | 'kind' | 'boundary' | 'heightM'>>; designAssumption?: DesignAssumption }
-  | { type: 'addZone'; id: string; zone: Zone }
-  | { type: 'updateZone'; id: string; patch: Partial<Pick<Zone, 'name' | 'kind' | 'boundary' | 'passability'>> }
+  | { type: 'addFacility'; id: string; facility: Facility; classification?: SpatialClassification }
+  | { type: 'updateFacility'; id: string; entranceAdjustments?: { id: string; position: Vec3 }[]; patch: Partial<Pick<Facility, 'name' | 'kind' | 'boundary' | 'heightM'>>; classification?: SpatialClassification | null; designAssumption?: DesignAssumption }
+  | { type: 'addZone'; id: string; zone: Zone; classification?: SpatialClassification; designAssumption?: DesignAssumption }
+  | { type: 'updateZone'; id: string; patch: Partial<Pick<Zone, 'name' | 'kind' | 'boundary' | 'passability'>>; classification?: SpatialClassification | null; designAssumption?: DesignAssumption }
+  | SetSpatialClassesCommand
   | { type: 'addAccessPoint'; id: string; accessPoint: AccessPoint; newNode?: NewPointNode }
   | { type: 'updateAccessPoint'; id: string; patch: Partial<Pick<AccessPoint, 'name' | 'facilityId' | 'nodeId'>>; newNode?: NewPointNode }
   | { type: 'addServicePoint'; id: string; servicePoint: ServicePoint; newNode?: NewPointNode }
@@ -347,6 +349,10 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
       const candidate = structuredClone(map); runSemanticPatch(candidate, command);
       return { allowed: true, issues: [], affectedRefs: topologyChangedRefs(map, candidate) };
     }
+    if (command.type === 'setSpatialClasses') {
+      const candidate = structuredClone(map); setSpatialClasses(candidate, command.customClasses);
+      return { allowed: true, issues: [], affectedRefs: [{ kind: 'extensions', id: '/extensions/' + SPATIAL_CLASSIFICATION_NAMESPACE }] };
+    }
     if (command.type === 'quickTraceRoad' || command.type === 'quickTraceBoundary') {
       const candidate = structuredClone(map);
       const result = runQuickTrace(candidate, command, splitRoad);
@@ -421,6 +427,7 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
       const update = command as Extract<MapCommand, { patch: object; id: string }>;
       const kind = updates[update.type];
       assertSelection(map, { nodes: [], roads: [], [kind]: [update.id] });
+      if ((update.type === 'updateFacility' || update.type === 'updateZone') && update.classification !== undefined && !spatialClassificationEditable(map, update.type === 'updateFacility' ? 'facilities' : 'zones', update.id)) fail('SPATIAL_CLASSIFICATION_VERSION', '现有分类扩展的版本或载荷不受支持；保留原值，普通属性仍可单独编辑。', '/' + kind + '/' + update.id + '/extensions/' + SPATIAL_CLASSIFICATION_NAMESPACE);
       const previous = map[kind][update.id]! as unknown as Record<string, unknown>;
       const changed = Object.keys(update.patch).filter(key => !sameValue(previous[key], (update.patch as Record<string, unknown>)[key]));
       const namedOnly = changed.every(key => key === 'name') && !('newNode' in update && update.newNode) && !('entranceAdjustments' in update && update.entranceAdjustments?.length);
@@ -545,7 +552,7 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
     }
     return { allowed: true, issues: [], affectedRefs: [] };
   } catch (error) {
-    return { allowed: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '无法检查操作依赖。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError ? error.path : '')], affectedRefs: [] };
+    return { allowed: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '无法检查操作依赖。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.path : '')], affectedRefs: [] };
   }
 }
 export function freezeMap(map: YardMap): YardMap {
@@ -666,7 +673,7 @@ function physicalSources(map: YardMap, previous: MapRoad | Facility, entity: Map
 function copySelection(map: YardMap, command: Extract<MapCommand, { type: 'duplicateSelection' }>): void {
   const selected = closureSelection(map, command.selection); const sourceIds = SELECTION_KINDS.flatMap(kind => selected[kind]); const targets = new Set<string>();
   for (const kind of SELECTION_KINDS) for (const id of selected[kind]) {
-    if (Object.keys(map[kind][id]!.extensions ?? {}).length) fail('UNSUPPORTED_COPY_SEMANTICS', '对象扩展可能含未知引用，不能安全复制：' + id);
+    if (Object.keys(map[kind][id]!.extensions ?? {}).some(namespace => namespace !== SPATIAL_CLASSIFICATION_NAMESPACE || !['facilities', 'zones'].includes(kind) || !spatialClassificationEditable(map, kind as 'facilities' | 'zones', id))) fail('UNSUPPORTED_COPY_SEMANTICS', '对象扩展可能含未知引用，不能安全复制：' + id);
     const target = Object.hasOwn(command.idMap, id) ? command.idMap[id] : undefined;
     if (!target || existsId(map, target) || targets.has(target)) fail('INVALID_COPY_ID_MAP', '副本 ID 必须完整、新建且唯一。');
     targets.add(target);
@@ -874,6 +881,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
     switch (command.type) {
       case 'applyResearchAccess': runResearchAccess(next, command, splitRoad); break;
       case 'applySemanticPatch': runSemanticPatch(next, command); break;
+      case 'setSpatialClasses': setSpatialClasses(next, command.customClasses); break;
       case 'quickTraceRoad': case 'quickTraceBoundary': runQuickTrace(next, command, splitRoad); break;
       case 'createConnectedPoint': runConnectedPoint(next, command, splitRoad); break;
       case 'detachAccessPoint': runAccessDetachment(next, command, splitRoad); break;
@@ -905,19 +913,27 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       }
       case 'addFacility':
         if (command.facility.accessPointIds.length || command.facility.servicePointIds.length) fail('FACILITY_MEMBER_COMMAND_REQUIRED', '先添加空成员设施，再通过点命令原子关联成员。');
-        put(next, next.facilities, command.id, command.facility); break;
+        put(next, next.facilities, command.id, command.facility);
+        if (command.classification !== undefined) applySpatialClassification(next, 'facilities', command.id, command.classification);
+        break;
       case 'updateFacility': {
         assertSelection(next, { nodes: [], roads: [], facilities: [command.id] }); checkPatch(command.patch, ['name', 'kind', 'boundary', 'heightM']);
         const previous = next.facilities[command.id]!; const facility = { ...previous, ...structuredClone(command.patch), provenance: structuredClone(previous.provenance) };
         physicalSources(next, previous, facility, ['heightM'], command.designAssumption); recordManualSemanticChanges(next, previous, facility, ['kind', 'name']); next.facilities[command.id] = facility;
+        if (command.classification !== undefined) applySpatialClassification(next, 'facilities', command.id, command.classification, command.designAssumption);
         for (const adjustment of command.entranceAdjustments ?? []) moveNodeWithHandles(next, next.accessPoints[adjustment.id]!.nodeId, adjustment.position);
         break;
       }
-      case 'addZone': put(next, next.zones, command.id, command.zone); break;
+      case 'addZone':
+        put(next, next.zones, command.id, command.zone);
+        if (command.classification !== undefined) applySpatialClassification(next, 'zones', command.id, command.classification, command.designAssumption);
+        break;
       case 'updateZone': {
         assertSelection(next, { nodes: [], roads: [], zones: [command.id] }); checkPatch(command.patch, ['name', 'kind', 'boundary', 'passability']);
         const previous = next.zones[command.id]!, zone = { ...previous, ...structuredClone(command.patch), provenance: structuredClone(previous.provenance) };
-        recordManualSemanticChanges(next, previous, zone, ['kind', 'name']); next.zones[command.id] = zone; break;
+        recordManualSemanticChanges(next, previous, zone, ['kind', 'name']); next.zones[command.id] = zone;
+        if (command.classification !== undefined) applySpatialClassification(next, 'zones', command.id, command.classification, command.designAssumption);
+        break;
       }
       case 'addAccessPoint':
         addPointNode(next, command.accessPoint.nodeId, command.newNode); put(next, next.accessPoints, command.id, command.accessPoint); facilityMember(next, 'accessPointIds', command.id, undefined, command.accessPoint.facilityId); break;
@@ -959,7 +975,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'mergeNodes': case 'connectNodeToRoad': case 'suppressDegree2Node': mapping = executeTopology(next, command); break;
       default: return { ok: false, issues: [problem('UNKNOWN_COMMAND', '未支持的领域命令。')] };
     }
-  } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError ? error.path : '')] }; }
+  } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.path : '')] }; }
   if (!sameValue(input.coordinateFrame, next.coordinateFrame)) return { ok: false, issues: [problem('COORDINATE_FRAME_LOCKED', '普通本地编辑不得改变坐标框架；请通过显式文档替换操作打开另一框架。', '/coordinateFrame')] };
   const report = validateMap(next);
   if (!report.ok) return { ok: false, issues: report.issues };
@@ -983,7 +999,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   const boundarySources = command.type === 'normalizeSiteBoundary' ? recordSiteBoundaryNormalization(input, next) : [];
   const sourceRefs = recordGeometrySources(input, next, support.affectedRefs, command.type === 'duplicateSelection' ? command.idMap : undefined);
   const directionSources = command.type === 'updateRoad' || command.type === 'updateRoadBatch' ? recordDirectionSources(input, next, support.affectedRefs) : [];
-  const semanticRefs = command.type === 'applySemanticPatch' || command.type === 'updateFacility' || command.type === 'updateZone' ? topologyChangedRefs(input, next) : [];
+  const semanticRefs = command.type === 'applySemanticPatch' || command.type === 'setSpatialClasses' || command.type === 'updateFacility' || command.type === 'updateZone' || command.type === 'addFacility' || command.type === 'addZone' ? topologyChangedRefs(input, next) : [];
   const affectedRefs = [...new Map([...support.affectedRefs, ...topologySources, ...sourceRefs, ...boundarySources, ...semanticRefs, ...directionSources].map(ref => [ref.kind + '/' + ref.id, ref])).values()];
   next.revision = input.revision + 1;
   const finalReport = validateMap(next); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };

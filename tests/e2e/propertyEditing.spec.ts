@@ -1,3 +1,4 @@
+import { revealProperty } from '../helpers/workbenchUi';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -96,7 +97,7 @@ test('real CIMC quick zone properties and explicit dimensions apply atomically w
   await choose(page, 'zones', id); await expect(page.getByLabel('区域类型', { exact: true })).toHaveValue('unclassified');
   await expect(page.getByLabel('区域通行声明', { exact: true })).toHaveValue('unknown');
   const semantic = { name: '区域普通属性验收', kind: 'buffer', passability: 'allowed' };
-  await page.getByLabel('名称', { exact: true }).fill(semantic.name); await page.getByLabel('区域类型', { exact: true }).selectOption(semantic.kind);
+  await page.getByLabel('名称', { exact: true }).fill(semantic.name); await (await revealProperty(page, '区域类型')).selectOption(semantic.kind);
   await page.getByLabel('区域通行声明', { exact: true }).selectOption(semantic.passability); await page.getByRole('button', { name: '应用属性', exact: true }).click();
   const renamed = await current(page); onlyChanged(drawn, renamed, 'zones', id, semantic); expect(renamed.zones[id]!.boundary).toEqual(drawn.zones[id]!.boundary);
   await undoRedo(page, drawn, renamed);
@@ -122,10 +123,10 @@ test('real CIMC building and existing linked-point ordinary properties preserve 
   await choose(page, 'facilities', facilityId); await expect(page.getByLabel('设施类型', { exact: true })).toHaveValue('building');
   const width = Number(await page.getByLabel('矩形宽 (m)', { exact: true }).inputValue()) + 2;
   const height = Number(await page.getByLabel('矩形高 (m)', { exact: true }).inputValue()) + 3;
-  await page.getByLabel('名称', { exact: true }).fill('建筑分类与尺寸验收'); await page.getByLabel('设施类型', { exact: true }).selectOption('yard');
+  await page.getByLabel('名称', { exact: true }).fill('建筑分类与尺寸验收'); await (await revealProperty(page, '设施类型')).selectOption('workshop');
   await page.getByLabel('矩形宽 (m)', { exact: true }).fill(String(width)); await page.getByLabel('矩形高 (m)', { exact: true }).fill(String(height));
   await page.getByRole('button', { name: '应用属性', exact: true }).click();
-  const classified = await current(page); onlyChanged(drawn, classified, 'facilities', facilityId, { name: '建筑分类与尺寸验收', kind: 'yard', boundary: resizedRectangle(drawn.facilities[facilityId]!.boundary, width, height) });
+  const classified = await current(page); onlyChanged(drawn, classified, 'facilities', facilityId, { name: '建筑分类与尺寸验收', kind: 'workshop', boundary: resizedRectangle(drawn.facilities[facilityId]!.boundary, width, height) });
   expect(classified.facilities[facilityId]!.heightM).toEqual(drawn.facilities[facilityId]!.heightM); await undoRedo(page, drawn, classified);
   const accessId = Object.keys(baseline.accessPoints)[0]!; await choose(page, 'accessPoints', accessId);
   await page.getByLabel('名称', { exact: true }).fill('真实关联入口名称验收'); await page.getByRole('button', { name: '应用属性', exact: true }).click();

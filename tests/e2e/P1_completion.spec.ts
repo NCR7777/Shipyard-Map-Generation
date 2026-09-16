@@ -321,7 +321,7 @@ test('P1 A06 searching the directory during a real polygon draft retains all ear
   await ready(page);
   const before = (await download(page, info, 'polygon-before.map.json')).map;
   const hash = await page.getByTestId('map-hash').textContent();
-  await page.getByRole('button', { name: '多边形设施', exact: true }).click();
+  await page.getByRole('button', { name: '多边形建筑', exact: true }).click();
   for (const point of [[0,0,0], [60,0,0]] as Vec3[]) { const p = await screen(page, point); await page.mouse.click(p.x, p.y); }
   await expect(page.getByTestId('unapplied-inputs')).toBeVisible();
   await page.getByTestId('object-search').fill('仍在绘制');

@@ -6,6 +6,7 @@ import { inspectPlanning } from './planning';
 import { enumerateMergeTurns, mergeNodes, splitPosition, TopologyError } from './topologyEditing';
 import { roadLength } from '../geometry/roads';
 import { sameValue } from './value';
+import { applySpatialClassification, type SpatialClassification } from './spatialClassification';
 import { roadForMap, getRoadPath, pathLength, pathToRoadGeometry, movePathAnchor, intersectPaths, type ResolvedPath } from '../geometry/roadPath';
 
 export interface QuickTraceDefaults { widthM: number; direction?: 'both' | 'forward' | 'backward'; connectNewCrossings?: boolean }
@@ -13,7 +14,7 @@ export const DEFAULT_QUICK_TRACE_DEFAULTS: Readonly<QuickTraceDefaults> = Object
 export type QuickTraceConnection = { kind: 'node'; nodeId: string } | { kind: 'road'; roadId: string; distanceM: number };
 export type QuickTraceCommand =
   | { type: 'quickTraceRoad'; points: Vec3[]; geometry?: RoadGeometry; defaults?: QuickTraceDefaults; startConnection?: QuickTraceConnection; endConnection?: QuickTraceConnection; disconnect?: boolean }
-  | { type: 'quickTraceBoundary'; kind: 'building' | 'area'; boundary: Polygon };
+  | { type: 'quickTraceBoundary'; kind: 'building' | 'area'; boundary: Polygon; classification?: SpatialClassification };
 type SplitRoad = (map: YardMap, command: Extract<MapCommand, { type: 'splitRoad' }>) => SplitMapping;
 export interface QuickTraceResult { geometryPreservedRoadIds: string[]; entityId: string }
 const COLLECTIONS = ['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const;
@@ -110,6 +111,7 @@ export function runQuickTrace(map: YardMap, command: QuickTraceCommand, split: S
     const name = numberedName(map[collection], command.kind === 'building' ? '建筑' : '区域');
     if (command.kind === 'building') map.facilities[entityId] = { ...newFacility(command.boundary, name, 'building'), provenance };
     else map.zones[entityId] = { ...newZone(command.boundary, name, 'unclassified'), provenance };
+    if (command.classification !== undefined) applySpatialClassification(map, collection, entityId, command.classification);
     return { entityId, geometryPreservedRoadIds: [] };
   }
   checkPoints(command.points);

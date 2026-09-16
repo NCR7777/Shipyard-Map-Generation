@@ -106,7 +106,7 @@ async function cancelRejectedContour(page: Page) {
 for (const kind of ['facilities', 'zones'] as const) {
   test('R01 R05 R08 real ' + kind + ' 60x30 to 80x45 keeps its diagonal fixed and commits 100 pointer frames once', async ({ page }, info) => {
     await ready(page);
-    await page.getByRole('button', { name: kind === 'facilities' ? '矩形设施' : '矩形区域', exact: true }).click();
+    await page.getByRole('button', { name: kind === 'facilities' ? '矩形建筑' : '矩形区域', exact: true }).click();
     await clickWorld(page, 0, 0); await clickWorld(page, 60, 30);
     const id = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
     await localSize(page, 60, 30);
@@ -144,7 +144,7 @@ for (const kind of ['facilities', 'zones'] as const) {
 
 test('R02 R08 a 30-degree rectangle uses local dimensions and numeric editing produces the same authoritative corners', async ({ page }, info) => {
   await ready(page);
-  await page.getByRole('button', { name: '矩形设施', exact: true }).click();
+  await page.getByRole('button', { name: '矩形建筑', exact: true }).click();
   await clickWorld(page, 0, 0); await clickWorld(page, 60, 30);
   const id = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
   await page.getByRole('button', { name: '旋转', exact: true }).click();

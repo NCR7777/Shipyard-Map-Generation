@@ -7,6 +7,9 @@ import type { YardMap } from '../../src/domain/model';
 type Drawing = {
   hiddenTypes: string[]; lockedTypes: string[]; labelMode: 'auto' | 'focus' | 'off' | 'debug_all'; objectSearch: string;
   snapGrid: 0 | 1 | 5 | 10; snapNodes: boolean; facilityKind: string; zoneKind: string;
+  facilityClassificationId: string; zoneClassificationId: string;
+  roadWidthM: number; roadDirection: 'both' | 'forward' | 'backward'; connectNewCrossings: boolean;
+  roadFillOpacity: number; facilityFillOpacity: number; zoneFillOpacity: number;
   facilityMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
   zoneMovePolicy: 'boundaryOnly' | 'withAssociatedNodes';
   showRoadBands: boolean; showRoadCenterlines: boolean; showOrdinaryNodes: boolean;
@@ -16,15 +19,16 @@ type Editor = { camera: Camera; drawing: Drawing; workbench?: typeof defaultWork
 type Stored = { draft: { mapJson: string }; checkpoint: { mapJson: string } | null };
 const defaults: Drawing = {
   hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
-  snapGrid: 0, snapNodes: false, facilityKind: 'workshop', zoneKind: 'work',
+  snapGrid: 0, snapNodes: true, facilityKind: 'building', zoneKind: 'unclassified',
+  facilityClassificationId: 'building', zoneClassificationId: 'unclassified',
+  roadWidthM: 12, roadDirection: 'both', connectNewCrossings: true,
+  roadFillOpacity: 1, facilityFillOpacity: 0.2, zoneFillOpacity: 0.2,
   facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly',
-  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
+  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: false,
 };
 const custom: Drawing = {
-  hiddenTypes: [], lockedTypes: [], labelMode: 'auto', objectSearch: '',
-  snapGrid: 5, snapNodes: true, facilityKind: 'dock', zoneKind: 'buffer',
-  facilityMovePolicy: 'boundaryOnly', zoneMovePolicy: 'boundaryOnly', // Legacy fields persist but UX02 ordinary interaction no longer selects policies.
-  showRoadBands: true, showRoadCenterlines: true, showOrdinaryNodes: true,
+  ...defaults, snapGrid: 5, snapNodes: true, facilityKind: 'workshop', zoneKind: 'buffer',
+  showOrdinaryNodes: true,
 };
 const labels = {
   snapGrid: '网格吸附', snapNodes: '节点吸附', facilityKind: '新建设施类型', zoneKind: '新建区域类型',
@@ -109,11 +113,47 @@ async function clickWorld(page: Page, x: number, y: number) {
   const box = await page.getByTestId('map-canvas').locator('canvas').first().boundingBox();
   if (!box) throw new Error('Canvas is not visible.');
   const view = await camera(page);
-  await page.mouse.click(box.x + view.offsetX + x * view.scale, box.y + view.offsetY - y * view.scale);
+  const point = { x: box.x + view.offsetX + x * view.scale, y: box.y + view.offsetY - y * view.scale };
+  expect(point.x, 'world X must lie inside the real canvas').toBeGreaterThan(box.x);
+  expect(point.x).toBeLessThan(box.x + box.width);
+  expect(point.y, 'world Y must lie inside the real canvas').toBeGreaterThan(box.y);
+  expect(point.y).toBeLessThan(box.y + box.height);
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, point), 'world click must hit the canvas, not a panel or dialog').toBe('CANVAS');
+  await page.mouse.click(point.x, point.y);
+}
+async function showDrawingBounds(page: Page) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const box = await page.getByTestId('map-canvas').locator('canvas').first().boundingBox();
+    if (!box) throw new Error('Canvas is not visible.');
+    const view = await camera(page);
+    if ([[0, 0], [120, 60]].every(([x, y]) => view.offsetX + x! * view.scale > 20 && view.offsetX + x! * view.scale < box.width - 20 && view.offsetY - y! * view.scale > 20 && view.offsetY - y! * view.scale < box.height - 20)) return;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 120);
+    await expect.poll(async () => (await camera(page)).scale).toBeLessThan(view.scale);
+  }
+  throw new Error('Could not display the unchanged 0..120 m drawing range using ordinary zoom.');
 }
 async function addNode(page: Page, x = 23, y = 27) {
+  await openDrawingSettings(page);
   await page.getByRole('button', { name: '节点', exact: true }).click();
   await clickWorld(page, x, y);
+  return page.getByLabel('稳定 ID', { exact: true }).inputValue();
+}
+async function beginBuildingRectangle(page: Page) {
+  await page.getByRole('button', { name: '矩形建筑', exact: true }).click();
+  const upgrade = page.getByRole('dialog', { name: '显式升级地图契约', exact: true });
+  await expect(upgrade).toBeVisible();
+  await upgrade.getByRole('button', { name: '保留原图并升级', exact: true }).click();
+  await expect(upgrade).not.toBeVisible();
+  await expectDrawing(page, custom); // Migration preserves this project's drawing choices.
+  await showDrawingBounds(page); // Upgrade fits existing geometry; retain the original test coordinates.
+  await page.getByRole('button', { name: '矩形建筑', exact: true }).click();
+}
+async function selectOnlySpatial(page: Page, kind: 'facilities' | 'zones') {
+  await page.getByRole('button', { name: '选择', exact: true }).click();
+  const item = page.getByTestId(new RegExp('^' + kind + '-item-'));
+  await expect(item).toHaveCount(1); await item.click();
+  await showDrawingBounds(page); // Directory selection also fits the selected object's extent.
   return page.getByLabel('稳定 ID', { exact: true }).inputValue();
 }
 async function download(page: Page, info: TestInfo, filename: string): Promise<YardMap> {
@@ -166,14 +206,14 @@ test('D01 ordinary drawing choices survive real IDB save and refresh and drive 5
   await expect(page.getByLabel('X (m)', { exact: true })).toHaveValue('10');
   await expect(page.getByLabel('Y (m)', { exact: true })).toHaveValue('20');
   // A rectangle click near the original off-grid node must use its coordinate, before the 5m grid.
-  await page.getByRole('button', { name: '矩形设施', exact: true }).click();
+  await beginBuildingRectangle(page);
   await clickWorld(page, 24, 28); await clickWorld(page, 70, 60);
-  const facilityId = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
+  const facilityId = await selectOnlySpatial(page, 'facilities');
   await page.getByRole('button', { name: '矩形区域', exact: true }).click();
   await clickWorld(page, 90, 10); await clickWorld(page, 120, 35);
-  const zoneId = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
+  const zoneId = await selectOnlySpatial(page, 'zones');
   const map = await download(page, info, 'drawing-snapping.map.json');
-  expect(map.facilities[facilityId]!.kind).toBe('dock');
+  expect(map.facilities[facilityId]!.kind).toBe('workshop');
   expect(map.facilities[facilityId]!.boundary.outer[0]).toEqual([23, 27, 0]);
   expect(map.zones[zoneId]!.kind).toBe('buffer');
   expect(map.nodes[nodeId]!.position).toEqual([23, 27, 0]);
@@ -236,7 +276,7 @@ test('D04 rapid A/B navigation isolates drawing snapshots during a simulated nat
   await create(page, 'Drawing 工程B'); await expectDrawing(page, defaults);
   await addNode(page, 50, 50);
   const configB: Drawing = {
-  ...defaults, snapGrid: 1, facilityKind: 'yard', zoneKind: 'drivable' };
+  ...defaults, snapGrid: 1, facilityKind: 'other', zoneKind: 'drivable' };
   await configure(page, configB); await savedDrawing(page, configB);
   const idB = await activeId(page); const hashB = await page.getByTestId('map-hash').textContent();
   await open(page, idA); await expectDrawing(page, custom);
@@ -291,14 +331,17 @@ test('D05 real legacy camera-only and partial records normalize missing fields w
   const legacyCamera: Camera = { offsetX: 110, offsetY: 420, scale: 3 };
   const cases = [
     { record: { camera: legacyCamera }, expected: defaults },
-    { record: { camera: legacyCamera, drawing: { snapGrid: 0, snapNodes: false, facilityKind: 'quay' } }, expected: { ...defaults, facilityKind: 'quay' } },
+    { record: { camera: legacyCamera, drawing: { snapGrid: 0, snapNodes: false, facilityKind: 'quay' } }, expected: { ...defaults, snapNodes: false, facilityKind: 'quay' } },
     { record: { camera: legacyCamera, drawing: { zoneMovePolicy: 'withAssociatedNodes' } }, expected: { ...defaults, zoneMovePolicy: 'withAssociatedNodes' as const } },
     { record: { camera: legacyCamera, drawing: { showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false } }, expected: { ...defaults, showRoadBands: false, showRoadCenterlines: false, showOrdinaryNodes: false } },
   ];
   for (const [index, fixture] of cases.entries()) {
     await replaceEditorRecord(page, fixture.record);
     await page.reload(); await saved(page);
-    await expectDrawing(page, fixture.expected); expect(await camera(page)).toEqual(legacyCamera);
+    // Legacy non-building presets remain losslessly stored; new drawing uses the visible building fallback.
+    await expectDrawing(page, fixture.expected.facilityKind === 'quay' ? { ...fixture.expected, facilityKind: 'building' } : fixture.expected);
+    await savedDrawing(page, fixture.expected);
+    expect(await camera(page)).toEqual(legacyCamera);
     expect(await download(page, info, 'legacy-' + index + '.map.json')).toEqual(map);
     await expect(page.getByText(/地图已恢复，但视窗或绘图配置未恢复/)).not.toBeVisible();
   }
@@ -357,18 +400,19 @@ test('D07 a simulated editorStates quota failure reports unsaved config while pr
 
 test('D08 refresh resets selection/tool/free-polygon mode and discards incomplete drawing without persisting temporary state', async ({ page }, info) => {
   await ready(page); await configure(page, custom);
-  await page.getByRole('button', { name: '矩形设施', exact: true }).click();
+  await beginBuildingRectangle(page);
   await clickWorld(page, 0, 0); await clickWorld(page, 60, 30);
-  const id = await page.getByLabel('稳定 ID', { exact: true }).inputValue();
+  const id = await selectOnlySpatial(page, 'facilities');
   await savedDrawing(page, custom);
   const before = await download(page, info, 'temporary-before.map.json');
   await page.getByLabel('边界编辑模式', { exact: true }).selectOption('polygon');
-  await page.getByRole('button', { name: '多边形区域', exact: true }).click();
+  await page.getByLabel('区域绘制形状', { exact: true }).selectOption('zonePolygon');
+  await page.getByRole('button', { name: '区域', exact: true }).click();
   await clickWorld(page, 90, 10);
   await expect(page.getByTestId('unapplied-inputs')).toBeVisible();
   await page.waitForTimeout(750); // Cross the real debounce; incomplete geometry must not be a durable map edit.
   expect(Object.keys(await editor(page)).sort()).toEqual(['camera', 'drawing', 'workbench']);
-  expect((await editor(page)).workbench).toEqual(defaultWorkbench);
+  expect((await editor(page)).workbench).toEqual({ ...defaultWorkbench, rightCollapsed: false }); // Explicit directory selection opens the property panel.
   expect((await editor(page)).drawing).toEqual(custom);
   expect(JSON.parse((await project(page)).draft.mapJson)).toEqual(before);
   page.on('dialog', dialog => dialog.accept());
@@ -410,7 +454,7 @@ test('D09 Save and Ctrl+S persist current ordinary choices with automatic deboun
   await saveToBrowser(page);
   await savedDrawing(page, custom);
   const next: Drawing = {
-  ...defaults, snapGrid: 10, facilityKind: 'assembly', zoneKind: 'waiting' };
+  ...defaults, snapGrid: 10, facilityKind: 'other', zoneKind: 'waiting' };
   await configure(page, next); await page.waitForTimeout(750);
   expect((await editor(page)).drawing).toEqual(custom);
   await (await drawingControl(page, '网格吸附')).focus();
