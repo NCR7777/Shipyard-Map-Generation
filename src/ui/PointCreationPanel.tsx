@@ -8,13 +8,13 @@ import type { ConnectedPointCommand, ConnectedPointConnection } from '../domain/
 import type { PointPickResult } from '../renderers/2d/MapCanvas';
 import { commandSupport } from '../domain/commands';
 import { ConnectedPointFields } from './ConnectedPointFields';
-import { pointInRing } from '../geometry/polygons';
+import { GEOMETRY_TOLERANCE_M, pointInRing } from '../geometry/polygons';
 
 export interface PointCreationDraft {
   kind: 'accessPoints' | 'servicePoints'; name: string;
   ownerKind: 'none' | 'facility' | 'zone'; facilityId: string; zoneId: string; accessPointId: string;
   serviceKind: ServicePoint['kind']; nodeMode: 'existing' | 'new'; nodeId: string; position: string[];
-  resourceIds?: string[]; simple?: boolean; connectionMode?: 'deferred' | 'connected'; connection?: ConnectedPointConnection; ids?: { pointId: string; nodeId: string; connectorRoadId: string; junctionId: string; sourceId: string };
+  resourceIds?: string[]; simple?: boolean; continuous?: boolean; connectionMode?: 'deferred' | 'connected'; connection?: ConnectedPointConnection; ids?: { pointId: string; nodeId: string; connectorRoadId: string; junctionId: string; sourceId: string };
   connectorDirection?: 'both' | 'forward' | 'backward' | 'unknown'; connectorWidth?: string; approvedMovements?: { id: string; incomingArc: ArcRef; outgoingArc: ArcRef }[];
   canvasMode: 'existing' | 'new' | 'road' | 'path' | null; arrival: ServiceArrivalDraft;
 }
@@ -38,6 +38,14 @@ export function makePointCreationDraft(kind: PointCreationDraft['kind'], selecti
   if (map.schemaVersion !== '0.1.0') arrival.mode = 'node_proxy';
   return { kind, name: kind === 'accessPoints' ? '入口' : '服务点', ownerKind: facilityId || kind === 'accessPoints' ? 'facility' : zoneId ? 'zone' : 'none', facilityId, zoneId, accessPointId: '', serviceKind: 'loading', nodeMode: 'new', nodeId: '', position: ['', '', '0'], canvasMode: null, arrival };
 }
+export function makeContinuousEntranceDraft(facilityId: string, map: YardMap): PointCreationDraft {
+  const draft = makePointCreationDraft('accessPoints', { nodes: [], roads: [], facilities: [facilityId] }, map);
+  const usedNames = new Set(Object.values(map.accessPoints).filter(point => point.facilityId === facilityId).map(point => point.name.trim()));
+  let index = 1;
+  while (usedNames.has('入口' + String(index).padStart(3, '0'))) index++;
+  return { ...draft, name: '入口' + String(index).padStart(3, '0'), facilityId, ownerKind: 'facility', simple: true, continuous: true,
+    connectionMode: 'deferred', nodeMode: 'new', canvasMode: 'new', arrival: makeServiceArrivalDraft(undefined) };
+}
 export function applyPointPick(draft: PointCreationDraft, result: PointPickResult): PointCreationDraft {
   if (draft.simple && (draft.canvasMode === 'road' || draft.canvasMode === 'path')) {
     if (draft.canvasMode === 'path') return draft;
@@ -51,9 +59,12 @@ function inputIssue(code: string, message: string): Issue {
 }
 export function buildPointCreationCommand(draft: PointCreationDraft, map: YardMap, allocateId: (prefix: string) => string):
   { ok: true; id: string; kind: PointCreationDraft['kind']; command: MapCommand } | { ok: false; issues: Issue[] } {
-  const deferred = draft.simple && draft.connectionMode === 'deferred';
-  if (draft.simple && !deferred) return buildConnectedPointCreation(draft, map, allocateId);
   const reject = (code: string, message: string) => ({ ok: false as const, issues: [inputIssue(code, message)] });
+  const deferred = draft.simple && draft.connectionMode === 'deferred';
+  if (draft.continuous && (!deferred || draft.kind !== 'accessPoints' || draft.ownerKind !== 'facility' || draft.nodeMode !== 'new'
+    || draft.canvasMode !== 'new' || draft.nodeId || draft.zoneId || draft.ids || hasPointConnectionCandidate(draft)))
+    return reject('CONTINUOUS_ENTRANCE_MODE', '连续添加仅支持新建独立入口；已有点位关联、接路或到达候选请使用单个入口设置。');
+  if (draft.simple && !deferred) return buildConnectedPointCreation(draft, map, allocateId);
   const name = draft.name.trim() || (deferred ? draft.kind === 'accessPoints' ? '入口' : '作业点' : '');
   if (!name || (draft.kind === 'accessPoints' && !draft.facilityId)) return reject('POINT_INPUT_REQUIRED', '请填写名称；入口必须明确选择设施。');
   if (draft.nodeMode === 'new' && (draft.position.length !== 3 || draft.position.some(value => !value.trim() || !Number.isFinite(Number(value))))) return reject('POINT_POSITION_REQUIRED', '请在画布点选或输入专用节点的 XYZ 米制位置；不使用设施中心。');
@@ -72,6 +83,10 @@ export function buildPointCreationCommand(draft: PointCreationDraft, map: YardMa
     const onHole = owner.boundary.holes.some(hole => pointInRing(position, hole) !== 'outside');
     if (draft.kind === 'accessPoints' ? pointInRing(position, owner.boundary.outer) !== 'boundary' || onHole : pointInRing(position, owner.boundary.outer) === 'outside' || onHole)
       return reject('POINT_OWNER_POSITION', draft.kind === 'accessPoints' ? '入口必须位于所属建筑的外边界。' : '作业点必须位于所属对象范围内，不能落入孔洞。');
+    if (draft.continuous && Object.values(map.accessPoints).some(point => {
+      const existing = map.nodes[point.nodeId]?.position;
+      return point.facilityId === draft.facilityId && existing && Math.hypot(...existing.map((value, axis) => value - position[axis]!)) <= GEOMETRY_TOLERANCE_M;
+    })) return reject('CONTINUOUS_ENTRANCE_DUPLICATE', '此处已有本建筑的入口；请选择另一位置。');
     const sourceRefs = owner.provenance.sourceRefs?.slice();
     provenance = { category: 'drawing', ...(sourceRefs?.length ? { sourceRefs } : {}), note: '人工点选位置；仅创建独立节点，接路及到达语义待补，不代表现场核验。' };
   }
@@ -93,6 +108,13 @@ export function PointCreationPanel({ draft, map, readonly = false, issues, onCha
   draft: PointCreationDraft; map: YardMap; readonly?: boolean; issues: Issue[];
   onChange: (value: PointCreationDraft) => void; onCreate: () => void; onCancel: () => void;
 }) {
+  if (draft.continuous) return <aside className="point-pick-panel" aria-label="连续添加入口">
+    <strong>连续添加入口</strong><p>所属建筑：{map.facilities[draft.facilityId]?.name ?? '未选择有效建筑'}</p>
+    <p>当前入口数：{Object.values(map.accessPoints).filter(point => point.facilityId === draft.facilityId).length} · 下一入口：{draft.name}</p>
+    <p>点击高亮外边界即创建一个独立入口，可稍后画路连接。Ctrl+Z 逐个撤销；Enter / Esc 结束。</p>
+    {issues.length > 0 && <div role="alert">{issues.map((issue, index) => <p key={index}>{issue.message}</p>)}</div>}
+    <button onClick={onCancel}>完成添加入口</button><button disabled={readonly} onClick={() => onChange({ ...draft, continuous: false, canvasMode: null })}>单个入口与接路设置</button>
+  </aside>;
   if (draft.simple) return <ConnectedPointFields draft={draft} map={map} readonly={readonly} issues={issues} onChange={onChange} onCreate={onCreate} onCancel={onCancel}/>;
   const title = draft.kind === 'accessPoints' ? '添加入口' : '添加服务点';
   if (draft.canvasMode) return <aside className="point-pick-panel" aria-label="服务点画布定位">

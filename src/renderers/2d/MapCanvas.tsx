@@ -33,7 +33,7 @@ import { screenToWorld, worldToScreen, zoomAt, type Camera, type Vec2 } from '..
 export type Tool = 'select' | 'node' | 'road' | 'curve' | 'measure' | 'pan' | 'facilityRect' | 'facilityPolygon' | 'zoneRect' | 'zonePolygon' | 'facilityOrientedRect' | 'zoneOrientedRect';
 export const isRoadTool = (tool: Tool) => tool === 'road' || tool === 'curve';
 export type PointPickResult = { nodeId: string } | { position: Vec3 } | { roadId: string; distanceM: number; position: Vec3 };
-export interface PointPick { mode: 'existing' | 'new' | 'road' | 'path' | 'relocate'; nodeId?: string; position?: Vec3; selectedRoadIds?: string[]; eligibleRoadIds?: string[]; outerBoundary?: readonly Vec3[] }
+export interface PointPick { mode: 'existing' | 'new' | 'road' | 'path' | 'relocate'; nodeId?: string; position?: Vec3; selectedRoadIds?: string[]; eligibleRoadIds?: string[]; outerBoundary?: readonly Vec3[]; continuousFacilityId?: string }
 export type TopologyTarget = { kind: 'nodes'; id: string; position: Vec3 } | { kind: 'roads'; id: string; position: Vec3; distanceM: number };
 interface Props {
   onPointIdentities?: SpatialLayerProps['onPointIdentities'];
@@ -329,12 +329,15 @@ export function MapCanvas(props: Props) {
     if (props.pointPick?.outerBoundary) {
       const position = boundaryProjection(screen);
       if (!position) { setPickNotice('请靠近高亮外边界点选；绿色圆点表示实际入口位置。'); return; }
-      props.onPointPick?.({ position }); return;
+      setPickNotice(''); props.onPointPick?.({ position }); return;
     }
     props.onPointPick?.({ position: snapPosition(screen, props.frameCamera.read(), props.scene.nodes, props.pointPick?.mode === 'relocate' ? { gridM: props.snap?.gridM ?? null, nodes: false } : props.snap).world });
   }
   function pickNode(id: string) {
     if (!props.pointPick || props.readonly) return;
+    if (props.pointPick.continuousFacilityId && props.scene.accessPoints.some(point => point.nodeId === id && point.facilityId === props.pointPick!.continuousFacilityId)) {
+      setPickNotice('此处已有本建筑入口；请点选其他边界位置。'); return;
+    }
     if (props.pointPick.mode === 'relocate' || props.pointPick.mode === 'new' && props.pointPick.outerBoundary) { const screen = pointer(); if (screen) pickPosition(screen); return; }
     if (props.pointPick.mode === 'existing' || props.pointPick.mode === 'road') props.onPointPick?.({ nodeId: id });
     else {
@@ -677,7 +680,7 @@ export function MapCanvas(props: Props) {
     </div>}
     {props.draftRoad && <div className="point-pick-instruction" data-testid="road-draft-instruction"><span>{props.draftRoad.spans.length} 段草稿 · {props.tool === 'curve' ? props.draftRoad.curveEnd ? '点击曲线经过位置' : '点击下一段终点，再点弯曲位置' : '点击下一点；Enter / 双击完成'}；R / C 接续直线或曲线。{draftJoin&&<strong> 当前接续：{draftJoin==='smooth'?'平滑':'折角'}。</strong>}绿圈接路，Alt 不连接</span><button onClick={props.onRoadFinish} disabled={props.draftRoad.points.length < 2 || !!props.draftRoad.curveEnd}>完成道路</button></div>}
     {widthPreview && <output className="point-pick-instruction" data-testid="road-width-preview">人工影像估计宽度 {widthPreview.widthM.toFixed(2)} m · 松开应用</output>}
-    {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.outerBoundary ? '点选高亮外边界附近，入口会吸附到绿色圆点；不移动建筑，不自动接路。' : props.pointPick.mode === 'path' ? '绿色为已选内部路径；青色为从末端沿已声明方向可继续选择的本对象道路。' : props.pointPick.mode === 'road' ? '点选接入道路或路口；仅生成候选，确认后才显式接路。' : props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
+    {props.pointPick && <div className="point-pick-instruction" role="status">{pickNotice || (props.pointPick.continuousFacilityId ? '沿高亮外边界连续点击添加入口；点击即创建，Ctrl+Z 撤销，Enter / Esc 完成。' : props.pointPick.outerBoundary ? '点选高亮外边界附近，入口会吸附到绿色圆点；不移动建筑，不自动接路。' : props.pointPick.mode === 'path' ? '绿色为已选内部路径；青色为从末端沿已声明方向可继续选择的本对象道路。' : props.pointPick.mode === 'road' ? '点选接入道路或路口；仅生成候选，确认后才显式接路。' : props.pointPick.mode === 'existing' ? '点选已有节点或关联点以绑定；不会新增节点。' : '点选专用节点位置；确认创建前仅是草稿，不自动拆路或连接。')}</div>}
     <div className="canvas-label">LOCAL XY · 米制 · Z ↑</div>
     <output ref={cursorOutput} className="canvas-cursor" data-testid="cursor-position">本地 XY · 米制</output>
     {details && cardRect && props.labelMode !== 'off' && !props.frameCamera.navigating && !pressed.current && <div className="focus-details" style={{ left: cardRect.x, top: cardRect.y, right: 'auto' }} role="tooltip" data-testid="focus-details"><strong>{details.name || details.id}</strong><code>{details.id}</code><span>{details.source}</span></div>}

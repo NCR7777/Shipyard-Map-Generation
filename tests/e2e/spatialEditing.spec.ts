@@ -106,6 +106,7 @@ test('real CIMC unconnected entrances and work points reuse their nodes when dra
   const ring = base.facilities[facilityId]!.boundary.outer, gate: Vec3 = [ring[0][0], (ring[0][1] + ring[2][1]) / 2, 0];
   const chooseOwner = async () => { await page.getByRole('button', { name: '选择', exact: true }).click(); await page.getByTestId('object-search').fill(facilityId); await page.getByTestId('facilities-item-' + facilityId).click(); };
   await chooseOwner(); await page.getByRole('button', { name: '添加入口', exact: true }).last().click();
+  await page.getByRole('button', { name: '单个入口与接路设置', exact: true }).click();
   const accessDialog = page.getByRole('dialog', { name: '添加入口', exact: true });
   await expect(accessDialog.getByLabel('创建时接路', { exact: true })).toHaveValue('deferred');
   await accessDialog.getByRole('button', { name: '在画布放置入口', exact: true }).click();

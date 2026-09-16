@@ -63,6 +63,7 @@ test('real CIMC with existing advanced references deletes new outlines and expli
   const drawn = await current(page), id = Object.keys(drawn.facilities).find(id => !baseline.facilities[id])!;
   await choose(page, 'facilities', id);
   await page.getByRole('button', { name: '添加入口', exact: true }).last().click();
+  await page.getByRole('button', { name: '单个入口与接路设置', exact: true }).click();
   await expect(page.getByLabel('创建时接路', { exact: true })).toHaveValue('deferred');
   await page.getByRole('button', { name: '在画布放置入口', exact: true }).click(); await click([320, 960, 0]);
   await page.getByRole('button', { name: '创建入口', exact: true }).click();

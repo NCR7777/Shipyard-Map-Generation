@@ -34,6 +34,8 @@ export async function drawingAction(page: Page, name: string): Promise<void> {
   // Existing low-level association fixtures explicitly use the retained advanced declaration path.
   // UX02 ordinary-flow tests exercise the canvas wizard instead.
   if (name === '添加入口' || name === '添加服务点') {
+    const continuous = page.getByRole('complementary', { name: '连续添加入口', exact: true });
+    if (await continuous.isVisible()) await continuous.getByRole('button', { name: '单个入口与接路设置', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.locator('summary').filter({ hasText: /^高级关联声明$/ }).click();
     await dialog.getByRole('button', { name: '打开高级关联表单', exact: true }).click();

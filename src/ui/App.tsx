@@ -39,7 +39,7 @@ import { MapCanvas, type Tool, type TopologyTarget, type TraceConnection } from 
 import { fitCamera } from '../geometry/coordinates';
 import { PropertyPanel, type RoadShapePreview } from './PropertyPanel';
 import { Modal } from './Modal';
-import { PointCreationPanel, makePointCreationDraft, applyPointPick, buildPointCreationCommand } from './PointCreationPanel';
+import { PointCreationPanel, makePointCreationDraft, makeContinuousEntranceDraft, applyPointPick, buildPointCreationCommand } from './PointCreationPanel';
 import './workspace.css';
 import { useProjectWorkspace } from './useProjectWorkspace';
 import { LocalFileController, type LocalOpenCandidate } from '../adapters/localFiles';
@@ -237,7 +237,7 @@ export function App() {
   });
   function currentDraftContext(): DraftContext { return { projectId: projects.activeProjectId() ?? null, changeToken: sessionRef.current.changeToken, mapContentHash: contentHash(sessionRef.current.map) }; }
   const draftContext = useMemo(() => currentDraftContext(), [projects.state.active?.projectId, session.changeToken, session.map]);
-  const unapplied = relocatingPoint !== null || backgroundDirty || propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || pointDraft !== null || copyDialog || rotateDialog || splitDialog || splitPicking || topologyDraft !== null;
+  const unapplied = relocatingPoint !== null || backgroundDirty || propertyDirty || mapName !== session.map.metadata.name || draftRoad !== null || polygonDraftDirty || (pointDraft !== null && !pointDraft.continuous) || copyDialog || rotateDialog || splitDialog || splitPicking || topologyDraft !== null;
   const scene = useMemo(() => toSceneSnapshot(session.map), [session.map]);
   const saveGuard = useRef({ browserDirty: true, unapplied: false });
   saveGuard.current = { browserDirty: projects.editorDirty || projects.state.active?.draftHash !== scene.mapContentHash, unapplied: unapplied || boundaryEditing };
@@ -352,6 +352,8 @@ export function App() {
     if (operationsBlocked() || leaveIntent) return false;
     cancelBoundaryInteraction();
     if (protect) { setLeaveIntent({ label, action }); return false; }
+    const activity = interaction.read().activity;
+    if (activity.kind === 'point' && activity.value.continuous) setPointDraft(null);
     action(); return true;
   }
   function discardAndContinue() {
@@ -619,12 +621,17 @@ export function App() {
     return () => window.removeEventListener('focus', focus);
   });
   function history(direction: 'undo' | 'redo') {
+    const facilityId = pointDraft?.continuous ? pointDraft.facilityId : null;
     requestLeave(direction === 'undo' ? '撤销地图事务' : '重做地图事务', () => {
       const current = sessionRef.current;
       const transaction = (direction === 'undo' ? current.past : current.future).at(-1);
-      if (!transaction || rejectLocked(transaction.affectedRefs)) return;
-      updateSession(direction === 'undo' ? undoSession(current) : redoSession(current));
-      setOperationIssues([]); setDraftRoad(null); setStatus(direction === 'undo' ? '已撤销一个事务。' : '已重做一个事务。');
+      if (transaction && !rejectLocked(transaction.affectedRefs)) {
+        const next = direction === 'undo' ? undoSession(current) : redoSession(current);
+        updateSession(next);
+        if (internalOwner && !next.map[internalOwner.kind][internalOwner.id]) setInternalOwner(null);
+        setOperationIssues([]); setDraftRoad(null); setStatus(direction === 'undo' ? '已撤销一个事务。' : '已重做一个事务。');
+      }
+      if (facilityId) armContinuousEntrances(facilityId);
     });
   }
   function undo() { history('undo'); }
@@ -660,11 +667,17 @@ export function App() {
       if(connection||finish)finishRoad(next);else setDraftRoad(next);
     }, propertyDirty || mapName !== session.map.metadata.name);
   }
+  function armContinuousEntrances(facilityId: string) {
+    // Refresh the existing activity context only after our own committed edit/history step.
+    setPointDraft(null);
+    if (sessionRef.current.map.facilities[facilityId]) setPointDraft(makeContinuousEntranceDraft(facilityId, sessionRef.current.map));
+  }
   function simpleDraft(kind: 'accessPoints' | 'servicePoints', chosen: Selection) {
     const draft = makePointCreationDraft(kind, chosen, sessionRef.current.map);
     return { ...draft, serviceKind: 'other' as const, simple: true, connectionMode: 'deferred' as const, arrival: { ...draft.arrival, mode: 'undeclared' as const }, ids: { pointId: uid(kind === 'accessPoints' ? 'access' : 'service'), nodeId: uid('node'), connectorRoadId: uid('road'), junctionId: uid('junction'), sourceId: uid('source') } };
   }
   function changePointDraft(next: import('./PointCreationPanel').PointCreationDraft) {
+    if (next.simple && !next.continuous && !next.ids) next = { ...next, ids: simpleDraft(next.kind, validSelection).ids };
     const geometry = (value: import('./PointCreationPanel').PointCreationDraft) => [value.ownerKind, value.facilityId, value.zoneId, value.accessPointId, value.position, value.connectionMode, value.connection, value.connectorDirection, value.arrival.mode, value.arrival.entryNodeId, value.arrival.internalPath];
     setPointDraft(pointDraft && !sameValue(geometry(pointDraft), geometry(next)) ? { ...next, approvedMovements: [] } : next);
   }
@@ -681,6 +694,16 @@ export function App() {
   }, [pointDraft, session.map]);
   function pickPoint(result: import('../renderers/2d/MapCanvas').PointPickResult) {
     if (!pointDraft) return;
+    if (pointDraft.continuous) {
+      const activity = interaction.read().activity;
+      if (activity.kind !== 'point' || !activity.value.continuous || !('position' in result) || readonly || operationsBlocked() || interaction.read().dialog) return;
+      const facilityId = activity.value.facilityId;
+      const draft = { ...makeContinuousEntranceDraft(facilityId, sessionRef.current.map), position: result.position.map(String) };
+      const built = buildPointCreationCommand(draft, sessionRef.current.map, uid);
+      if (!built.ok) { setOperationIssues(built.issues); return; }
+      if (apply(built.command)) { armContinuousEntrances(facilityId); setStatus('已添加 ' + draft.name + '；继续点选边界，Ctrl+Z 撤销，Esc 完成。'); }
+      return;
+    }
     if (pointDraft.simple && pointDraft.connectionMode !== 'deferred' && pointDraft.canvasMode === 'existing') {
       if ('nodeId' in result) changePointDraft({ ...pointDraft, canvasMode: null, arrival: { ...pointDraft.arrival, entryNodeId: result.nodeId } }); return;
     }
@@ -700,12 +723,17 @@ export function App() {
   }
   function openPointDialog(kind: 'accessPoints' | 'servicePoints') {
     if (readonly) return;
-    requestLeave('添加关联点', () => { setPointDraft(simpleDraft(kind, validSelection)); setOperationIssues([]); });
+    requestLeave('添加关联点', () => {
+      setInspectionKeys([]); setTool('select'); setOperationIssues([]);
+      if (kind === 'accessPoints' && validSelection.facilities.length === 1) armContinuousEntrances(validSelection.facilities[0]!);
+      else setPointDraft(simpleDraft(kind, validSelection));
+    });
   }
   function placeAction(kind: 'facilities' | 'zones', id: string, action: 'enter' | 'access' | 'service') {
     requestLeave('编辑设施或区域内部', () => {
       setSelection({ ...emptySelection(), [kind]: [id] }); setInspectionKeys([]); setTool('select');
       if (action === 'enter') { setInternalOwner({ kind, id }); setStatus('编辑内部：只修改明确归属的点路；公共路网作为固定参照。'); return; }
+      if (action === 'access' && kind === 'facilities') { armContinuousEntrances(id); setOperationIssues([]); return; }
       const draft = simpleDraft(action === 'access' ? 'accessPoints' : 'servicePoints', { ...emptySelection(), [kind]: [id] });
       setPointDraft({ ...draft, simple: true }); setOperationIssues([]);
     });
@@ -900,7 +928,8 @@ export function App() {
       case 'updateAccessPoint': return inInternalScope('accessPoints', command.id);
       case 'updateServicePoint': return inInternalScope('servicePoints', command.id);
       case 'createConnectedPoint': return command.owner.kind === internalOwner.kind && command.owner.id === internalOwner.id;
-      case 'quickTraceRoad': case 'quickTraceBoundary': case 'addNode': case 'addRoad': case 'addAccessPoint': case 'addServicePoint': case 'addFacility': case 'addZone':
+      case 'addAccessPoint': return internalOwner.kind === 'facilities' && command.accessPoint.facilityId === internalOwner.id && !!command.newNode;
+      case 'quickTraceRoad': case 'quickTraceBoundary': case 'addNode': case 'addRoad': case 'addServicePoint': case 'addFacility': case 'addZone':
       case 'updateFacility': case 'updateZone': case 'mergeNodes': case 'connectNodeToRoad': case 'splitRoad': case 'suppressDegree2Node': return false;
       default: return true;
     }
@@ -964,6 +993,7 @@ export function App() {
       event.preventDefault();
       if (boundaryInteraction.current) { cancelBoundaryInteraction(); return; }
       if (relocatingPoint) { setRelocatingPoint(null); return; }
+      if (pointDraft?.continuous) { setPointDraft(null); setOperationIssues([]); return; }
       if (pointIdentities.length) { setPointIdentities([]); return; }
       if (internalOwner && !unapplied) { setInternalOwner(null); return; }
       if ((draftRoad || polygonDraftDirty) && !propertyDirty && mapName === session.map.metadata.name) { setDraftRoad(null); setPolygonDraftDirty(false); setDraftResetToken(value => value + 1); }
@@ -974,6 +1004,7 @@ export function App() {
     } else if (!modifier && !event.altKey) {
       const key = event.key.toLowerCase();
       if (key === 'f') { event.preventDefault(); if (event.shiftKey) { const item = scene.items.find(item => item.key === focusKey); if (item) locateItem(item); } else fit(); }
+      else if (event.key === 'Enter' && pointDraft?.continuous) { event.preventDefault(); setPointDraft(null); setOperationIssues([]); }
       else if (event.key === 'Enter' && draftRoad) { event.preventDefault(); finishRoad(); }
       else { const tools: Record<string, Tool> = { v: 'select', h: 'pan', r: 'road', c: 'curve', b: 'facilityRect', a: 'zonePolygon', g: 'zoneRect', m: 'measure' }; if (tools[key]) { event.preventDefault(); changeTool(tools[key]); } }
     }
@@ -1158,7 +1189,7 @@ export function App() {
       canvas={<><div className="canvas-context">{operationError && !interaction.state.dialog && <span role="alert" style={{ display: 'block', maxHeight: '6rem', overflow: 'auto' }}><strong>操作未完成：</strong>{operationError.message}<button onClick={() => setDrawerOpen(true)}>查看原因与定位</button><button onClick={() => setOperationIssues([])}>关闭提示</button></span>}{internalOwner && <span>编辑内部：{session.map[internalOwner.kind][internalOwner.id]?.name} · 公共路网固定 <button onClick={() => requestLeave('退出内部编辑', () => setInternalOwner(null))}>退出内部编辑</button></span>}{relocatingPoint && <span>点选新的入口/作业位置；Esc 取消。<button onClick={() => setRelocatingPoint(null)}>取消定位</button></span>}{pointIdentities.length > 0 && <span>此节点有多个业务身份：{pointIdentities.map(point => <button key={point.kind + point.id} onClick={() => { choose(point.kind, point.id, false); setPointIdentities([]); }}>{point.kind === 'accessPoints' ? '入口' : '作业点'} · {session.map[point.kind][point.id]?.name}</button>)}<button onClick={() => setPointIdentities([])}>取消</button></span>}</div><MapCanvas runtime={workspaceMode==='results'&&runtimePreview?.mapContentHash===scene.mapContentHash?runtimePreview:null} accessPreview={workspaceMode==='check'&&accessPreview?.hash===scene.mapContentHash?accessPreview.lines:[]} repairPreview={boundaryRepair ? { kind: boundaryRepair.kind, id: boundaryRepair.id, boundary: boundaryRepair.boundary, points: boundaryRepair.command.type === 'updateFacility' ? (boundaryRepair.command.entranceAdjustments ?? []).map(value => value.position) : [] } : null} canEditRoad={id => inInternalScope('roads', id)} onRoadWidthCommit={(id, widthM, token) => token === sessionRef.current.changeToken && inInternalScope('roads', id) && apply({ type: 'updateRoadBatch', ids: [id], patch: { widthM: { state: 'known', value: widthM } }, designAssumption: { id: uid('source'), origin: 'manual_image_estimate', description: '人工影像估计：对照底图拖动宽度侧柄。' } })} onRoadGeometryCommit={(id, geometry, token) => inInternalScope('roads',id) && token === sessionRef.current.changeToken && apply({ type: 'updateRoad', id, patch: sessionRef.current.map.schemaVersion === '0.3.0' ? { geometry } : { shapePoints: geometry.anchors } })} onPointIdentities={setPointIdentities} comparisonMode={resolvedBackgroundPreferences.comparisonMode} fillOpacity={drawingConfig} backgrounds={{ items: backgroundVisuals, adjustingId: !backgroundDisabled && !backgroundDirty && !lockedTypes.includes('backgroundLayers') && !interaction.state.dialog && resolvedBackgroundPreferences.layers[backgroundAdjustId ?? '']?.locked === false && resolvedBackgroundPreferences.layers[backgroundAdjustId ?? '']?.visible !== false ? backgroundAdjustId : null, keepAspect: backgroundKeepAspect, contextKey: backgroundContextKey, onCommit: backgroundCommit, onActive: onBackgroundActive, onError: backgroundError }} topologySnap={topologySnap} lockedTypes={lockedTypes} onTopologyDrop={topologyDrop} onDragRejected={explainDrag}
           splitPickRoadId={splitPicking ? validSelection.roads[0] : undefined} onSplitPick={distance => { if (currentOperation(operationToken, operationMap.current)) { setSplitDistance(String(distance)); setSplitPicking(false); setSplitDialog(true); } }} routePreview={shownPath ? { mapContentHash: scene.mapContentHash, points: shownPath.points, confirmed: !!currentPath?.confirmed } : null} diagnosticPosition={issueMarker?.hash === scene.mapContentHash ? issueMarker.position : null} hiddenTypes={hiddenTypes} labelMode={labelMode} focusKey={focusKey} describeItem={describeItem} inspectKey={inspected?.key} onInspect={item => chooseItem(item,false,unapplied,false)} canDrag={canDrag}
           canEditBoundary={(kind, id) => boundaryPermissions.has(kind + '/' + id)}
-          movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(relocatingPoint ? { pointPick: { mode: 'relocate' as const, outerBoundary: relocatingPoint.kind === 'accessPoints' ? session.map.facilities[session.map.accessPoints[relocatingPoint.id]?.facilityId ?? '']?.boundary.outer : undefined }, onPointPick: (result: import('../renderers/2d/MapCanvas').PointPickResult) => { if (!('position' in result)) return; const point = sessionRef.current.map[relocatingPoint.kind][relocatingPoint.id]; if (!point) return; const z = sessionRef.current.map.nodes[point.nodeId]!.position[2]; if (apply({ type: 'movePoint', ...relocatingPoint, position: [result.position[0], result.position[1], z] })) setRelocatingPoint(null); } } : {})} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode, ...pointPath, outerBoundary: pointDraft.kind === 'accessPoints' && pointDraft.canvasMode === 'new' ? session.map.facilities[pointDraft.facilityId]?.boundary.outer : undefined }, onPointPick: pickPoint } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} frameCamera={frameCamera} onSize={onCanvasSize} tool={workspaceMode==='trace'||tool==='measure'?tool:'select'} readonly={workspaceMode==='results' || readonly || !!interaction.state.dialog || !!(pointDraft && !pointDraft.canvasMode)} selection={validSelection} onSelect={(kind,id,additive)=>choose(kind,id,additive,unapplied,false)} onClearSelection={() => requestLeave('取消选择', () => { setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); })} draftRoad={draftRoad} traceCrossingsEnabled={drawingConfig.connectNewCrossings} traceCrossings={(points, geometry) => drawingRef.current.connectNewCrossings ? getQuickTraceCrossings(sessionRef.current.map, points, geometry).map(crossing => crossing.point) : []}
+          movingJunctionIds={impact.junctionIds} rigidRoadIds={impact.rigidRoadIds} roadDisplay={{ showRoadBands, showRoadCenterlines, showOrdinaryNodes }} roadShapePreview={roadShapePreview} boundaryEditMode={boundaryEditMode} boundaryChangeToken={session.changeToken} onBoundaryCommit={commitBoundary} onBoundaryInteractionChange={onBoundaryInteractionChange} hasUnappliedInput={propertyDirty || mapName !== session.map.metadata.name} draftResetToken={draftResetToken} {...(relocatingPoint ? { pointPick: { mode: 'relocate' as const, outerBoundary: relocatingPoint.kind === 'accessPoints' ? session.map.facilities[session.map.accessPoints[relocatingPoint.id]?.facilityId ?? '']?.boundary.outer : undefined }, onPointPick: (result: import('../renderers/2d/MapCanvas').PointPickResult) => { if (!('position' in result)) return; const point = sessionRef.current.map[relocatingPoint.kind][relocatingPoint.id]; if (!point) return; const z = sessionRef.current.map.nodes[point.nodeId]!.position[2]; if (apply({ type: 'movePoint', ...relocatingPoint, position: [result.position[0], result.position[1], z] })) setRelocatingPoint(null); } } : {})} {...(pointDraft?.canvasMode ? { pointPick: { mode: pointDraft.canvasMode, continuousFacilityId: pointDraft.continuous ? pointDraft.facilityId : undefined, ...pointPath, outerBoundary: pointDraft.kind === 'accessPoints' && pointDraft.canvasMode === 'new' ? session.map.facilities[pointDraft.facilityId]?.boundary.outer : undefined }, onPointPick: pickPoint } : {})} onDraftChange={setPolygonDraftDirty} onPolygonCreate={addPolygon} snap={{ gridM: Number(snapGrid) || null, nodes: snapNodes }} movingNodeIds={impact.selection.nodes} scene={scene} camera={camera} frameCamera={frameCamera} onSize={onCanvasSize} tool={workspaceMode==='trace'||tool==='measure'?tool:'select'} readonly={workspaceMode==='results' || readonly || !!interaction.state.dialog || !!(pointDraft && !pointDraft.canvasMode)} selection={validSelection} onSelect={(kind,id,additive)=>choose(kind,id,additive,unapplied,false)} onClearSelection={() => requestLeave('取消选择', () => { setLocatedKey(null); setInspectionKeys([]); setSelection(emptySelection()); })} draftRoad={draftRoad} traceCrossingsEnabled={drawingConfig.connectNewCrossings} traceCrossings={(points, geometry) => drawingRef.current.connectNewCrossings ? getQuickTraceCrossings(sessionRef.current.map, points, geometry).map(crossing => crossing.point) : []}
           onAddNode={point => requestLeave('绘制节点', () => { const id = uid('node'); if (apply({ type: 'addNode', id, node: newNode(point, '节点 ' + (scene.nodes.length + 1)) })) setSelection({ nodes: [id], roads: [] }); })}
           onRoadNode={id => { const node = sessionRef.current.map.nodes[id]; if (node) traceRoadPoint(node.position, { kind: 'node', nodeId: id }); }} onRoadPoint={traceRoadPoint} onRoadFinish={()=>finishRoad()}
           onDuplicate={(delta, token) => { if (token === sessionRef.current.changeToken) duplicateBy(delta); }} onTranslate={translateCurrent}

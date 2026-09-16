@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { newFacility, newMap, newNode, newZone } from '../../src/domain/factory';
-import { rectanglePolygon } from '../../src/geometry/polygons';
+import { newAccessPoint, newFacility, newMap, newNode, newZone } from '../../src/domain/factory';
+import { GEOMETRY_TOLERANCE_M, rectanglePolygon } from '../../src/geometry/polygons';
+import type { PointCreationDraft } from '../../src/ui/PointCreationPanel';
+import type { Vec3 } from '../../src/domain/model';
 import { applyMapCommand } from '../../src/domain/commands';
 import { createSession, editSession, redoSession, undoSession } from '../../src/editor/session';
-import { applyPointPick, buildPointCreationCommand, makePointCreationDraft, hasPointConnectionCandidate, setPointConnectionMode } from '../../src/ui/PointCreationPanel';
+import { applyPointPick, buildPointCreationCommand, makeContinuousEntranceDraft, makePointCreationDraft, hasPointConnectionCandidate, setPointConnectionMode } from '../../src/ui/PointCreationPanel';
 import { makeServiceArrivalDraft, parseServiceArrivalDraft } from '../../src/ui/ServiceSemanticsFields';
 
 function fixture() {
@@ -173,5 +175,76 @@ describe('independent business point creation before drawing a connection', () =
     const picked = applyPointPick(draft, { roadId: 'road', distanceM: 12, position: [0, 12, 0] });
     expect(picked.connectionMode).toBe('connected'); expect(picked.connection).toMatchObject({ kind: 'road', roadId: 'road', distanceM: 12 });
     expect(picked.canvasMode).toBeNull();
+  });
+});
+
+
+describe('continuous independent entrances share the existing point transaction', () => {
+  it('chooses the first unused name within the selected facility without changing existing names or allocating candidates', () => {
+    const map = fixture();
+    map.accessPoints.a = newAccessPoint('fA', 'nA', '入口001');
+    map.accessPoints.b = newAccessPoint('fA', 'nA', '入口003');
+    map.accessPoints.c = newAccessPoint('fA', 'nA', '南大门');
+    map.accessPoints.other = newAccessPoint('other', 'nA', '入口002');
+    const before = structuredClone(map), draft = makeContinuousEntranceDraft('fA', map);
+    expect(draft).toMatchObject({ name: '入口002', kind: 'accessPoints', ownerKind: 'facility', facilityId: 'fA', simple: true,
+      continuous: true, connectionMode: 'deferred', nodeMode: 'new', canvasMode: 'new', arrival: { mode: 'undeclared' }, position: ['', '', '0'] });
+    expect(draft).not.toHaveProperty('ids'); expect(hasPointConnectionCandidate(draft)).toBe(false); expect(map).toEqual(before);
+  });
+
+  it('commits three clicks as three atomic node-and-entrance edits and undoes/redoes them individually', () => {
+    const original = fixture(), snapshots = [original]; let session = createSession(original, true), counter = 0;
+    for (const [index, position] of ([[0, 5, 0], [0, 15, 0], [0, 25, 0]] as Vec3[]).entries()) {
+      const draft = makeContinuousEntranceDraft('fA', session.map); draft.position = position.map(String);
+      const built = buildPointCreationCommand(draft, session.map, prefix => prefix + '_' + (++counter));
+      if (!built.ok || built.command.type !== 'addAccessPoint') throw new Error(JSON.stringify(built));
+      expect(built.command.accessPoint.name).toBe('入口00' + (index + 1));
+      const result = editSession(session, built.command); expect(result.ok, JSON.stringify(result.issues)).toBe(true); session = result.session;
+      expect(session.past).toHaveLength(index + 1); expect(Object.keys(session.map.accessPoints)).toHaveLength(index + 1);
+      expect(Object.keys(session.map.nodes)).toHaveLength(Object.keys(original.nodes).length + index + 1);
+      expect(session.map.facilities.fA!.accessPointIds).toContain(built.id);
+      for (const collection of ['roads', 'junctions', 'movements', 'resources'] as const) expect(session.map[collection]).toEqual(original[collection]);
+      snapshots.push(session.map);
+    }
+    expect(counter).toBe(6);
+    for (let index = 2; index >= 0; index--) { session = undoSession(session); expect(session.map).toEqual(snapshots[index]); }
+    for (let index = 1; index <= 3; index++) { session = redoSession(session); expect(session.map).toEqual(snapshots[index]); }
+    expect(original.accessPoints).toEqual({}); expect(original.facilities.fA!.accessPointIds).toEqual([]);
+  });
+
+  it('refuses exact and tolerance-close duplicates without allocating IDs and allows a distinct point or another owner', () => {
+    const map = fixture(); map.nodes.gate_node = newNode([0, 15, 0]); map.accessPoints.gate = newAccessPoint('fA', 'gate_node', '入口001');
+    map.facilities.fA!.accessPointIds = ['gate']; map.facilities.fB = newFacility(rectanglePolygon([0, 0, 0], 60, 30));
+    const session = createSession(map, true), before = structuredClone(map);
+    for (const offset of [0, GEOMETRY_TOLERANCE_M / 2]) {
+      const draft = makeContinuousEntranceDraft('fA', map); draft.position = ['0', String(15 + offset), '0'];
+      const result = buildPointCreationCommand(draft, map, () => { throw new Error('duplicate must not allocate'); });
+      expect(result.ok).toBe(false); if (!result.ok) expect(result.issues[0]!.code).toBe('CONTINUOUS_ENTRANCE_DUPLICATE');
+    }
+    let counter = 0;
+    for (const [facilityId, y] of [['fA', 16], ['fB', 15]] as const) {
+      const draft = makeContinuousEntranceDraft(facilityId, map); draft.position = ['0', String(y), '0'];
+      expect(buildPointCreationCommand(draft, map, prefix => prefix + '_' + (++counter)).ok).toBe(true);
+    }
+    expect(session.past).toHaveLength(0); expect(map).toEqual(before);
+  });
+
+  it('rejects incompatible continuous modes before allocating, without clearing any advanced input', () => {
+    const map = fixture(), base = makeContinuousEntranceDraft('fA', map); base.position = ['0', '15', '0'];
+    const patches: Partial<PointCreationDraft>[] = [
+      { simple: false }, { connectionMode: 'connected' }, { kind: 'servicePoints' }, { ownerKind: 'zone', zoneId: 'zA' },
+      { nodeMode: 'existing', nodeId: 'nA' }, { canvasMode: null }, { zoneId: 'zA' }, { nodeId: 'nA' },
+      { connection: { kind: 'node', nodeId: 'nA' } }, { resourceIds: ['resource'] }, { connectorWidth: '12' },
+      { ids: { pointId: 'point', nodeId: 'node', connectorRoadId: 'road', junctionId: 'junction', sourceId: 'source' } },
+      { arrival: { ...base.arrival, mode: 'explicit_internal', internalPath: [{ roadId: 'inside', direction: 'forward' }] } },
+    ];
+    for (const patch of patches) {
+      const draft = { ...base, ...patch }, before = structuredClone(draft);
+      const result = buildPointCreationCommand(draft, map, () => { throw new Error('invalid mode must not allocate'); });
+      expect(result.ok).toBe(false); if (!result.ok) expect(result.issues[0]!.code).toBe('CONTINUOUS_ENTRANCE_MODE');
+      expect(draft).toEqual(before);
+    }
+    const missing = makeContinuousEntranceDraft('missing', map); missing.position = ['0', '15', '0'];
+    expect(buildPointCreationCommand(missing, map, () => { throw new Error('missing owner must not allocate'); }).ok).toBe(false);
   });
 });

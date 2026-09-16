@@ -17,6 +17,7 @@ test('UX02 atomic canvas entrance, explicit turns and service handoff survive hi
   const errors:string[]=[]; page.on('pageerror', e=>errors.push(e.message));
   await readyWorkbench(page); const original=fixture(); original.resources.shared={name:'synthetic shared work capacity',kind:'loading',capacityUnit:'vehicle',capacity:{state:'known',value:2},controlModel:'shared_capacity',appliesTo:[{entityType:'facilities',entityId:'workshop'}],provenance:{category:'synthetic'}}; await importMapUI(page,original);
   await selectResult(page,'facilities','workshop'); await page.getByRole('button',{name:'添加入口',exact:true}).last().click();
+  await page.getByRole('button',{name:'单个入口与接路设置',exact:true}).click();
   await page.getByRole('dialog',{name:'添加入口',exact:true}).getByLabel('名称',{exact:true}).fill('东侧接入口');
   await page.getByRole('button',{name:'在画布放置入口',exact:true}).click(); await clickWorld(page,20,30);
   await page.getByRole('button',{name:'在画布选择接入道路',exact:true}).click(); await clickWorld(page,0,30);

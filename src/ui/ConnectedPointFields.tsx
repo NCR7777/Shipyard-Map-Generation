@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { commandSupport } from '../domain/commands';
-import { buildConnectedPointCreation, hasPointConnectionCandidate, setPointConnectionMode } from './PointCreationPanel';
+import { buildConnectedPointCreation, hasPointConnectionCandidate, makeContinuousEntranceDraft, setPointConnectionMode } from './PointCreationPanel';
 import type { Issue, YardMap } from '../domain/model';
 import type { PointCreationDraft } from './PointCreationPanel';
 import { ServiceSemanticsFields } from './ServiceSemanticsFields';
@@ -23,6 +23,10 @@ export function ConnectedPointFields({ draft, map, readonly, issues, onChange, o
     onChange({ ...draft, approvedMovements: turns.map(turn => ({ ...turn, id: 'movement_' + crypto.randomUUID() })) });
   }
   const hasCanvasProposal = !!draft.connection || !!draft.resourceIds?.length || !!draft.approvedMovements?.length || !!draft.arrival.internalPath.length || !!draft.connectorWidth?.trim() || !!draft.connectorDirection && draft.connectorDirection !== 'unknown';
+  const continuousDraft = deferred && draft.kind === 'accessPoints' && map.facilities[draft.facilityId] ? makeContinuousEntranceDraft(draft.facilityId, map) : null;
+  const hasPointInput = hasPointConnectionCandidate(draft) || draft.nodeMode !== 'new' || !!draft.nodeId
+    || draft.position[0]?.trim() || draft.position[1]?.trim() || draft.position[2]?.trim() !== '0'
+    || !!draft.name.trim() && !['入口', continuousDraft?.name].includes(draft.name.trim());
   const proxy = !deferred && draft.kind === 'servicePoints' && draft.arrival.mode === 'node_proxy';
   const access = map.accessPoints[draft.accessPointId];
   const title = draft.kind === 'accessPoints' ? '添加入口' : '添加作业点';
@@ -37,6 +41,7 @@ export function ConnectedPointFields({ draft, map, readonly, issues, onChange, o
     }}><option value="deferred">先放置节点，稍后画路连接</option><option value="connected">创建时明确接路或到达方式</option></select></label>
     {resetRequested && <div role="alert"><p>切换为稍后接路会重置本次接路、到达路径、入口关联、资源、转向许可及接入段设置，保留名称和点位。</p><button type="button" onClick={() => { setResetRequested(false); onChange(setPointConnectionMode(draft, 'deferred')); }}>确认重置并稍后接路</button><button type="button" onClick={() => setResetRequested(false)}>保留接路候选</button></div>}
     {deferred && <p className="field-note">先在所属对象上放置入口或作业节点；可以稍后用道路工具从该点继续画路。创建时不生成接入线，也不声明运输到达方式。</p>}
+    {continuousDraft && <><button type="button" disabled={!!hasPointInput} onClick={() => onChange(continuousDraft)}>连续放置入口</button>{hasPointInput && <p className="field-note">已有名称、点位或接路输入；保留本次设置，完成或取消后再连续放置。</p>}</>}
     <label className="field-label">名称<input aria-label="名称" value={draft.name} onChange={event => onChange({ ...draft, name: event.target.value })}/></label>
     <label className="field-label">所属对象<select aria-label="所属对象" value={draft.ownerKind === 'zone' ? 'zones/' + draft.zoneId : 'facilities/' + draft.facilityId} onChange={event => {
       const [kind, id = ''] = event.target.value.split('/'); onChange({ ...draft, ownerKind: kind === 'zones' ? 'zone' : 'facility', facilityId: kind === 'facilities' ? id : '', zoneId: kind === 'zones' ? id : '', accessPointId: '', connection: undefined, arrival: { ...draft.arrival, internalPath: [], entryNodeId: '' } });
