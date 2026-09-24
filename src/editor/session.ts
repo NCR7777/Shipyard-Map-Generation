@@ -23,7 +23,9 @@ const HISTORY_LIMIT = 100;
 export function createSession(map: YardMap, saved = false): EditorSession {
   const result = validateMap(map);
   if (!result.ok) throw new Error('Cannot create session from invalid map.');
-  return { map: freezeMap(structuredClone(map)), past: [], future: [], acknowledgedHash: saved ? contentHash(map) : null, changeToken: 0 };
+  // Hash the frozen copy the session keeps (same JSON content), so the editor reuses it.
+  const frozen = freezeMap(structuredClone(map));
+  return { map: frozen, past: [], future: [], acknowledgedHash: saved ? contentHash(frozen) : null, changeToken: 0 };
 }
 
 export function isDirty(session: EditorSession): boolean {

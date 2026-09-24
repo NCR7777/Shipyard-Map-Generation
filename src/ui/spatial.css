@@ -9,3 +9,15 @@
 .point-pick-panel p { font-size: 13px; line-height: 1.5; }
 .point-pick-instruction { position: absolute; top: 34px; left: 12px; right: 12px; padding: 9px; background: #f2fbf7ed; color: #174e45; font-size: 12px; pointer-events: none; z-index: 2; }
 .service-connection-summary { border-top: 1px solid #d9e4e7; margin-top: 16px; padding-top: 12px; font-size: 12px; overflow-wrap: anywhere; }
+.scale-label .canvas-help-toggle { pointer-events: auto; margin-left: 8px; min-height: 20px; width: 20px; padding: 0; border-radius: 50%; font-size: 11px; line-height: 18px; }
+.canvas-help { position: absolute; left: 14px; bottom: 44px; z-index: 3; width: min(560px, calc(100% - 28px)); max-height: calc(100% - 90px); overflow: auto; padding: 12px 14px; background: #fff; border: 1px solid #c9d6d8; border-radius: 8px; box-shadow: 0 8px 28px #10273633; font-size: 11px; color: #4b6576; }
+.canvas-help-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.canvas-help-heading button { min-height: 24px; padding: 0 8px; }
+.canvas-help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px 16px; }
+.canvas-help h4 { margin: 4px 0; font-size: 11px; color: #375367; }
+.canvas-help dl { margin: 0; }
+.canvas-help dl div { display: flex; gap: 8px; line-height: 1.9; }
+.canvas-help dt { min-width: 86px; }
+.canvas-help dd { margin: 0; }
+.canvas-help kbd { font-family: Consolas, monospace; font-size: 10px; padding: 1px 5px; border: 1px solid #c6d4de; border-bottom-width: 2px; border-radius: 4px; background: #f5f8fa; }
+.canvas-help p { margin: 8px 0 0; line-height: 1.7; color: #7a8f9d; }

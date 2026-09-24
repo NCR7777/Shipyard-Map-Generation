@@ -86,6 +86,8 @@
 .workbench-settings > summary { cursor:pointer; padding:5px; font-weight:600; }
 .workbench-notice { font-size:12px; padding:4px 9px; background:#f3f8faf2; border:1px solid #d2dfe5; }
 .workbench-notice p { max-width:480px; }
+.workbench-notice.compact { width:fit-content; margin-left:auto; font-size:11px; padding:2px 8px; border-radius:12px; color:#587687; }
+.workbench-notice.compact[open] { border-radius:6px; }
 .workbench .canvas-toolbar { padding:4px; min-height:0; background:#fffffff2; border:1px solid #cfdee4; border-radius:6px; align-items:flex-start; }
 .workbench .history-actions { gap:3px; }
 .workbench .canvas-toolbar button { min-height:30px; font-size:12px; padding:4px 7px; }

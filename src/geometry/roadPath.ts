@@ -1,4 +1,4 @@
-import type { MapRoad, RoadGeometry, RoadSpan, Vec3, YardMap } from '../domain/model';
+import type { MapNode, MapRoad, RoadGeometry, RoadSpan, Vec3, YardMap } from '../domain/model';
 
 /** Resolved world-metre geometry. The first and last anchors come from network nodes. */
 export interface ResolvedPath { anchors: Vec3[]; spans: RoadSpan[] }
@@ -16,20 +16,20 @@ export function isStraightRoad(road: MapRoad): boolean {
 }
 
 export function getRoadPath(map: YardMap, roadId: string): ResolvedPath {
-  const cacheable = cacheableRoad(map, roadId);
-  const cached = cacheable ? mapPaths.get(map)?.get(roadId) : undefined;
-  if (cached) return cached;
   if (!Object.hasOwn(map.roads, roadId)) throw new Error('Unknown road: ' + roadId);
   const road = map.roads[roadId]!;
   if (!Object.hasOwn(map.nodes, road.fromNodeId) || !Object.hasOwn(map.nodes, road.toNodeId))
     throw new Error('Dangling endpoint: ' + roadId);
+  const from = map.nodes[road.fromNodeId]!, to = map.nodes[road.toNodeId]!;
+  // A path depends only on the road and its two endpoint nodes; frozen ones are shared across map revisions.
+  const cacheable = cacheableRoad(road, from, to);
+  const cached = cacheable ? roadPaths.get(road) : undefined;
+  if (cached && cached.from === from && cached.to === to) return cached.path;
   const path: ResolvedPath = {
-    anchors: [map.nodes[road.fromNodeId]!.position, ...roadGeometryAnchors(road), map.nodes[road.toNodeId]!.position].map(point => [...point]),
+    anchors: [from.position, ...roadGeometryAnchors(road), to.position].map(point => [...point]),
     spans: road.geometry ? structuredClone(road.geometry.spans) : Array.from({ length: road.shapePoints.length + 1 }, () => ({ kind: 'line' as const })),
   };
-  if (cacheable) {
-    freezePath(path); const roads = mapPaths.get(map) ?? new Map<string, ResolvedPath>(); roads.set(roadId, path); mapPaths.set(map, roads);
-  }
+  if (cacheable) { freezePath(path); roadPaths.set(road, { from, to, path }); }
   return path;
 }
 
@@ -74,7 +74,7 @@ export interface PathProjection { spanIndex: number; t: number; point: Vec3; sM:
 export interface PathPose { position: Vec3; yawRad: number; spanIndex: number; t: number; sM: number; errorM: number; converged: boolean }
 interface Leaf { spanIndex: number; kind: 'line' | 'cubic'; t0: number; t1: number; controls: Controls; lowerM: number; upperM: number; flatnessM: number; s0M: number; s1M: number }
 interface Prepared { leaves: Leaf[]; flat: FlattenedPath }
-const mapPaths = new WeakMap<YardMap, Map<string, ResolvedPath>>();
+const roadPaths = new WeakMap<MapRoad, { from: MapNode; to: MapNode; path: ResolvedPath }>();
 const preparedPaths = new WeakMap<ResolvedPath, Map<string, Prepared>>();
 const frozenPaths = new WeakSet<ResolvedPath>();
 const copy = (p: Vec3): Vec3 => [...p];
@@ -84,10 +84,9 @@ const cross = (a: Vec3, b: Vec3): number => a[0] * b[1] - a[1] * b[0];
 const subtract = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(high, value));
 
-function cacheableRoad(map: YardMap, roadId: string): boolean {
-  const road = map.roads[roadId];
-  if (!road || !Object.isFrozen(map) || !Object.isFrozen(map.nodes) || !Object.isFrozen(map.roads) || !Object.isFrozen(road)) return false;
-  if (![map.nodes[road.fromNodeId], map.nodes[road.toNodeId]].every(node => node && Object.isFrozen(node) && Object.isFrozen(node.position))) return false;
+function cacheableRoad(road: MapRoad, from: MapNode, to: MapNode): boolean {
+  if (!Object.isFrozen(road)) return false;
+  if (![from, to].every(node => Object.isFrozen(node) && Object.isFrozen(node.position))) return false;
   return road.geometry ? Object.isFrozen(road.geometry) && Object.isFrozen(road.geometry.anchors) && road.geometry.anchors.every(Object.isFrozen)
     && Object.isFrozen(road.geometry.spans) && road.geometry.spans.every(span => Object.isFrozen(span) && (span.kind === 'line' || Object.isFrozen(span.control1) && Object.isFrozen(span.control2)))
     : Object.isFrozen(road.shapePoints) && road.shapePoints.every(Object.isFrozen);
@@ -272,7 +271,14 @@ export function movePathAnchor(path: ResolvedPath, index: number, position: Vec3
   if (outgoing?.kind === 'cubic') outgoing.control1 = translate(outgoing.control1);
   return next;
 }
+const pathBounds = new WeakMap<ResolvedPath, { min: Vec3; max: Vec3 }>();
 export function boundsOfPath(path: ResolvedPath): { min: Vec3; max: Vec3 } {
+  const cached = pathBounds.get(path); if (cached) return { min: [...cached.min], max: [...cached.max] };
+  const bounds = computeBounds(path);
+  if (immutablePath(path)) pathBounds.set(path, { min: [...bounds.min], max: [...bounds.max] });
+  return bounds;
+}
+function computeBounds(path: ResolvedPath): { min: Vec3; max: Vec3 } {
   const points = path.anchors.map(copy);
   for (let index = 0; index < path.spans.length; index++) if (path.spans[index]!.kind === 'cubic') {
     const c = controlsOf(path, index);

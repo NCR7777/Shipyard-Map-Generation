@@ -1,3 +1,4 @@
+import { memo, useState } from 'react';
 import { SCENE_KINDS, type SceneItem, type SceneKind } from '../adapters/contracts';
 import type { DrawingConfig } from '../editor/projectController';
 import type { YardMap } from '../domain/model';
@@ -14,6 +15,8 @@ interface Props {
 export function ObjectDirectory(props: Props) {
   const { items, drawing } = props;
   const search = drawing.objectSearch.trim().toLocaleLowerCase();
+  // Folded groups skip their rows; a search always shows its matches. Turn movements (often thousands of logical rows) start folded.
+  const [folded, setFolded] = useState<ReadonlySet<SceneKind>>(() => new Set(['movements']));
   const hidden = items.filter(i => drawing.hiddenTypes.includes(i.kind) && i.status === 'geometry').length;
   const geometry = items.filter(i => i.status === 'geometry').length;
   return <>
@@ -30,17 +33,23 @@ export function ObjectDirectory(props: Props) {
       const all = items.filter(item => item.kind === kind);
       const matches = all.filter(item => !search || [item.id, item.name, item.jsonPath].some(value => value.toLocaleLowerCase().includes(search)));
       return <div className="spatial-object-group" key={kind}>
-        <div className="object-group-label">{sceneNames[kind]} <span data-testid={'scene-count-' + kind}>{all.length}</span>{['facilities', 'zones', 'accessPoints', 'servicePoints'].includes(kind) && <span className="sr-only" data-testid={kind + '-count'}>{all.length}</span>}</div>
-        {matches.map(item => <div className="directory-row" key={item.key}>
-          <button data-testid={kind === 'nodes' ? 'node-item-' + item.id : kind === 'roads' ? 'road-item-' + item.id : ['facilities', 'zones', 'accessPoints', 'servicePoints'].includes(kind) ? kind + '-item-' + item.id : 'inspect-item-' + kind + '-' + item.id}
-            className={props.isSelected(item) ? 'object-item selected' : 'object-item'} onClick={e => props.onSelect(item, e.shiftKey)}>
-            <span>{item.name || item.id}<small>{item.id}{drawing.hiddenTypes.includes(kind) ? ' · 隐藏' : ''}{drawing.lockedTypes.includes(kind) ? ' · 锁定' : ''}{item.status === 'unsupported' ? ' · 未支持' : ''}{item.status === 'logical' ? ' · 目录对象' : ''}</small></span>
-          </button><button className="locate-object" aria-label={'定位 ' + item.id} onClick={() => props.onLocate(item)}>⌖</button>
-        </div>)}
+        <button className="object-group-label" aria-expanded={!folded.has(kind)} onClick={() => setFolded(current => { const next = new Set(current); if (!next.delete(kind)) next.add(kind); return next; })}>
+          <span className="object-group-caret">{folded.has(kind) && !search ? '▸' : '▾'}</span>{sceneNames[kind]} <span data-testid={'scene-count-' + kind}>{all.length}</span>{['facilities', 'zones', 'accessPoints', 'servicePoints'].includes(kind) && <span className="sr-only" data-testid={kind + '-count'}>{all.length}</span>}{search && <span className="object-group-matches"> · 匹配 {matches.length}</span>}</button>
+        {(!folded.has(kind) || !!search) && matches.map(item => <DirectoryRow key={item.key} item={item} selected={props.isSelected(item)} hidden={drawing.hiddenTypes.includes(kind)} locked={drawing.lockedTypes.includes(kind)} onSelect={props.onSelect} onLocate={props.onLocate}/>)}
       </div>;
     })}</div>
   </>;
 }
+/** Rows of unchanged scene items keep their identity across edits, so only changed or reselected rows re-render. */
+const DirectoryRow = memo(function DirectoryRow({ item, selected, hidden, locked, onSelect, onLocate }: { item: SceneItem; selected: boolean; hidden: boolean; locked: boolean; onSelect: Props['onSelect']; onLocate: Props['onLocate'] }) {
+  const kind = item.kind;
+  return <div className="directory-row">
+    <button data-testid={kind === 'nodes' ? 'node-item-' + item.id : kind === 'roads' ? 'road-item-' + item.id : ['facilities', 'zones', 'accessPoints', 'servicePoints'].includes(kind) ? kind + '-item-' + item.id : 'inspect-item-' + kind + '-' + item.id}
+      className={selected ? 'object-item selected' : 'object-item'} onClick={e => onSelect(item, e.shiftKey)}>
+      <span>{item.name || item.id}<small>{item.id}{hidden ? ' · 隐藏' : ''}{locked ? ' · 锁定' : ''}{item.status === 'unsupported' ? ' · 未支持' : ''}{item.status === 'logical' ? ' · 目录对象' : ''}</small></span>
+    </button><button className="locate-object" aria-label={'定位 ' + item.id} onClick={() => onLocate(item)}>⌖</button>
+  </div>;
+});
 export function ObjectInspector({ item, map, onLocate }: { item: SceneItem; map: YardMap; onLocate: () => void }) {
   return <section className="capability-box" data-testid="object-inspector"><h3>{item.name || item.id}</h3><code>{item.id}</code><p>{item.reason || '声明数据只读查看。'}</p>
     <p>{item.status === 'unsupported' ? '未支持，数据完整保留。' : item.status === 'logical' ? '逻辑对象，没有可推断的独立几何。' : '几何来自地图声明或明确引用。'}</p>

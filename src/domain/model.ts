@@ -14,6 +14,8 @@ export type SchemaVersion = YardMap['schemaVersion'];
 export const SCHEMA_VERSION = '0.3.0' as const;
 export const SUPPORTED_SCHEMA_VERSIONS = ['0.1.0', '0.2.0', '0.3.0'] as const;
 export const MAX_JSON_BYTES = 10 * 1024 * 1024;
+/** Top-level records of entities keyed by stable ID. */
+export const ENTITY_RECORDS = ['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const;
 
 export interface Issue {
   code: string;

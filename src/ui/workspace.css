@@ -2,8 +2,10 @@
 .spatial-controls .tool-grid { padding: 0; }
 .check-field { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.6; margin: 8px 0; }
 .check-field input { flex: 0 0 auto; width: auto; margin-top: 4px; }
-.object-group-label { padding: 10px 12px 4px; font-size: 11px; color: #60747b; letter-spacing: .05em; }
-.object-group-label span { float: right; }
+.object-group-label { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 0; padding: 10px 12px 4px; border: none; background: transparent; text-align: left; font-size: 11px; color: #60747b; letter-spacing: .05em; }
+.object-group-label [data-testid^="scene-count-"] { margin-left: auto; }
+.object-group-caret { width: 12px; color: #8aa0ae; }
+.object-group-matches { color: #8aa0ae; }
 .modal { max-height: 88vh; overflow-y: auto; }
 .modal .field-label { margin-bottom: 10px; }
 .header-actions { flex-wrap: wrap; justify-content: flex-end; }
@@ -40,3 +42,6 @@
 .canvas-context { position:absolute; z-index:12; top:34px; left:12px; max-width:calc(100% - 24px); background:#f7fafbea; border-radius:4px; padding:0 6px; }
 .canvas-context:empty { display:none; }
 .canvas-context button { margin:4px; }
+.issue-group > summary { display: flex; gap: 9px; padding: 7px 6px; font-size: 10px; color: #708695; cursor: pointer; line-height: 1.6; }
+.issue-group > summary strong { font-family: Consolas, monospace; font-weight: 500; font-size: 9px; color: #657f90; }
+.issue-group[open] > summary { background: #f3f7f9; border-radius: 3px; }

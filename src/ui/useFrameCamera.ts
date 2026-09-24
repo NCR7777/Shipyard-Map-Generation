@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { worldToScreen, type Camera } from '../geometry/coordinates';
 
-interface FrameState { camera: Camera; navigating: boolean; epoch: number }
+export interface FrameState { camera: Camera; navigating: boolean; epoch: number }
 
 function snapshot(camera: Camera): Camera {
   worldToScreen([0, 0, 0], camera); // Reuse the existing finite-camera boundary.
@@ -22,16 +22,29 @@ export class FrameCamera {
   private active = true;
   private navigating = false;
   private epoch = 0;
+  private listeners = new Set<(camera: Camera) => void>();
+  private stateListeners = new Set<() => void>();
+  private state: FrameState;
+  private settled: Camera;
 
-  constructor(initial: Camera, private readonly publish: (state: FrameState) => void) {
-    this.effective = this.published = snapshot(initial);
+  constructor(initial: Camera, private readonly publish: (state: FrameState) => void = () => {}) {
+    this.effective = this.published = this.settled = snapshot(initial);
+    this.state = { camera: this.published, navigating: false, epoch: 0 };
   }
   read = (): Camera => this.effective;
   hasPending = (): boolean => this.effective !== this.published;
   private emit(camera = this.effective) {
     this.published = camera;
-    this.publish({ camera, navigating: this.navigating, epoch: this.epoch });
+    this.state = { camera, navigating: this.navigating, epoch: this.epoch };
+    if (!this.navigating) this.settled = camera;
+    this.publish(this.state);
+    this.stateListeners.forEach(listener => listener());
   }
+  /** Store of every publication (gesture start, re-anchor, settle) for the canvas. */
+  subscribeState = (listener: () => void): (() => void) => { this.stateListeners.add(listener); return () => { this.stateListeners.delete(listener); }; };
+  getState = (): FrameState => this.state;
+  /** The last camera published outside a gesture: what the view persists and reports. */
+  getSettled = (): Camera => this.settled;
   private clearScheduled() {
     ++this.frameToken; ++this.settleToken;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
@@ -48,7 +61,9 @@ export class FrameCamera {
       const token = ++this.frameToken;
       this.frame = requestAnimationFrame(() => {
         if (!this.active || token !== this.frameToken) return;
-        this.frame = null; this.emit();
+        this.frame = null;
+        // A frame listener (the canvas) follows the gesture itself; React sees the camera again when it settles.
+        if (this.listeners.size) this.listeners.forEach(listener => listener(this.effective)); else this.emit();
       });
     }
     if (this.timer !== null) clearTimeout(this.timer);
@@ -75,6 +90,10 @@ export class FrameCamera {
     if (!this.active) return;
     this.clearScheduled(); ++this.epoch; this.navigating = false; this.emit();
   };
+  /** Per-frame camera during a gesture, without a React update. */
+  subscribe = (listener: (camera: Camera) => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
+  /** Publish the effective camera now while the gesture continues. */
+  publishNow = (): void => { if (this.active && this.effective !== this.published) this.emit(); };
   resume = (): void => { this.active = true; };
   dispose = (): void => {
     this.clearScheduled(); this.active = false; this.navigating = false;
@@ -82,13 +101,14 @@ export class FrameCamera {
   };
 }
 
-/** React holds the published projection; persistence and input boundaries use read(). */
+/** The owner re-renders only for settled views; the canvas subscribes to gesture publications itself (useSyncExternalStore).
+ * Persistence and input boundaries use read(). */
 export function useFrameCamera(initial: Camera) {
-  const [state, setState] = useState<FrameState>(() => ({ camera: snapshot(initial), navigating: false, epoch: 0 }));
-  const [frames] = useState(() => new FrameCamera(initial, setState));
-  const committed = useRef(state.camera);
-  useLayoutEffect(() => { committed.current = state.camera; }, [state.camera]);
+  const [frames] = useState(() => new FrameCamera(initial));
+  const camera = useSyncExternalStore(frames.subscribeState, frames.getSettled);
+  const committed = useRef(camera);
+  useLayoutEffect(() => { committed.current = camera; }, [camera]);
   const hasPending = useCallback(() => frames.hasPending() || !equal(frames.read(), committed.current), [frames]);
   useEffect(() => { frames.resume(); return frames.dispose; }, [frames]);
-  return { ...state, read: frames.read, queue: frames.queue, replace: frames.replace, flush: frames.flush, cancel: frames.cancel, hasPending };
+  return { camera, read: frames.read, queue: frames.queue, replace: frames.replace, flush: frames.flush, cancel: frames.cancel, hasPending, subscribe: frames.subscribe, publishNow: frames.publishNow, subscribeState: frames.subscribeState, getState: frames.getState };
 }

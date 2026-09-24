@@ -1,9 +1,10 @@
-import Ajv2020, { type ErrorObject } from 'ajv/dist/2020';
-import legacySchema from '../../schemas/map.schema.json';
-import currentSchema from '../../schemas/map-0.2.schema.json';
-import pathSchema from '../../schemas/map-0.3.schema.json';
+import Ajv2020, { type ErrorObject } from 'ajv/dist/2020.js';
+import legacySchema from '../../schemas/map.schema.json' with { type: 'json' };
+import currentSchema from '../../schemas/map-0.2.schema.json' with { type: 'json' };
+import pathSchema from '../../schemas/map-0.3.schema.json' with { type: 'json' };
 import { roadGeometryAnchors, hasNonlinearGeometry, getRoadPath, pathLength } from '../geometry/roadPath';
-import type { Issue, PhysicalValue, Provenance, ValidationReport, YardMap } from '../domain/model';
+import type { Issue, PhysicalValue, Provenance, ValidationReport, Vec3, YardMap } from '../domain/model';
+import { isDeepFrozen, recentFor } from '../domain/value';
 import { roadLength, roadPoints } from '../geometry/roads';
 import { MAX_MAP_POLYGON_VERTICES, validatePolygon } from '../geometry/polygons';
 import type { Polygon } from '../domain/model';
@@ -35,26 +36,58 @@ function schemaIssue(error: ErrorObject): Issue {
   return issue(error.keyword === 'additionalProperties' ? 'UNKNOWN_CORE_FIELD' : 'SCHEMA_ERROR', path, `结构不符合 Schema：${error.message ?? error.keyword}`);
 }
 
-function checkJsonValues(value: unknown, path: string, issues: Issue[], depth: number, ancestors: Set<object>): void {
-  if (depth > 64) { issues.push(issue('JSON_DEPTH_LIMIT', path, '对象嵌套超过 64 层。')); return; }
+function pointerPath(keys: readonly string[]): string { return keys.map(key => '/' + pointer(key)).join(''); }
+/** keys is the current JSON path; the pointer text is built only for an issue. */
+function checkJsonValues(value: unknown, keys: string[], issues: Issue[], ancestors: Set<object>): void {
   if (typeof value === 'number') {
-    if (!Number.isFinite(value)) issues.push(issue('NON_FINITE_NUMBER', path, '数字必须为有限值。'));
+    if (!Number.isFinite(value)) issues.push(issue('NON_FINITE_NUMBER', pointerPath(keys), '数字必须为有限值。'));
     return;
   }
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
-  if (typeof value !== 'object') { issues.push(issue('NON_JSON_VALUE', path, '字段必须为可表示的 JSON 值。')); return; }
-  if (ancestors.has(value)) { issues.push(issue('CYCLIC_VALUE', path, 'JSON 不允许循环引用。')); return; }
+  if (typeof value !== 'object') { issues.push(issue('NON_JSON_VALUE', pointerPath(keys), '字段必须为可表示的 JSON 值。')); return; }
+  if (ancestors.has(value)) { issues.push(issue('CYCLIC_VALUE', pointerPath(keys), 'JSON 不允许循环引用。')); return; }
   if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
-    issues.push(issue('NON_JSON_VALUE', path, '对象必须为普通 JSON 对象。')); return;
+    issues.push(issue('NON_JSON_VALUE', pointerPath(keys), '对象必须为普通 JSON 对象。')); return;
   }
+  // Same limit as parseMap: an object or array at key depth 64 is bracket depth 65 in the saved file.
+  if (keys.length >= 64) { issues.push(issue('JSON_DEPTH_LIMIT', pointerPath(keys), '对象嵌套超过 64 层。')); return; }
   ancestors.add(value);
-  for (const [key, child] of Object.entries(value)) checkJsonValues(child, path + '/' + pointer(key), issues, depth + 1, ancestors);
+  const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record)) { keys.push(key); checkJsonValues(record[key], keys, issues, ancestors); keys.pop(); }
   ancestors.delete(value);
 }
 
+const drafts: { key: object; value: ValidationReport }[] = [];
+/** Deep-frozen maps never change, so their draft report is computed once and shared read-only. */
 export function validateMap(input: unknown, profile = 'draft'): ValidationReport {
+  if (profile !== 'draft' || !isDeepFrozen(input)) return validateUncached(input, profile);
+  return recentFor(drafts, input, () => validateUncached(input, profile));
+}
+
+/** Buckets of item indices by planar cell; candidates are a superset, callers keep the exact distance test. */
+function planarGrid(points: readonly Vec3[], cellM: number) {
+  const cells = new Map<string, number[]>();
+  const key = (x: number, y: number) => x + ':' + y;
+  points.forEach((point, index) => {
+    const k = key(Math.floor(point[0] / cellM), Math.floor(point[1] / cellM));
+    const list = cells.get(k); if (list) list.push(index); else cells.set(k, [index]);
+  });
+  return {
+    /** Indices whose cell overlaps the box, ascending; null when the box spans too many cells to enumerate. */
+    query(minX: number, minY: number, maxX: number, maxY: number): number[] | null {
+      const x0 = Math.floor(minX / cellM), x1 = Math.floor(maxX / cellM), y0 = Math.floor(minY / cellM), y1 = Math.floor(maxY / cellM);
+      // Beyond 2^40 cells a unit step may no longer be exact; the caller then scans every point as before.
+      if (![x0, x1, y0, y1].every(value => Math.abs(value) <= 2 ** 40) || (x1 - x0 + 1) * (y1 - y0 + 1) > 4096) return null;
+      const found: number[] = [];
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const list = cells.get(key(x, y)); if (list) found.push(...list); }
+      return found.sort((a, b) => a - b);
+    },
+  };
+}
+
+function validateUncached(input: unknown, profile: string): ValidationReport {
   const issues: Issue[] = [];
-  checkJsonValues(input, '', issues, 0, new Set());
+  checkJsonValues(input, [], issues, new Set());
   if (issues.length) return { ok: false, profile, status: 'invalid', issues };
   if (input && typeof input === 'object' && 'schemaVersion' in input && input.schemaVersion !== '0.1.0' && input.schemaVersion !== '0.2.0' && input.schemaVersion !== '0.3.0') {
     return { ok: false, profile, status: 'invalid', issues: [issue('UNSUPPORTED_SCHEMA_VERSION', '/schemaVersion', '仅支持 schemaVersion 0.1.0 / 0.2.0 / 0.3.0；未执行自动迁移。')] };
@@ -216,11 +249,20 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   const nearNodes = Object.entries(map.nodes);
   if (nearNodes.length <= 2000) {
     const connected = new Set(Object.values(map.roads).map(road => [road.fromNodeId, road.toNodeId].sort().join('|')));
+    // Same pair order and 100-hint cap as the full scan; the grid only skips pairs that cannot be within 0.5 m.
+    const grid = planarGrid(nearNodes.map(([, node]) => node.position), 16);
     let reported = 0;
-    for (let i = 0; i < nearNodes.length && reported < 100; i++) for (let j = i + 1; j < nearNodes.length && reported < 100; j++) {
-      const [idA, nodeA] = nearNodes[i]!; const [idB, nodeB] = nearNodes[j]!;
-      if (Math.hypot(nodeA.position[0] - nodeB.position[0], nodeA.position[1] - nodeB.position[1], nodeA.position[2] - nodeB.position[2]) <= 0.5 && !connected.has([idA, idB].sort().join('|'))) {
-        issues.push(issue('NEAR_UNCONNECTED_NODES', '/nodes/' + pointer(idB) + '/position', `节点距 ${idA} 不超过 0.5 m，但没有显式直连道路；接近或重合不建立拓扑。`, 'warning')); reported++;
+    // The exact test below may round a distance just over 0.5 m down to 0.5; the pad keeps such pairs among the candidates.
+    const pad = (...values: number[]) => 0.5 + 1e-6 + 1e-9 * Math.max(1, ...values.map(Math.abs));
+    for (let i = 0; i < nearNodes.length && reported < 100; i++) {
+      const [idA, nodeA] = nearNodes[i]!; const [x, y] = nodeA.position, r = pad(x, y);
+      const candidates = grid.query(x - r, y - r, x + r, y + r) ?? nearNodes.map((_, index) => index);
+      for (const j of candidates) {
+        if (j <= i) continue; if (reported >= 100) break;
+        const [idB, nodeB] = nearNodes[j]!;
+        if (Math.hypot(nodeA.position[0] - nodeB.position[0], nodeA.position[1] - nodeB.position[1], nodeA.position[2] - nodeB.position[2]) <= 0.5 && !connected.has([idA, idB].sort().join('|'))) {
+          issues.push(issue('NEAR_UNCONNECTED_NODES', '/nodes/' + pointer(idB) + '/position', `节点距 ${idA} 不超过 0.5 m，但没有显式直连道路；接近或重合不建立拓扑。`, 'warning')); reported++;
+        }
       }
     }
     const segments = Object.values(map.roads).reduce((sum, road) => sum + roadGeometryAnchors(road).length + 1, 0);
@@ -229,7 +271,14 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
         if (reported >= 100) break;
         if (!Object.hasOwn(map.nodes, road.fromNodeId) || !Object.hasOwn(map.nodes, road.toNodeId)) continue;
         const points = roadPoints(map, roadId);
-        for (const [nodeId, node] of nearNodes) {
+        const near = new Set<number>(); let everyNode = false;
+        for (let i = 0; i + 1 < points.length && !everyNode; i++) {
+          const a = points[i]!, b = points[i + 1]!, r = pad(a[0], a[1], b[0], b[1]);
+          const found = grid.query(Math.min(a[0], b[0]) - r, Math.min(a[1], b[1]) - r, Math.max(a[0], b[0]) + r, Math.max(a[1], b[1]) + r);
+          if (found) found.forEach(index => near.add(index)); else everyNode = true;
+        }
+        const candidates = everyNode ? nearNodes : [...near].sort((a, b) => a - b).map(index => nearNodes[index]!);
+        for (const [nodeId, node] of candidates) {
           if (reported >= 100) break;
           if (nodeId === road.fromNodeId || nodeId === road.toNodeId) continue;
           for (let i = 0; i + 1 < points.length; i++) {
@@ -250,7 +299,8 @@ export function validateMap(input: unknown, profile = 'draft'): ValidationReport
   if (Object.keys(map.roads).length && Object.keys(map.movements).length === 0)
     issues.push(issue('TURN_RULES_UNSPECIFIED', '/movements', '未定义转向连接；共享节点只定义几何关联，M2A 未执行路径可达性检查。', 'warning'));
   const planning = inspectPlanning(map);
-  issues.push(...planning.issues);
+  // Own copies: the location added below must not write into another reader's (possibly cached) issues.
+  issues.push(...planning.issues.map(item => ({ ...item })));
   issues.push(...inspectSpatialClassification(map).issues);
   const capabilities = mapCapabilities(map, planning);
   for (const reason of capabilities.reasons) issues.push(issue('UNSUPPORTED_EDIT_CAPABILITY', '', reason, 'warning'));

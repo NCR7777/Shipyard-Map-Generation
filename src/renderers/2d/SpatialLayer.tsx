@@ -1,4 +1,5 @@
 import { legacySpatialAppearance } from '../../compiler/spatialColors';
+import { memo } from 'react';
 import { Group, Shape, Text, Rect, Line, Circle } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { SceneSnapshot, SceneItem, SceneKind } from '../../adapters/contracts';
@@ -78,8 +79,8 @@ function useSpatialEvents(props: SpatialLayerProps) {
   });
   return { onMouseEnter, onMouseLeave, onMouseDown, onClick, onDragStart, onDragMove, onDragEnd };
 }
-/** Only scene projection: transient drag offsets never become a second map. */
-export function SpatialLayer(props: SpatialLayerProps) {
+/** Only scene projection: transient drag offsets never become a second map. Memoized: pointer-only canvas state never reaches it. */
+export const SpatialLayer = memo(function SpatialLayer(props: SpatialLayerProps) {
   const events = useSpatialEvents(props);
   const polygons = [...props.scene.zones.map(item => ({ ...item, entityType: 'zones' as const })), ...props.scene.facilities.map(item => ({ ...item, entityType: 'facilities' as const }))];
   return <>{polygons.filter(item => !props.hiddenTypes?.includes(item.entityType) && (!props.visibleKeys || props.visibleKeys.has(item.entityType + '/' + item.id))).map(item => {
@@ -100,7 +101,7 @@ export function SpatialLayer(props: SpatialLayerProps) {
         sceneFunc={(context, shape) => { context.beginPath(); for (const ring of rings) { ring.forEach((point, index) => { if (!index) context.moveTo(point[0]!, point[1]!); else context.lineTo(point[0]!, point[1]!); }); context.closePath(); } context.fillStrokeShape(shape); }} />
     </Group>;
   })}</>;
-}
+});
 /** Same node reference only: equal coordinates never combine independent identities. */
 export function associatedPointGroups(scene: Pick<SceneSnapshot, 'accessPoints' | 'servicePoints'>, hiddenTypes: readonly SceneKind[] = [], visibleKeys?: ReadonlySet<string>) {
   const points = [...scene.accessPoints.map(point => ({ ...point, entityType: 'accessPoints' as const })), ...scene.servicePoints.map(point => ({ ...point, entityType: 'servicePoints' as const }))];
@@ -112,7 +113,7 @@ export function associatedPointGroups(scene: Pick<SceneSnapshot, 'accessPoints' 
   // Display candidates deduplicate labels by nodeId; keep all visible identities behind that one marker.
   return [...groups.values()].filter(group => !visibleKeys || group.some(point => visibleKeys.has(point.entityType + '/' + point.id)));
 }
-export function AssociatedPointLayer(props: SpatialLayerProps) {
+export const AssociatedPointLayer = memo(function AssociatedPointLayer(props: SpatialLayerProps) {
   const events = useSpatialEvents(props);
   const groups = associatedPointGroups(props.scene, props.hiddenTypes, props.visibleKeys);
   const selectedGroups = new Set(groups.filter(points => points.some(point => props.selection[point.entityType]?.includes(point.id))));
@@ -139,10 +140,10 @@ export function AssociatedPointLayer(props: SpatialLayerProps) {
       <Text x={-4} y={-5} text={combined ? points.some(p => p.entityType === 'accessPoints') && points.some(p => p.entityType === 'servicePoints') ? '入/作' : (point.entityType === 'accessPoints' ? '入' : '作') + points.length : point.entityType === 'accessPoints' ? '入' : '服'} fontSize={10} fill="#fff" listening={false} />
     </Group>;
   })}</>;
-}
+});
 
 /** Existing polygons/points/lines only; selected logical resources highlight their references. */
-export function DeclaredLayer({ items, camera, hiddenTypes, visibleKeys, onHover, selectedKey, onSelect, selection, previewDelta, movingJunctionIds, backdrop = false, listening = true }: {
+export const DeclaredLayer = memo(function DeclaredLayer({ items, camera, hiddenTypes, visibleKeys, onHover, selectedKey, onSelect, selection, previewDelta, movingJunctionIds, backdrop = false, listening = true }: {
   items: SceneItem[]; camera: Camera; hiddenTypes: readonly SceneKind[];
   visibleKeys?: ReadonlySet<string>; onHover?: (key: string | null) => void;
   selectedKey?: string; onSelect: (item: SceneItem) => void; selection: Selection; previewDelta: Vec3 | null;
@@ -173,4 +174,4 @@ export function DeclaredLayer({ items, camera, hiddenTypes, visibleKeys, onHover
       {(selected || !item.polygons.length) && item.points.map((point, index) => { const p = worldToScreen(move(point, delta), camera); if (!p.every(Number.isFinite)) return null; return <Circle key={'point-' + index} x={p[0]} y={p[1]} radius={selected ? 9 : 7} stroke={stroke} strokeWidth={1}/>; })}
     </Group>;
   })}</>;
-}
+});

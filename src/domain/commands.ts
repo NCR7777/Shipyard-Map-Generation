@@ -1,13 +1,13 @@
-import type { AccessPoint, Facility, Issue, MapNode, MapRoad, PhysicalValue, ServiceArrival, ServicePoint, Vec3, YardMap, Zone } from './model';
+import { ENTITY_RECORDS, MAX_JSON_BYTES, type AccessPoint, type Facility, type Issue, type MapNode, type MapRoad, type PhysicalValue, type ServiceArrival, type ServicePoint, type Vec3, type YardMap, type Zone } from './model';
 import { validateMap } from '../validation/validate';
 import { inspectSpatialEdit } from '../validation/spatialDiagnostics';
 import { mapCapabilities } from './capabilities';
 import { BackgroundError, isBackgroundCommand, runBackgroundCommand, type BackgroundCommand } from './backgrounds';
-import { contentHash, serializeMap } from './serialization';
+import { utf8Size } from './serialization';
 import { transformPolygon, normalizePolygonBetweenVertices } from '../geometry/polygons';
 import { polylineLength2D, roadPoints } from '../geometry/roads';
 import { newNode } from './factory';
-import { sameValue } from './value';
+import { sameValue, freezeDeep, isDeepFrozen } from './value';
 import { recordGeometrySources, recordTopologySources, recordSiteBoundaryNormalization, sourceId } from './geometrySources';
 import { TopologyError, moveNodeWithHandles, splitPosition, onlySubdivisionJunctions, checkSplitGeometry, remapSplitReferences, preserveSplitContinuation, rejectOpaqueTopologyReferences, runTopology, deleteNetwork, topologyChangedRefs, type TopologyCommand } from './topologyEditing';
 import { zoneServicePointIds } from '../topology/serviceConnections';
@@ -335,28 +335,44 @@ export function canEditBoundary(map: YardMap, kind: 'facilities' | 'zones', id: 
   return Object.hasOwn(map[kind], id) && mapCapabilities(map).editable && canChangeBoundary(map, kind, id);
 }
 export interface CommandSupport { allowed: boolean; issues: Issue[]; affectedRefs: CommandAffectedRef[]; impact?: SelectionImpact; geometryPreservedRoadIds?: readonly string[]; proposedMovements?: ReturnType<typeof runConnectedPoint>['proposedMovements'] }
-/** Capability/dependency inspection only; applyMapCommand owns structural validation and mutation. */
+let lastSupport: { map: YardMap; command: MapCommand; result: CommandSupport } | null = null;
+/** Capability/dependency inspection only; applyMapCommand owns structural validation and mutation.
+ * The UI asks once before applying the same command object to the same frozen map, so that answer is reused. */
 export function commandSupport(map: YardMap, command: MapCommand): CommandSupport {
+  if (lastSupport?.map === map && lastSupport.command === command) return lastSupport.result;
+  const result = inspectSupport(map, command);
+  lastSupport = isDeepFrozen(map) ? { map, command, result } : null;
+  return result;
+}
+// The simulated candidate is exactly what applyMapCommand would compute for the same frozen map and command.
+let simulated: { map: YardMap; command: MapCommand; candidate: YardMap } | null = null;
+function simulate(map: YardMap, command: MapCommand, run: (candidate: YardMap) => void): YardMap {
+  const candidate = structuredClone(map); run(candidate);
+  simulated = isDeepFrozen(map) ? { map, command, candidate } : null;
+  return candidate;
+}
+function inspectSupport(map: YardMap, command: MapCommand): CommandSupport {
   try {
     if (command.type === 'upgradeSchema') return { allowed: true, issues: [], affectedRefs: [] };
     const capability = mapCapabilities(map);
     if (!capability.editable) return { allowed: false, issues: [problem('READ_ONLY_MAP', capability.reasons.join(' '))], affectedRefs: [] };
     if (command.type === 'applyResearchAccess') {
-      const candidate = structuredClone(map); const result = runResearchAccess(candidate, command, splitRoad);
-      return { allowed: true, issues: [], affectedRefs: topologyChangedRefs(map, candidate), geometryPreservedRoadIds: result.geometryPreservedRoadIds };
+      let result!: ReturnType<typeof runResearchAccess>;
+      const candidate = simulate(map, command, next => { result = runResearchAccess(next, command, splitRoad); });
+      return { allowed: true, issues: [], affectedRefs: changedRefs(map, candidate), geometryPreservedRoadIds: result.geometryPreservedRoadIds };
     }
     if (command.type === 'applySemanticPatch') {
-      const candidate = structuredClone(map); runSemanticPatch(candidate, command);
-      return { allowed: true, issues: [], affectedRefs: topologyChangedRefs(map, candidate) };
+      const candidate = simulate(map, command, next => runSemanticPatch(next, command));
+      return { allowed: true, issues: [], affectedRefs: changedRefs(map, candidate) };
     }
     if (command.type === 'setSpatialClasses') {
       const candidate = structuredClone(map); setSpatialClasses(candidate, command.customClasses);
       return { allowed: true, issues: [], affectedRefs: [{ kind: 'extensions', id: '/extensions/' + SPATIAL_CLASSIFICATION_NAMESPACE }] };
     }
     if (command.type === 'quickTraceRoad' || command.type === 'quickTraceBoundary') {
-      const candidate = structuredClone(map);
-      const result = runQuickTrace(candidate, command, splitRoad);
-      return { allowed: true, issues: [], affectedRefs: topologyChangedRefs(map, candidate), geometryPreservedRoadIds: result.geometryPreservedRoadIds };
+      let result!: ReturnType<typeof runQuickTrace>;
+      const candidate = simulate(map, command, next => { result = runQuickTrace(next, command, splitRoad); });
+      return { allowed: true, issues: [], affectedRefs: changedRefs(map, candidate), geometryPreservedRoadIds: result.geometryPreservedRoadIds };
     }
     if (isBackgroundCommand(command)) {
       const candidate = { ...map, assets: { ...map.assets }, backgroundLayers: structuredClone(map.backgroundLayers), sources: { ...map.sources } };
@@ -555,9 +571,20 @@ export function commandSupport(map: YardMap, command: MapCommand): CommandSuppor
     return { allowed: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '无法检查操作依赖。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.path : '')], affectedRefs: [] };
   }
 }
-export function freezeMap(map: YardMap): YardMap {
-  const freeze = (value: unknown): void => { if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) { Object.values(value).forEach(freeze); Object.freeze(value); } };
-  freeze(map); return map;
+export function freezeMap(map: YardMap): YardMap { return freezeDeep(map); }
+const SHARED_CONTAINERS = [...ENTITY_RECORDS, 'extensions', 'extensionNamespaces'] as const;
+function changedRefs(map: YardMap, candidate: YardMap): CommandAffectedRef[] {
+  if (isDeepFrozen(map)) shareUnchanged(map, candidate);
+  return topologyChangedRefs(map, candidate);
+}
+/** Reuse the input's frozen entities the command left equal. Containers stay writable for source bookkeeping;
+ * later steps only rewrite entities that changed, so history and identity caches share everything else. */
+function shareUnchanged(input: YardMap, next: YardMap): void {
+  for (const kind of SHARED_CONTAINERS) {
+    const before = input[kind] as Record<string, unknown>, after = next[kind] as Record<string, unknown>;
+    for (const id of Object.keys(after)) if (Object.hasOwn(before, id) && after[id] !== before[id] && sameValue(before[id], after[id])) after[id] = before[id];
+  }
+  for (const key of ['metadata', 'coordinateFrame', 'siteBoundary'] as const) if (sameValue(input[key], next[key])) (next as unknown as Record<string, unknown>)[key] = input[key];
 }
 function existsId(map: YardMap, id: string): boolean {
   return (['nodes', 'roads', 'junctions', 'movements', 'facilities', 'accessPoints', 'servicePoints', 'zones', 'resources', 'sources', 'assets', 'backgroundLayers'] as const).some(key => Object.hasOwn(map[key], id));
@@ -876,9 +903,11 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   if (!initial.ok) return { ok: false, issues: initial.issues };
   const support = commandSupport(input, command);
   if (!support.allowed) return { ok: false, issues: support.issues };
-  let next = structuredClone(input); let mapping: SplitMapping | undefined;
+  const reused = simulated?.map === input && simulated.command === command ? simulated.candidate : null;
+  simulated = null;
+  let next = reused ?? structuredClone(input); let mapping: SplitMapping | undefined;
   try {
-    switch (command.type) {
+    if (!reused) switch (command.type) {
       case 'applyResearchAccess': runResearchAccess(next, command, splitRoad); break;
       case 'applySemanticPatch': runSemanticPatch(next, command); break;
       case 'setSpatialClasses': setSpatialClasses(next, command.customClasses); break;
@@ -977,6 +1006,8 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
     }
   } catch (error) { return { ok: false, issues: [problem(error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.code : 'INVALID_COMMAND', error instanceof Error ? error.message : '命令输入无效。', error instanceof CommandError || error instanceof TopologyError || error instanceof BackgroundError || error instanceof OwnerEditError || error instanceof SpatialClassificationError ? error.path : '')] }; }
   if (!sameValue(input.coordinateFrame, next.coordinateFrame)) return { ok: false, issues: [problem('COORDINATE_FRAME_LOCKED', '普通本地编辑不得改变坐标框架；请通过显式文档替换操作打开另一框架。', '/coordinateFrame')] };
+  // Only a frozen input can lend objects to the result without the caller's own map becoming frozen.
+  if (isDeepFrozen(input)) shareUnchanged(input, next);
   const report = validateMap(next);
   if (!report.ok) return { ok: false, issues: report.issues };
   if (inspectPlanning(input).present) {
@@ -986,7 +1017,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       return { ok: false, issues: [problem('STATIC_CONTENTS_INVALID', '修改后静态规划契约冲突：' + (first ? first.jsonPath + '：' + first.message : '已有声明无法保持一致。') + ' 整个事务已拒绝。', first?.jsonPath), ...planning.issues] };
     }
   }
-  if (contentHash(input) === contentHash(next)) return { ok: true, map: input, changed: false, ...(command.type === 'upgradeSchema' ? { migrationChanges: [] } : {}) };
+  if (sameValue(input, next)) return { ok: true, map: input, changed: false, ...(command.type === 'upgradeSchema' ? { migrationChanges: [] } : {}) };
   // Only the existing transform command can establish that owner and service received the same rigid transform.
   const transformed = command.type === 'translateSelection' || command.type === 'rotateSelection' ? support.impact?.selection : undefined;
   const rigidServiceIds = transformed?.servicePoints.filter(id => {
@@ -1002,9 +1033,11 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   const semanticRefs = command.type === 'applySemanticPatch' || command.type === 'setSpatialClasses' || command.type === 'updateFacility' || command.type === 'updateZone' || command.type === 'addFacility' || command.type === 'addZone' ? topologyChangedRefs(input, next) : [];
   const affectedRefs = [...new Map([...support.affectedRefs, ...topologySources, ...sourceRefs, ...boundarySources, ...semanticRefs, ...directionSources].map(ref => [ref.kind + '/' + ref.id, ref])).values()];
   next.revision = input.revision + 1;
-  const finalReport = validateMap(next); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };
-  try { serializeMap(next); } catch (error) { return { ok: false, issues: [problem('JSON_SIZE_LIMIT', error instanceof Error ? error.message : '规范化 JSON 超过限制。')] }; }
-  const before = freezeMap(structuredClone(input)); const after = freezeMap(next);
+  const after = freezeMap(next);
+  const finalReport = validateMap(after); if (!finalReport.ok) return { ok: false, issues: finalReport.issues };
+  // Key order changes no byte count, so the unsorted text measures the canonical file size.
+  if (utf8Size(JSON.stringify(after, null, 2) + '\n') > MAX_JSON_BYTES) return { ok: false, issues: [problem('JSON_SIZE_LIMIT', 'JSON_SIZE_LIMIT: 规范化 JSON 超过 10 MiB。')] };
+  const before = isDeepFrozen(input) ? input : freezeMap(structuredClone(input));
   return { ok: true, map: after, changed: true, ...(spatialIssues.length ? { issues: spatialIssues } : {}), transaction: { before, after, label: command.type, affectedRefs: Object.freeze(affectedRefs.map(ref => Object.freeze({ ...ref }))) }, ...(mapping ? { mapping } : {}), ...(command.type === 'upgradeSchema' ? { migrationChanges: schemaUpgradeChanges(input, command.targetVersion) } : {}) };
 }
 

@@ -7,7 +7,7 @@ import { enumerateMergeTurns, mergeNodes, splitPosition, TopologyError } from '.
 import { roadLength } from '../geometry/roads';
 import { sameValue } from './value';
 import { applySpatialClassification, type SpatialClassification } from './spatialClassification';
-import { roadForMap, getRoadPath, pathLength, pathToRoadGeometry, movePathAnchor, intersectPaths, type ResolvedPath } from '../geometry/roadPath';
+import { roadForMap, getRoadPath, pathLength, pathToRoadGeometry, movePathAnchor, intersectPaths, boundsOfPath, type ResolvedPath } from '../geometry/roadPath';
 
 export interface QuickTraceDefaults { widthM: number; direction?: 'both' | 'forward' | 'backward'; connectNewCrossings?: boolean }
 export const DEFAULT_QUICK_TRACE_DEFAULTS: Readonly<QuickTraceDefaults> = Object.freeze({ widthM: 12, direction: 'both', connectNewCrossings: true });
@@ -83,10 +83,13 @@ function tracePath(points: readonly Vec3[], geometry?: RoadGeometry): ResolvedPa
 function traceCrossings(map: YardMap, path: ResolvedPath): { crossings: QuickTraceCrossing[]; ambiguous: boolean; converged: boolean } {
   const crossings: QuickTraceCrossing[] = [], total = pathLength(path).lengthM;
   let ambiguous = false, converged = true;
-  // ponytail: scan only declared quick-trace roads; add a spatial index only if measured preview cost requires it.
+  const box = boundsOfPath(path), margin = 0.01;
+  // ponytail: linear scan of declared quick-trace roads behind a bounding-box reject; a spatial index only if roads reach the tens of thousands.
+  // A road whose box is apart from the trace cannot cross it, so its (non-)convergence no longer blocks this trace.
   for (const [roadId, road] of Object.entries(map.roads)) {
     if (!profileRoad(map, road)) continue;
-    const other = getRoadPath(map, roadId);
+    const other = getRoadPath(map, roadId), near = boundsOfPath(other);
+    if (near.min[0] > box.max[0] + margin || near.max[0] < box.min[0] - margin || near.min[1] > box.max[1] + margin || near.max[1] < box.min[1] - margin) continue;
     const all = [...other.anchors, ...other.spans.flatMap(span => span.kind === 'cubic' ? [span.control1, span.control2] : [])];
     if (all.some(p => p[2] !== path.anchors[0]![2])) continue;
     const result = intersectPaths(path, other);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import Ajv2020 from 'ajv/dist/2020';
+import Ajv2020 from 'ajv/dist/2020.js';
 import extensionSchema from '../../schemas/spatial-classification-1.0.schema.json';
 import { applyMapCommand, type MapCommand } from '../../src/domain/commands';
 import type { YardMap } from '../../src/domain/model';

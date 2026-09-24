@@ -1,5 +1,6 @@
 import type { Extensions, Issue, Polygon, YardMap } from './model';
 import { MAX_POLYGON_HOLES, MAX_POLYGON_VERTICES, polygonArea2D, validatePolygon } from '../geometry/polygons';
+import { recentFor } from './value';
 
 export const PLANNING_NAMESPACE = 'sr02.planning';
 export interface PlanningSlot {
@@ -22,14 +23,19 @@ const positive = (value: unknown): value is number => typeof value === 'number' 
 const close = (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1e-7 * Math.max(1, Math.abs(a), Math.abs(b));
 
 /** Fixed sr02.planning@1.0 reader. Input remains authoritative and is never modified. */
+const inspections: { key: object; value: PlanningInspection }[] = [];
 export function inspectPlanning(map: YardMap): PlanningInspection {
+  return recentFor(inspections, map, () => inspectUncached(map));
+}
+function inspectUncached(map: YardMap): PlanningInspection {
   const issues: Issue[] = []; const slots: PlanningSlot[] = [];
   let supported = true; let present = Object.hasOwn(map.extensionNamespaces, PLANNING_NAMESPACE);
   const declaration = map.extensionNamespaces[PLANNING_NAMESPACE];
   const knownDeclaration = declaration?.version === '1.0' && declaration.category === 'behavior';
   let slotCount = 0; let vertexCount = 0; let geometryCost = 0; let evidenceCount = 0;
   const slotById = new Map<string, PlanningSlot>();
-  const coreIds = new Set(COLLECTIONS.flatMap(kind => Object.keys(map[kind])));
+  let coreIds: Set<string> | undefined; // Built only when a slot needs the whole-map ID check.
+  const coreIdSet = () => coreIds ??= new Set(COLLECTIONS.flatMap(kind => Object.keys(map[kind])));
   const owners = new Map<string, { kind: 'facilities' | 'zones'; id: string; payload: Record<string, unknown>; path: string }>();
   const resources = new Map<string, { payload: Record<string, unknown>; path: string }>();
   const parkingServices = new Set<string>();
@@ -109,7 +115,7 @@ export function inspectPlanning(map: YardMap): PlanningInspection {
       const slot = record(value, ['id', 'boundary', ...(parking ? ['servicePointId'] : [])], ['id', 'boundary', ...(parking ? ['servicePointId'] : [])], slotPath);
       if (!slot) continue;
       if (!idValue(slot.id)) { warn('SLOT_ID', slotPath + '/id', '槽位 ID 必须遵循实体 ID 格式。'); continue; }
-      if (slotById.has(slot.id) || coreIds.has(slot.id)) { warn('DUPLICATE_SLOT', slotPath + '/id', '槽位 ID 必须在整图内唯一。'); continue; }
+      if (slotById.has(slot.id) || coreIdSet().has(slot.id)) { warn('DUPLICATE_SLOT', slotPath + '/id', '槽位 ID 必须在整图内唯一。'); continue; }
       const boundary = polygon(slot.boundary, slotPath + '/boundary');
       if (!boundary) continue;
       if (positive(e.slotLengthM) && positive(e.slotWidthM) && !close(polygonArea2D(boundary), e.slotLengthM * e.slotWidthM)) warn('SLOT_AREA', slotPath + '/boundary', '槽位面积与声明长宽不一致。');
@@ -209,7 +215,8 @@ export function inspectPlanning(map: YardMap): PlanningInspection {
   }
   visit('root', '', map.extensions, '');
   visit('metadata', '', map.metadata.extensions, '/metadata');
-  for (const kind of COLLECTIONS) for (const [id, entity] of Object.entries(map[kind])) visit(kind, id, entity.extensions, '/' + kind + '/' + pointer(id));
+  // Runs for every candidate of a topology edit: build a path only for entities that carry planning data.
+  for (const kind of COLLECTIONS) for (const [id, entity] of Object.entries(map[kind])) if (entity.extensions && Object.hasOwn(entity.extensions, PLANNING_NAMESPACE)) visit(kind, id, entity.extensions, '/' + kind + '/' + pointer(id));
   if (present) {
     if (!knownDeclaration) warn('UNSUPPORTED_DECLARATION', '/extensionNamespaces/' + PLANNING_NAMESPACE, '只支持显式声明的 sr02.planning behavior 版本 1.0。');
   }

@@ -79,7 +79,9 @@ const compare = (a: DisplayEntry, b: DisplayEntry, focusKey?: string) => priorit
 
 /** Linear AABB query precedes vertex projection. No display subset leaves the renderer. */
 export function selectDisplay(index: DisplayIndex, options: DisplayOptions): DisplayView {
-  const viewport = { x: -120, y: -120, width: options.width + 240, height: options.height + 240 };
+  // While navigating, the canvas moves the last rendered frame by transform, so keep half a screen of overscan.
+  const margin = options.navigating ? Math.max(120, Math.max(options.width, options.height) / 2) : 120;
+  const viewport = { x: -margin, y: -margin, width: options.width + 2 * margin, height: options.height + 2 * margin };
   const hidden = new Set(options.hiddenTypes);
   let culledCount = 0, lodCount = 0, unprojectableCount = 0;
   const visible: DisplayEntry[] = [];

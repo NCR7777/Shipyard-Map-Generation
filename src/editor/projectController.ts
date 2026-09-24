@@ -1,10 +1,10 @@
 import { validateWorkbenchPreferences, type WorkbenchPreferences } from './workbench';
-import { sameValue } from '../domain/value';
+import { isDeepFrozen, sameValue } from '../domain/value';
 import { SCENE_KINDS, type SceneKind } from '../adapters/contracts';
 import type { Facility, Issue, YardMap, Zone } from '../domain/model';
 import type { FacilityMovePolicy, ZoneMovePolicy } from '../domain/commands';
 import { loadMap } from '../domain/load';
-import { serializeMap } from '../domain/serialization';
+import { contentHash, serializeMap } from '../domain/serialization';
 import type { Camera } from '../geometry/coordinates';
 
 export type SaveKind = 'draft' | 'checkpoint';
@@ -391,9 +391,11 @@ export class ProjectController {
   }
   /** Capture A before queuing. Receipts/baselines refer to A even if the UI now contains B. */
   save(map: YardMap, kind: SaveKind = 'draft'): Promise<SaveReceipt> {
-    let context: Context; let mapJson: string; let loaded: ReturnType<typeof checkedMap>;
+    let context: Context; let mapJson: string; let loaded: { map: YardMap; contentHash: string };
     try {
-      context = this.required(); mapJson = serializeMap(map); loaded = checkedMap(mapJson);
+      context = this.required(); mapJson = serializeMap(map);
+      // A frozen session map already passed the shared validation inside serializeMap; re-parsing its own text adds nothing.
+      loaded = isDeepFrozen(map) ? { map, contentHash: contentHash(map) } : checkedMap(mapJson);
       if (kind !== 'draft' && kind !== 'checkpoint') throw new ProjectPersistenceError('PROJECT_SAVE_KIND_INVALID', '未知保存类型。');
     } catch (error) { return Promise.reject(this.fail(error)); }
     context.pending += 1; this.error = null; this.emit();

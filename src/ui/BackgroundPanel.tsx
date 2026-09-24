@@ -125,6 +125,9 @@ export function BackgroundPanel(props: Props) {
     if (l && a?.widthPx && a.heightPx && inspectBackground(props.map, nextId).supported) { const f = backgroundFrame(l.imageToWorld, a.widthPx, a.heightPx); setValues({ x: format(l.imageToWorld[4]), y: format(l.imageToWorld[5]), width: format(f.widthM), height: format(f.heightM), angle: format(f.rotationRad * 180 / Math.PI), scale: '100' }); } else setValues(null);
   }
   const item = props.assets.items.find(item => item.id === id);
+  // Same image at the same place adds a full-image repaint per frame without changing the view.
+  const layers = Object.values(props.map.backgroundLayers);
+  const duplicateLayers = layers.length - new Set(layers.map(value => value.assetId + JSON.stringify(value.imageToWorld))).size;
   return <div className="background-panel" data-testid="background-panel">
     <input hidden type="file" multiple ref={importInput} data-testid="background-file-input" accept=".png,.jpg,.jpeg,.webp,.json" onChange={event => { const files = [...(event.target.files ?? [])]; event.target.value = ''; if (files.length) void prepare(files); }}/>
     <input hidden type="file" multiple ref={calibrationInput} data-testid="background-calibration-input" accept=".json" onChange={event => { const files = [...(event.target.files ?? [])]; event.target.value = ''; if (files.length) void calibrate(files); }}/>
@@ -144,6 +147,7 @@ export function BackgroundPanel(props: Props) {
     </div>}
     {!!Object.keys(props.map.backgroundLayers).length && <>
       <label className="field-label">当前底图<select aria-label="当前底图" value={id} disabled={dirty || !!props.adjustingId} onChange={event => resetFields(event.target.value)}>{Object.entries(props.map.backgroundLayers).map(([key, value]) => <option key={key} value={key}>{value.name} · {key}</option>)}</select></label>
+      {duplicateLayers > 0 && <p className="inline-error" data-testid="background-duplicates">另有 {duplicateLayers} 个底图层与其他层引用同一图片且位置相同：画面没有区别，但每层都整张重绘，拖动和缩放会变慢。可切换到多余的层后点“删除此底图”。</p>}
       {layer && <>
         <p className="field-note" data-testid="background-image-status">{pref.visible ? item?.status === 'ready' ? '图片已就绪' : item?.status === 'missing' ? '图片缺失；矢量与资产引用保留。' : item?.status === 'error' ? item.error : item?.status === 'loading' ? '图片加载中…' : '当前未加载；请检查底图类型显隐。' : '底图已隐藏'} · {layer.method === 'manual' ? '人工定位／尚未校准，旧精度结论不适用。' : '使用已声明变换，精度未独立核验。'}</p>
         {!support?.supported && <p className="inline-error">{support?.reasons.join('；')}</p>}

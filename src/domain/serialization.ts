@@ -1,17 +1,22 @@
 import { sha256 } from 'js-sha256';
 import { parseTree, printParseErrorCode, type Node, type ParseError } from 'jsonc-parser';
-import { MAX_JSON_BYTES, type Issue, type YardMap } from './model';
+import { ENTITY_RECORDS, MAX_JSON_BYTES, type Issue, type ValidationReport, type YardMap } from './model';
 import { validateMap } from '../validation/validate';
+import { isDeepFrozen } from './value';
 
 export type ParseResult = { ok: true; map: YardMap } | { ok: false; issues: Issue[] };
 
 function escapePointer(key: string): string { return key.replace(/~/g, '~0').replace(/\//g, '~1'); }
 
-function utf8Size(text: string): number {
+/** UTF-8 bytes of the code points; a lone surrogate counts as its 3-byte replacement. */
+export function utf8Size(text: string): number {
   let size = 0;
-  for (const char of text) {
-    const code = char.codePointAt(0)!;
-    size += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) size += 1;
+    else if (code < 0x800) size += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && (text.charCodeAt(i + 1) & 0xfc00) === 0xdc00) { size += 4; i++; }
+    else size += 3;
     if (size > MAX_JSON_BYTES) break;
   }
   return size;
@@ -23,6 +28,11 @@ function textIssue(text: string, code: string, jsonPath: string, message: string
 }
 
 export function parseMap(text: string): ParseResult {
+  const parsed = parseMapWithReport(text);
+  return parsed.ok ? { ok: true, map: parsed.map } : parsed;
+}
+/** parseMap plus the draft report it computed, so loaders need not validate the same map twice. */
+export function parseMapWithReport(text: string): { ok: true; map: YardMap; report: ValidationReport } | { ok: false; issues: Issue[] } {
   if (utf8Size(text) > MAX_JSON_BYTES) return { ok: false, issues: [textIssue(text, 'JSON_SIZE_LIMIT', '', 'JSON 超过 10 MiB。')] };
   // Check depth before invoking recursive JSON parsers. Braces inside strings do not count.
   let depth = 0; let quoted = false; let escaped = false;
@@ -62,9 +72,10 @@ export function parseMap(text: string): ParseResult {
   try { value = JSON.parse(text); } catch { return { ok: false, issues: [textIssue(text, 'JSON_SYNTAX', '', 'JSON 解析失败。')] }; }
   const report = validateMap(value);
   if (!report.ok) return { ok: false, issues: report.issues };
-  const canonical = JSON.stringify(sortKeys(value), null, 2) + '\n';
+  // Sorting keys changes no byte count, so the canonical file size is measured without sorting.
+  const canonical = JSON.stringify(value, null, 2) + '\n';
   if (utf8Size(canonical) > MAX_JSON_BYTES) return { ok: false, issues: [textIssue(text, 'JSON_SIZE_LIMIT', '', '规范化 JSON 超过 10 MiB，请拆分地图或减少扩展内容。')] };
-  return { ok: true, map: value as YardMap };
+  return { ok: true, map: value as YardMap, report };
 }
 
 function sortKeys(value: unknown): unknown {
@@ -81,8 +92,35 @@ export function serializeMap(map: YardMap): string {
   return text;
 }
 
+// Canonical text = JSON.stringify(sortKeys(value)). Unchanged frozen entities keep theirs, so a hash after an edit
+// re-serializes only what changed. Key order replays what that expression produces: array-index keys first, ascending.
+const RECORDS = new Set<string>([...ENTITY_RECORDS, 'extensions', 'extensionNamespaces']);
+const entityTexts = new WeakMap<object, string>();
+const isArrayIndex = (key: string) => /^(0|[1-9]\d*)$/.test(key) && Number(key) < 4294967295;
+function canonicalKeys(value: object): string[] {
+  const keys = Object.keys(value).filter(key => (value as Record<string, unknown>)[key] !== undefined).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  const indices = keys.filter(isArrayIndex);
+  return indices.length ? [...indices.sort((a, b) => Number(a) - Number(b)), ...keys.filter(key => !isArrayIndex(key))] : keys;
+}
+function entityText(value: unknown): string {
+  if (value === null || typeof value !== 'object' || !Object.isFrozen(value)) return JSON.stringify(sortKeys(value));
+  let text = entityTexts.get(value);
+  if (text === undefined) { text = JSON.stringify(sortKeys(value)); entityTexts.set(value, text); }
+  return text;
+}
+function recordText(record: Record<string, unknown>): string {
+  return '{' + canonicalKeys(record).map(key => JSON.stringify(key) + ':' + entityText(record[key])).join(',') + '}';
+}
+/** Declared content (everything except revision) as canonical JSON. */
+export function canonicalContent(map: YardMap): string {
+  const declared = map as unknown as Record<string, unknown>;
+  return '{' + canonicalKeys(declared).filter(key => key !== 'revision').map(key => JSON.stringify(key) + ':'
+    + (RECORDS.has(key) && declared[key] !== null && typeof declared[key] === 'object' && !Array.isArray(declared[key]) ? recordText(declared[key] as Record<string, unknown>) : JSON.stringify(sortKeys(declared[key])))).join(',') + '}';
+}
+const hashes = new WeakMap<object, string>();
 export function contentHash(map: YardMap): string {
-  const declared = { ...map } as Partial<YardMap>;
-  delete declared.revision;
-  return sha256(JSON.stringify(sortKeys(declared)));
+  if (!isDeepFrozen(map)) return sha256(canonicalContent(map));
+  let hash = hashes.get(map);
+  if (hash === undefined) { hash = sha256(canonicalContent(map)); hashes.set(map, hash); }
+  return hash;
 }

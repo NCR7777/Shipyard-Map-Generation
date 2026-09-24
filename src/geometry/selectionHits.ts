@@ -13,7 +13,8 @@ export interface SelectionHitOptions {
 }
 const priority: Record<SelectionHitKind, number> = { servicePoints: 0, accessPoints: 1, nodes: 2, roads: 3, facilities: 4, zones: 5 };
 const noWork = () => {};
-function nearBounds(point: Vec3, bounds: { min: Vec3; max: Vec3 } | null, margin: number): boolean {
+/** Cheap reject before exact tests: false only when the point is farther than margin from the box in XY. */
+export function nearBounds(point: Vec3, bounds: { min: Vec3; max: Vec3 } | null, margin: number): boolean {
   return !!bounds && point[0] >= bounds.min[0] - margin && point[0] <= bounds.max[0] + margin && point[1] >= bounds.min[1] - margin && point[1] <= bounds.max[1] + margin;
 }
 /** Click-only exact hit candidates. View flags are inputs; this never changes map or selection. */

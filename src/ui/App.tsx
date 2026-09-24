@@ -18,12 +18,13 @@ import { enumerateConnectionTurns, enumerateMergeTurns, type TopologyCommand } f
 import { privateNodeOwner, roadOwner, continuousRoadIds } from '../domain/ownerEditing';
 import { sameValue } from '../domain/value';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
+import { IssuePanel } from './IssuePanel';
 import type { DiagnosticReport } from '../validation/diagnostics';
 import type { PathPreviewReport } from '../topology/pathPreview';
 import type { SceneItem, SceneKind } from '../adapters/contracts';
 import { itemPositions, itemValue } from '../compiler/catalog';
 import { ObjectDirectory, ObjectInspector } from './ObjectDirectory';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFrameCamera } from './useFrameCamera';
 import { useCurrentCallback } from './useCurrentCallback';
 import { useEditorInteraction, sameDraftContext } from './useEditorInteraction';
@@ -1187,7 +1188,7 @@ export function App() {
         <div className="workbench-directory-area" role="region" aria-label="对象目录" tabIndex={0}><div className="panel-title">对象<span><span data-testid="node-count">{scene.nodes.length}</span> 节点 · <span data-testid="road-count">{scene.roads.length}</span> 道路</span></div>
         <StableObjectDirectory domainReadonly={domainReadonly} items={scene.items} drawing={drawingConfig} disabled={!projects.ready || projects.transitioning || !!backgroundAdjustId || backgroundDirty} onDrawing={directoryDrawing}
           isSelected={directorySelected} onSelect={directoryChoose} onLocate={directoryLocate}/></div></>}
-      right={<><div hidden={workspaceMode!=='results'}><ResultsPanel key={session.map.mapId} map={session.map} mapHash={scene.mapContentHash} active={workspaceMode==='results'} onFrame={setRuntimePreview}/></div><div hidden={workspaceMode!=='check'}><CompletionPanel key={session.map.mapId} map={session.map} mapHash={scene.mapContentHash} disabled={readonly||unapplied} onApply={apply} onRequireUpgrade={()=>requestLeave('启用研究接入',()=>{setUpgradeTarget('0.3.0');setPendingTraceTool(null);setUpgradeDialog(true);})} onExportPackage={exportCodexPackage} onPreview={lines=>setAccessPreview({hash:scene.mapContentHash,lines})} onLocate={target=>{const item=scene.items.find(item=>item.kind===target.kind&&item.id===target.id);if(item)locateItem(item);}}/></div><div hidden={workspaceMode!=='trace'} onKeyDown={propertyKeys}><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>
+      right={<><div hidden={workspaceMode!=='results'}><WhileShown shown={workspaceMode==='results'}><ResultsPanel key={session.map.mapId} map={session.map} mapHash={scene.mapContentHash} active={workspaceMode==='results'} onFrame={setRuntimePreview}/></WhileShown></div><div hidden={workspaceMode!=='check'}><WhileShown shown={workspaceMode==='check'}><CompletionPanel key={session.map.mapId} map={session.map} mapHash={scene.mapContentHash} disabled={readonly||unapplied} onApply={apply} onRequireUpgrade={()=>requestLeave('启用研究接入',()=>{setUpgradeTarget('0.3.0');setPendingTraceTool(null);setUpgradeDialog(true);})} onExportPackage={exportCodexPackage} onPreview={lines=>setAccessPreview({hash:scene.mapContentHash,lines})} onLocate={target=>{const item=scene.items.find(item=>item.kind===target.kind&&item.id===target.id);if(item)locateItem(item);}}/></WhileShown></div><div hidden={workspaceMode!=='trace'} onKeyDown={propertyKeys}><div className="panel-title">属性与引用<span>{selected ? selected.kind.toUpperCase() : 'INSPECT'}</span></div>
         {selected && ['facility', 'zone', 'accessPoint', 'servicePoint'].includes(selected.kind) && (!moveSupport.allowed || moveSupport.affectedRefs.some(ref => lockedTypes.includes(ref.kind as SceneKind))) && <div className="field-note" data-testid="move-edit-guidance" role="status">
           <strong>当前移动受限</strong>
           {!moveSupport.allowed && moveSupport.issues.map((issue, index) => <p key={index}>{issue.message}</p>)}
@@ -1217,7 +1218,7 @@ export function App() {
       messages={<>    {projects.warning && <div className="project-note">{projects.warning}</div>}
     {localMessage && <div className="project-note" role="status">{localMessage}</div>}
     {unapplied && <div className="project-note pending" data-testid="unapplied-inputs">有未应用输入：属性、操作表单或绘制尚未提交；请应用属性或完成当前操作。</div>}
-    {projects.state.error?.code === 'PROJECT_CONFLICT' && <div className="project-note conflict" role="alert">其他标签页已保存此工程，当前编辑尚未覆盖远程浏览器版本。<button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => { if (!operationsBlocked()) setStorageConflictDialog(true); }}>重新载入浏览器版本</button></div>}{domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 未知行为与尚未支持数据保持保护。</div>}{session.map.coordinateFrame.geographicAnchor && <details className="workbench-notice"><summary data-testid="fixed-coordinate-frame">地理锚点已锁定；本地几何按支持范围编辑</summary><p>整个 coordinateFrame 保持固定；未重新配准，依赖保护仍然生效。</p></details>}{Object.keys(session.map.resources).length > 0 && <details className="workbench-notice"><summary data-testid="static-edit-limits">静态草稿编辑；关联内容受依赖保护</summary><p>联动后需重新检查；旧结果仍绑定旧地图摘要。</p></details>}</>}
+    {projects.state.error?.code === 'PROJECT_CONFLICT' && <div className="project-note conflict" role="alert">其他标签页已保存此工程，当前编辑尚未覆盖远程浏览器版本。<button onClick={() => void copyProject()}>保留当前恢复副本</button><button onClick={() => { if (!operationsBlocked()) setStorageConflictDialog(true); }}>重新载入浏览器版本</button></div>}{domainReadonly && <div className="readonly-banner" data-testid="readonly-notice"><strong>只读地图</strong> · 未知行为与尚未支持数据保持保护。</div>}{session.map.coordinateFrame.geographicAnchor && <details className="workbench-notice compact"><summary data-testid="fixed-coordinate-frame" title="地理锚点已锁定；本地几何按支持范围编辑">⚓ 地理锚点已锁定</summary><p>本地几何按支持范围编辑。整个 coordinateFrame 保持固定；未重新配准，依赖保护仍然生效。</p></details>}{Object.keys(session.map.resources).length > 0 && <details className="workbench-notice"><summary data-testid="static-edit-limits">静态草稿编辑；关联内容受依赖保护</summary><p>联动后需重新检查；旧结果仍绑定旧地图摘要。</p></details>}</>}
       status={<><span className="tool-hint">{hint}</span><span className="canvas-status">{selectedCount} 个选中 · {session.past.length} 个撤销事务</span><span role="status" title={status}>{status}</span><span data-testid="save-status">{dirty ? '已提交版本有变化' : '已确认版本'}</span><code data-testid="map-hash" title={scene.mapContentHash}>{scene.mapContentHash}</code></>}
     />
     {frameConfirmation && <Modal title="确认替换坐标框架" onCancel={() => finishFrameConfirmation(false)}><p>候选文件的整个 coordinateFrame 与当前工程不同。这是导入新的坐标框架，并非本地几何编辑；未重新配准或核验现实位置。取消会保留当前地图、历史和文件关联基线。</p><div className="dialog-actions"><button data-cancel onClick={() => finishFrameConfirmation(false)}>取消</button><button className="danger-button" onClick={() => finishFrameConfirmation(true)}>明确接受候选坐标框架</button></div></Modal>}
@@ -1295,7 +1296,6 @@ const StableObjectDirectory = memo(ObjectDirectory);
 const StableObjectInspector = memo(ObjectInspector);
 const StablePropertyPanel = memo(PropertyPanel);
 const StableDiagnosticsPanel = memo(DiagnosticsPanel);
-const IssuePanel = memo(function IssuePanel({ issues, diagnosed, onLocate }: { issues: Issue[]; diagnosed: boolean; onLocate: (issue: Issue) => void }) {
-  const errorCount = issues.filter(issue => issue.severity === 'error').length;
-  return <section className="issue-panel" data-testid="issue-panel"><div className="issue-heading"><strong>检查器</strong><span className={errorCount ? 'error-count' : 'warning-count'}>{errorCount} 错误 · {issues.length - errorCount} 提示</span><span>{diagnosed ? '草稿校验 + 只读诊断' : 'draft 校验'}；不代表现场安全</span></div><div className="issue-list">{issues.map((issue, index) => <div key={issue.code + index} className={'issue-item ' + issue.severity}><span className="issue-symbol">{issue.severity === 'error' ? '!' : '△'}</span><span><button aria-label={issue.code + ' ' + issue.message} onClick={() => onLocate(issue)}>{issue.message}</button><small>{issue.suggestedAction}</small><details><summary>技术详情 · {issue.entityId ?? '地图'}</summary><strong>{issue.code}</strong> · {issue.jsonPath || '/'}</details></span></div>)}</div></section>;
-});
+/** A hidden workspace panel keeps its last output and state; it catches up when shown instead of on every edit. */
+const WhileShown = memo(function WhileShown({ children }: { shown: boolean; children: ReactNode }) { return <>{children}</>; }, (previous, next) => !previous.shown && !next.shown);
+
