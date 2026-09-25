@@ -3,8 +3,8 @@ import { applyMapCommand, commandSupport, type MapCommand, type Selection } from
 import { newFacility, newMap, newNode, newRoad, newZone } from '../../src/domain/factory';
 import type { YardMap } from '../../src/domain/model';
 import { createSession, editSession, redoSession, undoSession } from '../../src/editor/session';
-import { buildPointCreationCommand, makePointCreationDraft, setPointConnectionMode } from '../../src/ui/PointCreationPanel';
 import { validateMap } from '../../src/validation/validate';
+import { entranceCommand, projectToOutline } from '../../src/app/canvas/entrances';
 import { rectangle } from '../helpers/M2A_fixtures';
 import { currentServiceFixture, internalServiceFixture, zoneServiceFixture } from '../helpers/M2A1_fixtures';
 
@@ -160,24 +160,24 @@ describe('deletion uses supported references instead of the whole-map advanced g
 
 
 describe('independent additions use their existing maintenance rules on advanced maps', () => {
-  it.each(['accessPoints', 'servicePoints'] as const)('creates deferred %s with the node and owner reverse reference in one transaction', kind => {
+  // Ported from ../map (deferred creation through PointCreationPanel), now through the entrance tool's command builder.
+  // Deferred service points follow with P3b2.
+  it('creates a deferred entrance with its node and the owner reverse reference in one transaction', () => {
     const map = network();
     map.sources.image = { name: 'image reference', category: 'imagery_derived', description: 'synthetic reference for this test' };
     map.facilities.fA!.provenance = { category: 'drawing', sourceRefs: ['image'] };
-    const draft = setPointConnectionMode({ ...makePointCreationDraft(kind, selection({ facilities: ['fA'] }), map), simple: true, serviceKind: 'other' as const }, 'deferred');
-    draft.position = kind === 'accessPoints' ? ['0', '15', '0'] : ['20', '10', '0'];
-    const before = structuredClone(map), built = buildPointCreationCommand(draft, map, prefix => prefix + '_deferred');
-    expect(built.ok, JSON.stringify(built)).toBe(true); if (!built.ok) throw Error('Expected point command');
-    expect(commandSupport(map, built.command).allowed).toBe(true);
-    const session = createSession(map, true), result = editSession(session, built.command);
+    const on = projectToOutline(map, 'fA', [-5, 15, 0])!;
+    const before = structuredClone(map), { command } = entranceCommand(map, 'fA', on, { point: 'access_deferred', node: 'node_deferred' });
+    expect(commandSupport(map, command).allowed).toBe(true);
+    const session = createSession(map, true), result = editSession(session, command);
     expect(result.ok, JSON.stringify(result.issues)).toBe(true); expect(result.session.past).toHaveLength(1);
-    const after = result.session.map, point = after[kind][built.id]!;
-    expect(after.nodes.node_deferred!.position).toEqual(draft.position.map(Number));
+    const after = result.session.map, point = after.accessPoints.access_deferred!;
+    expect(after.nodes.node_deferred!.position).toEqual(on);
     expect(point.provenance).toMatchObject({ category: 'drawing', sourceRefs: ['image'] }); expect(after.nodes.node_deferred!.provenance).toEqual(point.provenance);
-    expect(after.facilities.fA![kind === 'accessPoints' ? 'accessPointIds' : 'servicePointIds']).toContain(built.id);
+    expect(after.facilities.fA!.accessPointIds).toContain('access_deferred');
     for (const collection of ['roads', 'junctions', 'movements', 'resources', 'sources'] as const) expect(after[collection]).toEqual(before[collection]);
     expect(after.revision).toBe(before.revision + 1); expect(undoSession(result.session).map).toEqual(before); expect(redoSession(undoSession(result.session)).map).toEqual(after); expect(map).toEqual(before);
-    const collision = { ...built.command, id: 'rAB' };
+    const collision = { ...command, id: 'rAB' } as MapCommand;
     const failed = editSession(session, collision); expect(failed.ok).toBe(false); expect(failed.session).toBe(session); expect(map).toEqual(before);
   });
 

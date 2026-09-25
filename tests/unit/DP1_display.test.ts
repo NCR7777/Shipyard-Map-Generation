@@ -3,7 +3,7 @@ import type { SceneItem, SceneSnapshot } from '../../src/adapters/contracts';
 import type { Polygon, Vec3 } from '../../src/domain/model';
 import { toSceneSnapshot } from '../../src/compiler/scene';
 import { rectanglePolygon } from '../../src/geometry/polygons';
-import { createDisplayIndex, createTextMeasurer, layoutLabels, selectDisplay, type DisplayEntry, type DisplayView } from '../../src/renderers/2d/display';
+import { createDisplayIndex, createTextMeasurer, layoutLabels, selectDisplay, type DisplayEntry, type DisplayView } from '../../src/app/canvas/display';
 import { editorFixture } from '../helpers/M1_fixtures';
 
 const camera = { offsetX: 0, offsetY: 300, scale: 1 };

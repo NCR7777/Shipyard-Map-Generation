@@ -30,7 +30,7 @@ async function visit(dir) {
     const text = await readFile(file, 'utf8');
     if (/\b(?:from|import)\s*[(]?\s*['"](?:react(?:-dom|-konva)?|konva|three)(?:['"/])/.test(text)
       || hasDomReference(text, file)
-      || /(?:from|import)\s*[(]?\s*['"][^'"]*(?:\/ui\/|\/renderers\/|\/editor\/|adapters\/files)/.test(text)) {
+      || /(?:from|import)\s*[(]?\s*['"][^'"]*(?:\/app\/|\/editor\/|adapters\/files)/.test(text)) {
       throw new Error(`Core boundary violated: ${file}`);
     }
   }

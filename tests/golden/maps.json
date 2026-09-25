@@ -1,0 +1,1519 @@
+{
+  "examples/M1_invalid.map.json": {
+    "fileSha256": "3f2beef6591fe0973c64cfd4647d967ae924c85ffaea96673fd18ce030de8dcb",
+    "ok": false,
+    "issueCodes": {
+      "error:DANGLING_REFERENCE": 1,
+      "warning:MISSING_CHECKS": 1,
+      "warning:TURN_RULES_UNSPECIFIED": 1,
+      "warning:UNKNOWN_DIRECTION": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 4
+    },
+    "issuesDigest": "d02afa07119a00e9"
+  },
+  "examples/M1_synthetic.map.json": {
+    "fileSha256": "cc3078483b48ecf9e5b828f41169050097c3e2c8462ccd16858e34838a3aa549",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:TURN_RULES_UNSPECIFIED": 1,
+      "warning:UNKNOWN_DIRECTION": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 4
+    },
+    "issuesDigest": "3dce45022578cf3a",
+    "contentHash": "18facc15d9bc37177935af5867b11b0138f4caed35ba45ad65227102a80c3560",
+    "sceneDigest": "bf3bc59e9994009b",
+    "serializedDigest": "cc3078483b48ecf9",
+    "compiledDigest": "577183913da3ff21"
+  },
+  "examples/M2A1_invalid_service_node.map.json": {
+    "fileSha256": "3b6d5fb023d7af0d6a6a3c22c6d45a4a4cb64ff9d4c9a3a8ed6e978e9c5fc55b",
+    "ok": false,
+    "issueCodes": {
+      "error:DANGLING_REFERENCE": 2,
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_NODE_UNCONNECTED": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 2,
+      "warning:TURN_RULES_UNSPECIFIED": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 12
+    },
+    "issuesDigest": "4d26ab899ca0c73c"
+  },
+  "examples/M2A1_synthetic_service_targets.map.json": {
+    "fileSha256": "1b3cae18c7a2573bc97d287d9d97e0b9abc05b922020c620ab8bdd0b5ffa97cd",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 2,
+      "warning:TURN_RULES_UNSPECIFIED": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 12
+    },
+    "issuesDigest": "bdad94e70d292259",
+    "contentHash": "2f70d50ab0642a8d5ea9376f3f7c4c6831268a325e38b524c567113c5460cde3",
+    "sceneDigest": "4ddbd525881ab368",
+    "serializedDigest": "1b3cae18c7a2573b",
+    "compiledDigest": "a0a55c870cbf35a4"
+  },
+  "examples/M2A_invalid_polygon.map.json": {
+    "fileSha256": "d16a48a28a2b4c7e4f6aac1e79d3235b3c59ce3eb87c3974938e673a059a27f7",
+    "ok": false,
+    "issueCodes": {
+      "error:POLYGON_SELF_INTERSECTION": 1,
+      "error:POLYGON_ZERO_AREA": 1,
+      "warning:MISSING_CHECKS": 1,
+      "warning:TURN_RULES_UNSPECIFIED": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 8
+    },
+    "issuesDigest": "9b71042532e6ffe5"
+  },
+  "examples/M2A_synthetic.map.json": {
+    "fileSha256": "efb78f43a24ae2c7d12819c1f21f5c1c49b5ec1a88a97de0f51aea1fecb2806c",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:TURN_RULES_UNSPECIFIED": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 8
+    },
+    "issuesDigest": "fb6df08636628722",
+    "contentHash": "d5271ba953bf04cf150533a220896af19b4a2b78ca20c5aa30f6190fcb35f015",
+    "sceneDigest": "b1a80550b1bb35c9",
+    "serializedDigest": "efb78f43a24ae2c7",
+    "compiledDigest": "bebfb3037d664242"
+  },
+  "projects/BG01_Background_Ready_20260914/cimc_v02/map.json": {
+    "fileSha256": "db0c1ae4b0f206f89d49ed145dbbece119588e1d79523a2966c02baeec0a4cff",
+    "ok": true,
+    "issueCodes": {
+      "warning:ASSET_NOT_RESOLVED": 1,
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "f25e03238db4f2ee",
+    "contentHash": "dcf90f9d9c0c941eb0993f304189bbd302767f1d147cc391d66d358e95ab27d9",
+    "sceneDigest": "e6bfbabf6335d990",
+    "serializedDigest": "db0c1ae4b0f206f8",
+    "compiledDigest": "e9bc2a5de5472d2f"
+  },
+  "projects/Dalian_Coastal_Shipyard_Map_v01/dalian_v01/map.json": {
+    "fileSha256": "6faf4a6e89339224204253420d757adbbfac6595399049948a3ec9bbd19ea36b",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 22,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 132
+    },
+    "issuesDigest": "23377113b5c572ec",
+    "contentHash": "2108d02d1f6d43a3817ea037f0fc09548d0b037f8f3875aba8bef70019f9d8ff",
+    "sceneDigest": "76b92250ea4a644f",
+    "serializedDigest": "8b838ee916992585",
+    "compiledDigest": "ced3e03336bffc36"
+  },
+  "projects/EA01_Access_Repair_20260914/cimc/map.json": {
+    "fileSha256": "6da324fc7f99494f2dedad5f17240ecae43a60c0087d13ed65ed08338336ffb0",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 294
+    },
+    "issuesDigest": "ed95875d0363fe33",
+    "contentHash": "9635e032a1df01e877cedb71cd116f27219669436f99f8d35f79d4313476ed31",
+    "sceneDigest": "c5b600102740ba7c",
+    "serializedDigest": "6da324fc7f99494f",
+    "compiledDigest": "0c817132cea2a0d6"
+  },
+  "projects/EA01_Access_Repair_20260914/dalian/map.json": {
+    "fileSha256": "d3532f72aa68436f9ee5892edbe2d1d48d508703ccec6233dfc97d2e1790909d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 341
+    },
+    "issuesDigest": "f4458146a6f639dc",
+    "contentHash": "7978a4b56d2b6e49ae3d31b54ee6e5b82691dd72ed2b77d44bb6844335c817c0",
+    "sceneDigest": "d098271e54d54792",
+    "serializedDigest": "d3532f72aa68436f",
+    "compiledDigest": "e134cac7d6a81c56"
+  },
+  "projects/EA01_Access_Repair_20260914/geoje/map.json": {
+    "fileSha256": "f86f7338860d80f0db4d5898822d964abc401cd442a727ac92e303f74e749e9c",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 764
+    },
+    "issuesDigest": "6b4ad41f3c168b20",
+    "contentHash": "f968d466b23f59c5030f99f2aa580f5dcd774e5ef83e391edcfea07e00312d68",
+    "sceneDigest": "d125943978ad5fab",
+    "serializedDigest": "f86f7338860d80f0",
+    "compiledDigest": "480e014c99ba989b"
+  },
+  "projects/EA01_Access_Repair_20260914/hanwha/map.json": {
+    "fileSha256": "f94a2621b512d65d53398c4f2ad29404f28e72f2ae28a0d35a437a05f03732f4",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 838
+    },
+    "issuesDigest": "9f58c38ecae7a5f7",
+    "contentHash": "60ec27e7163776deacddf32e19f9a2ff635ea65a19200f2435f7ed107277540c",
+    "sceneDigest": "a456b98f80261e4d",
+    "serializedDigest": "f94a2621b512d65d",
+    "compiledDigest": "1226c74cdb2c3a74"
+  },
+  "projects/EA01_Access_Repair_20260914/hudong/map.json": {
+    "fileSha256": "950d81fe16c73088d9cd82dc2dece3e3192eebc81cdf49203dcc869889e59fdb",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 342
+    },
+    "issuesDigest": "634f930cbfb68f4f",
+    "contentHash": "468349bdbbbe441f3404807983afcc901bb3770b406815158ba2778437736a0f",
+    "sceneDigest": "224b1d9123ddf547",
+    "serializedDigest": "950d81fe16c73088",
+    "compiledDigest": "a0f1c3868e8be1f5"
+  },
+  "projects/EA01_Access_Repair_20260914/newtimes/map.json": {
+    "fileSha256": "261985b255bf41eedfd70e2d3a212af1b62b5484fed77f917fa6d645ec8f8901",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 6,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 516
+    },
+    "issuesDigest": "bb422f4b8f07ccce",
+    "contentHash": "0e68bf11555723f6c22aaacda7ca7ea171972863ea74d9d983bcb2dccf4c1067",
+    "sceneDigest": "71e1064b3dfd07d7",
+    "serializedDigest": "261985b255bf41ee",
+    "compiledDigest": "fa6504f47878cb6e"
+  },
+  "projects/EA01_Access_Repair_20260914/samho/map.json": {
+    "fileSha256": "b2554da8f1952f02a94943263654d518fa14746f5b107dc6620c0261dbd8cfd9",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "561743b195a66887",
+    "contentHash": "c0a8f7521b65560fef7683f55cff0e83fa1a29ac33cf40b61ae81df7eb203e04",
+    "sceneDigest": "e9b626cdfa363e11",
+    "serializedDigest": "b2554da8f1952f02",
+    "compiledDigest": "56cd051d699e6084"
+  },
+  "projects/EA01_Access_Repair_20260914/weihai/map.json": {
+    "fileSha256": "c36dae426b9a02a20b75eefc79f09ffa7c415bd08adc0ad2cb677d4c64585315",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "662acb1a567c20fd615885f210a568bfb4d1bc1628c87c9894e5dc84af1c0517",
+    "sceneDigest": "592860f737b4c939",
+    "serializedDigest": "c36dae426b9a02a2",
+    "compiledDigest": "a48a74548b016035"
+  },
+  "projects/EA01_Access_Repair_20260914/xinyangzi/map.json": {
+    "fileSha256": "34c097f425aa4b65ae1cd27cc109069c03a100019e3aa94e95886cfa5b245e2a",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 386
+    },
+    "issuesDigest": "bdfde64ebee71cb4",
+    "contentHash": "d61a654de3cc3a8d2691792067a8c6020d50b7a3c0528ddce62374eed5ded858",
+    "sceneDigest": "393ad3d6d1f6e1f6",
+    "serializedDigest": "34c097f425aa4b65",
+    "compiledDigest": "9616ba9d6eddfb4a"
+  },
+  "projects/Geoje_Harbor_Shipyard_Map_v01/geoje_v01/map.json": {
+    "fileSha256": "2c921a8a4bc00302026f40e5a642ed5de7e136c25ff4d555cdb5bc0ea7399f9b",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 20,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 156
+    },
+    "issuesDigest": "74f305f7276c2c90",
+    "contentHash": "86b4070c1e3cfbe5cce229c094b7e08c0f307d6de99f209f89187e1e4c54a514",
+    "sceneDigest": "cb839391562a0d0f",
+    "serializedDigest": "4d6a579a1b77596e",
+    "compiledDigest": "41643c52b30de3ca"
+  },
+  "projects/MQ01_Repair_20260913/cimc/baseline/normalized.map.json": {
+    "fileSha256": "74f67bacccb542efc4fcfccf31aaba99c7fdf433183f05eb0c46d2e4438853d0",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "7667296423b24b75",
+    "contentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd",
+    "sceneDigest": "70905735b5345cc7",
+    "serializedDigest": "74f67bacccb542ef",
+    "compiledDigest": "d699e62ccf663e94"
+  },
+  "projects/MQ01_Repair_20260913/cimc/baseline/original.map.json": {
+    "fileSha256": "0eda616cf8bef738d7e099eb2870ef2698ec0c6378c4f1d2452f0845ac4fe5af",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "8ec0edf1834af884",
+    "contentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd",
+    "sceneDigest": "6c56ba00a31e20bf",
+    "serializedDigest": "74f67bacccb542ef",
+    "compiledDigest": "3a7ffcc5442775c3"
+  },
+  "projects/MQ01_Repair_20260913/cimc/map.json": {
+    "fileSha256": "98f2fe6c3bbb290ac70fb6dde19e64fa2b25dc537e8d66720b0f6e7866273a27",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "7667296423b24b75",
+    "contentHash": "8aa49a68458244fd522577e6b59c6c300aff06b90f8be22e72b7f5007909eec3",
+    "sceneDigest": "8b06236e884a2edb",
+    "serializedDigest": "98f2fe6c3bbb290a",
+    "compiledDigest": "f59bce1d82ebb9fd"
+  },
+  "projects/MQ01_Repair_20260913/cimc/repairs/after-A.map.json": {
+    "fileSha256": "74f67bacccb542efc4fcfccf31aaba99c7fdf433183f05eb0c46d2e4438853d0",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "7667296423b24b75",
+    "contentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd",
+    "sceneDigest": "70905735b5345cc7",
+    "serializedDigest": "74f67bacccb542ef",
+    "compiledDigest": "d699e62ccf663e94"
+  },
+  "projects/MQ01_Repair_20260913/cimc/repairs/explicit/cimc-P-plan/map.json": {
+    "fileSha256": "98f2fe6c3bbb290ac70fb6dde19e64fa2b25dc537e8d66720b0f6e7866273a27",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "7667296423b24b75",
+    "contentHash": "8aa49a68458244fd522577e6b59c6c300aff06b90f8be22e72b7f5007909eec3",
+    "sceneDigest": "8b06236e884a2edb",
+    "serializedDigest": "98f2fe6c3bbb290a",
+    "compiledDigest": "f59bce1d82ebb9fd"
+  },
+  "projects/MQ01_Repair_20260913/cimc/repairs/explicit/cimc-P/map.json": {
+    "fileSha256": "98f2fe6c3bbb290ac70fb6dde19e64fa2b25dc537e8d66720b0f6e7866273a27",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "7667296423b24b75",
+    "contentHash": "8aa49a68458244fd522577e6b59c6c300aff06b90f8be22e72b7f5007909eec3",
+    "sceneDigest": "8b06236e884a2edb",
+    "serializedDigest": "98f2fe6c3bbb290a",
+    "compiledDigest": "f59bce1d82ebb9fd"
+  },
+  "projects/MQ01_Repair_20260913/dalian/baseline/normalized.map.json": {
+    "fileSha256": "d0d2d2f887cd9fff16b074fc4840beb0dcdc8f92212a586e1a0dbd1a673b26e5",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 265
+    },
+    "issuesDigest": "54168a8287d88d2c",
+    "contentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f",
+    "sceneDigest": "52d7fbec46d35eab",
+    "serializedDigest": "d0d2d2f887cd9fff",
+    "compiledDigest": "67eba4cc009c8fc5"
+  },
+  "projects/MQ01_Repair_20260913/dalian/baseline/original.map.json": {
+    "fileSha256": "a06fa3910079d74e3e90f1b23fd840c64640500097d7ae8a057ad82293187656",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 265
+    },
+    "issuesDigest": "a4dde0bf2ca611c9",
+    "contentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f",
+    "sceneDigest": "c7720673878f3004",
+    "serializedDigest": "d0d2d2f887cd9fff",
+    "compiledDigest": "7231384a600bdbf2"
+  },
+  "projects/MQ01_Repair_20260913/dalian/map.json": {
+    "fileSha256": "d0d2d2f887cd9fff16b074fc4840beb0dcdc8f92212a586e1a0dbd1a673b26e5",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 265
+    },
+    "issuesDigest": "54168a8287d88d2c",
+    "contentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f",
+    "sceneDigest": "52d7fbec46d35eab",
+    "serializedDigest": "d0d2d2f887cd9fff",
+    "compiledDigest": "67eba4cc009c8fc5"
+  },
+  "projects/MQ01_Repair_20260913/dalian/repairs/after-A.map.json": {
+    "fileSha256": "d0d2d2f887cd9fff16b074fc4840beb0dcdc8f92212a586e1a0dbd1a673b26e5",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 265
+    },
+    "issuesDigest": "54168a8287d88d2c",
+    "contentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f",
+    "sceneDigest": "52d7fbec46d35eab",
+    "serializedDigest": "d0d2d2f887cd9fff",
+    "compiledDigest": "67eba4cc009c8fc5"
+  },
+  "projects/MQ01_Repair_20260913/geoje/baseline/normalized.map.json": {
+    "fileSha256": "c39ebb10a02e61047fb5de0e5d19a4ddf02d19b9f6e3e67ad7fc355740b5ae27",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 580
+    },
+    "issuesDigest": "35f3a91b83b0706c",
+    "contentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+    "sceneDigest": "63f9f84eac3c342c",
+    "serializedDigest": "c39ebb10a02e6104",
+    "compiledDigest": "04a3ae7d53c53531"
+  },
+  "projects/MQ01_Repair_20260913/geoje/baseline/original.map.json": {
+    "fileSha256": "6313e6cff2bda3fe418d3cf9b51c0fe413495f088d882892c58ac60ef827e0e9",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 580
+    },
+    "issuesDigest": "b5c7784a56d8fa51",
+    "contentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+    "sceneDigest": "d23a9f132a7f2ebe",
+    "serializedDigest": "c39ebb10a02e6104",
+    "compiledDigest": "026724d28edf77ab"
+  },
+  "projects/MQ01_Repair_20260913/geoje/map.json": {
+    "fileSha256": "c39ebb10a02e61047fb5de0e5d19a4ddf02d19b9f6e3e67ad7fc355740b5ae27",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 580
+    },
+    "issuesDigest": "35f3a91b83b0706c",
+    "contentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+    "sceneDigest": "63f9f84eac3c342c",
+    "serializedDigest": "c39ebb10a02e6104",
+    "compiledDigest": "04a3ae7d53c53531"
+  },
+  "projects/MQ01_Repair_20260913/geoje/repairs/after-A.map.json": {
+    "fileSha256": "c39ebb10a02e61047fb5de0e5d19a4ddf02d19b9f6e3e67ad7fc355740b5ae27",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 580
+    },
+    "issuesDigest": "35f3a91b83b0706c",
+    "contentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+    "sceneDigest": "63f9f84eac3c342c",
+    "serializedDigest": "c39ebb10a02e6104",
+    "compiledDigest": "04a3ae7d53c53531"
+  },
+  "projects/MQ01_Repair_20260913/hanwha/baseline/normalized.map.json": {
+    "fileSha256": "a9f3dfc87390de12c3243a5f7567abe0197154764b7d1faaf550b2ae95bbf6ad",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 856
+    },
+    "issuesDigest": "6a0808371cb908c1",
+    "contentHash": "031c37f0f1a73eb09e2674d3b36ed966e7f8478cf2e6cf7514bf3adb270a9bee",
+    "sceneDigest": "28cf0cb735197acd",
+    "serializedDigest": "a9f3dfc87390de12",
+    "compiledDigest": "2daf51abfc399324"
+  },
+  "projects/MQ01_Repair_20260913/hanwha/baseline/original.map.json": {
+    "fileSha256": "d9b3b76bf075e3e802088231b4af0c17d48dd8751c1c89bb1a66f82feada7d1d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 856
+    },
+    "issuesDigest": "1f9eeee08bb8c54e",
+    "contentHash": "031c37f0f1a73eb09e2674d3b36ed966e7f8478cf2e6cf7514bf3adb270a9bee",
+    "sceneDigest": "85f3802cc35dba3b",
+    "serializedDigest": "a9f3dfc87390de12",
+    "compiledDigest": "9d3f8310c3e11e03"
+  },
+  "projects/MQ01_Repair_20260913/hanwha/map.json": {
+    "fileSha256": "026bf0c409b151aa005fe59d50e0aeda294eca83a5fbccf9b5927b9190cb4749",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 828
+    },
+    "issuesDigest": "cbf4da4f164a581a",
+    "contentHash": "99e32298fe1ccfcde5838edea1221d2fab6c2c4ae04aff3d68a710a4926912f6",
+    "sceneDigest": "8f70ad5c7d8448ea",
+    "serializedDigest": "026bf0c409b151aa",
+    "compiledDigest": "85168931864743c4"
+  },
+  "projects/MQ01_Repair_20260913/hanwha/repairs/after-A.map.json": {
+    "fileSha256": "026bf0c409b151aa005fe59d50e0aeda294eca83a5fbccf9b5927b9190cb4749",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 828
+    },
+    "issuesDigest": "cbf4da4f164a581a",
+    "contentHash": "99e32298fe1ccfcde5838edea1221d2fab6c2c4ae04aff3d68a710a4926912f6",
+    "sceneDigest": "8f70ad5c7d8448ea",
+    "serializedDigest": "026bf0c409b151aa",
+    "compiledDigest": "85168931864743c4"
+  },
+  "projects/MQ01_Repair_20260913/hudong/baseline/normalized.map.json": {
+    "fileSha256": "b71e6cb06dd49cbc5a9d619801c169bd7399506f356bd01194e29318985996e6",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 358
+    },
+    "issuesDigest": "14274f4357ca298a",
+    "contentHash": "4d3843bb5923467b32cf1f96772575738e4b3ab896f8b601f2f9e156196e243b",
+    "sceneDigest": "201b1ed11e09a440",
+    "serializedDigest": "b71e6cb06dd49cbc",
+    "compiledDigest": "4d4992589b484cf6"
+  },
+  "projects/MQ01_Repair_20260913/hudong/baseline/original.map.json": {
+    "fileSha256": "7f0cfb8a235830c7d42e5cd807a9d5f85fd87a57063484c65568617ac5a71cd1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 358
+    },
+    "issuesDigest": "ef38d5556339f42b",
+    "contentHash": "4d3843bb5923467b32cf1f96772575738e4b3ab896f8b601f2f9e156196e243b",
+    "sceneDigest": "2e13c35eafeea70c",
+    "serializedDigest": "b71e6cb06dd49cbc",
+    "compiledDigest": "c68344ecf8541953"
+  },
+  "projects/MQ01_Repair_20260913/hudong/map.json": {
+    "fileSha256": "950d81fe16c73088d9cd82dc2dece3e3192eebc81cdf49203dcc869889e59fdb",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 342
+    },
+    "issuesDigest": "634f930cbfb68f4f",
+    "contentHash": "468349bdbbbe441f3404807983afcc901bb3770b406815158ba2778437736a0f",
+    "sceneDigest": "224b1d9123ddf547",
+    "serializedDigest": "950d81fe16c73088",
+    "compiledDigest": "a0f1c3868e8be1f5"
+  },
+  "projects/MQ01_Repair_20260913/hudong/repairs/after-A.map.json": {
+    "fileSha256": "950d81fe16c73088d9cd82dc2dece3e3192eebc81cdf49203dcc869889e59fdb",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 342
+    },
+    "issuesDigest": "634f930cbfb68f4f",
+    "contentHash": "468349bdbbbe441f3404807983afcc901bb3770b406815158ba2778437736a0f",
+    "sceneDigest": "224b1d9123ddf547",
+    "serializedDigest": "950d81fe16c73088",
+    "compiledDigest": "a0f1c3868e8be1f5"
+  },
+  "projects/MQ01_Repair_20260913/newtimes/baseline/normalized.map.json": {
+    "fileSha256": "8c4768d3dd541f9411ef825f53d89762875fca353993d1be5a9f17a7fef03a19",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 520
+    },
+    "issuesDigest": "ce9489be785234e1",
+    "contentHash": "06a11a95e4f2276bc04aa09a2127e1c521d19b19c6aed3b44e31ed768af61fc0",
+    "sceneDigest": "4c907bda83e6b6c4",
+    "serializedDigest": "8c4768d3dd541f94",
+    "compiledDigest": "5d869b00c1ccdfcb"
+  },
+  "projects/MQ01_Repair_20260913/newtimes/baseline/original.map.json": {
+    "fileSha256": "101d6882283caa6af8c5afde0b3173f7fc47ebd8189cdb6dcea6a2a6be39fff1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 520
+    },
+    "issuesDigest": "83b66bfc28811023",
+    "contentHash": "06a11a95e4f2276bc04aa09a2127e1c521d19b19c6aed3b44e31ed768af61fc0",
+    "sceneDigest": "bf5f6d498ec576d1",
+    "serializedDigest": "8c4768d3dd541f94",
+    "compiledDigest": "c42f6a33986b2ea6"
+  },
+  "projects/MQ01_Repair_20260913/newtimes/map.json": {
+    "fileSha256": "2b91e6709cf96328a5a1866a3f88ca58bac6669f43f23d6093039112ea440787",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "1ee05a109562cdba",
+    "contentHash": "b7ac634881ced9d6e6249e4b13de8dec3c115a305309169a6f01a064e34660cb",
+    "sceneDigest": "04cba37d1d675c3c",
+    "serializedDigest": "2b91e6709cf96328",
+    "compiledDigest": "d464f1675b4ffb00"
+  },
+  "projects/MQ01_Repair_20260913/newtimes/repairs/after-A.map.json": {
+    "fileSha256": "2b91e6709cf96328a5a1866a3f88ca58bac6669f43f23d6093039112ea440787",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "1ee05a109562cdba",
+    "contentHash": "b7ac634881ced9d6e6249e4b13de8dec3c115a305309169a6f01a064e34660cb",
+    "sceneDigest": "04cba37d1d675c3c",
+    "serializedDigest": "2b91e6709cf96328",
+    "compiledDigest": "d464f1675b4ffb00"
+  },
+  "projects/MQ01_Repair_20260913/samho/baseline/normalized.map.json": {
+    "fileSha256": "c75aed92cc34b13f23c02238a3230eaa18e649ef282c6e746cafb8ff44feef9a",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "38e7a1ccc112fc99",
+    "contentHash": "e9b0c61946a7f9f0792614bf2145413dc547df8956e940e454c7883aac997d38",
+    "sceneDigest": "d2273b63ee10f9de",
+    "serializedDigest": "c75aed92cc34b13f",
+    "compiledDigest": "1cb51474f6cf2752"
+  },
+  "projects/MQ01_Repair_20260913/samho/baseline/original.map.json": {
+    "fileSha256": "bfd98ddde9da61625e85e43b54805d146a8c8f6ceba543043b172550fea1463e",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "9fb40aa93be2cb3a",
+    "contentHash": "e9b0c61946a7f9f0792614bf2145413dc547df8956e940e454c7883aac997d38",
+    "sceneDigest": "4f9e2d2dfaaa10af",
+    "serializedDigest": "c75aed92cc34b13f",
+    "compiledDigest": "b332d222dcdb653c"
+  },
+  "projects/MQ01_Repair_20260913/samho/map.json": {
+    "fileSha256": "d403713aaa14aabe48a35095b1f473958d399f7bf37d2509709ff0e04dfa6fe3",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 498
+    },
+    "issuesDigest": "bb25263fb3b5aa6c",
+    "contentHash": "28ef4450d0c5e0f0179e1c5bc410118fc560be2df12b728dd14d829c4a955a0c",
+    "sceneDigest": "5de5c1382929f01f",
+    "serializedDigest": "d403713aaa14aabe",
+    "compiledDigest": "c09b674f480eeb31"
+  },
+  "projects/MQ01_Repair_20260913/samho/repairs/after-A.map.json": {
+    "fileSha256": "d403713aaa14aabe48a35095b1f473958d399f7bf37d2509709ff0e04dfa6fe3",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 498
+    },
+    "issuesDigest": "bb25263fb3b5aa6c",
+    "contentHash": "28ef4450d0c5e0f0179e1c5bc410118fc560be2df12b728dd14d829c4a955a0c",
+    "sceneDigest": "5de5c1382929f01f",
+    "serializedDigest": "d403713aaa14aabe",
+    "compiledDigest": "c09b674f480eeb31"
+  },
+  "projects/MQ01_Repair_20260913/weihai/baseline/normalized.map.json": {
+    "fileSha256": "89325be2c9492a1cddfbd55726a7595e1ea715e623b542d57d8729627a3a900d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c",
+    "sceneDigest": "692d3d98ad2fa87f",
+    "serializedDigest": "89325be2c9492a1c",
+    "compiledDigest": "8387f625404fd8e0"
+  },
+  "projects/MQ01_Repair_20260913/weihai/baseline/original.map.json": {
+    "fileSha256": "420dcf275a16664a34d68bc8371ddce8012954eb5ce6a28c29a6793e7a28e545",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "664ce53b73dddab2",
+    "contentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c",
+    "sceneDigest": "46cb6778155e0ffd",
+    "serializedDigest": "89325be2c9492a1c",
+    "compiledDigest": "659f9e9d27e844cc"
+  },
+  "projects/MQ01_Repair_20260913/weihai/map.json": {
+    "fileSha256": "c36dae426b9a02a20b75eefc79f09ffa7c415bd08adc0ad2cb677d4c64585315",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "662acb1a567c20fd615885f210a568bfb4d1bc1628c87c9894e5dc84af1c0517",
+    "sceneDigest": "592860f737b4c939",
+    "serializedDigest": "c36dae426b9a02a2",
+    "compiledDigest": "a48a74548b016035"
+  },
+  "projects/MQ01_Repair_20260913/weihai/repairs/after-A.map.json": {
+    "fileSha256": "89325be2c9492a1cddfbd55726a7595e1ea715e623b542d57d8729627a3a900d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c",
+    "sceneDigest": "692d3d98ad2fa87f",
+    "serializedDigest": "89325be2c9492a1c",
+    "compiledDigest": "8387f625404fd8e0"
+  },
+  "projects/MQ01_Repair_20260913/weihai/repairs/explicit/weihai-P-plan/map.json": {
+    "fileSha256": "331249697b5ab4b1c28f94081ac8ffc3d4aea2345790854d8587b20f6a85c4c7",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "aa009d89330e072d35eb08e90f5dd61200043be88db1bbda0ac83cfa8062c32b",
+    "sceneDigest": "c28a34334cd543d9",
+    "serializedDigest": "331249697b5ab4b1",
+    "compiledDigest": "f2844b7a1968f696"
+  },
+  "projects/MQ01_Repair_20260913/weihai/repairs/explicit/weihai-P/map.json": {
+    "fileSha256": "331249697b5ab4b1c28f94081ac8ffc3d4aea2345790854d8587b20f6a85c4c7",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "aa009d89330e072d35eb08e90f5dd61200043be88db1bbda0ac83cfa8062c32b",
+    "sceneDigest": "c28a34334cd543d9",
+    "serializedDigest": "331249697b5ab4b1",
+    "compiledDigest": "f2844b7a1968f696"
+  },
+  "projects/MQ01_Repair_20260913/weihai/repairs/explicit/weihai-site-plan/map.json": {
+    "fileSha256": "c36dae426b9a02a20b75eefc79f09ffa7c415bd08adc0ad2cb677d4c64585315",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "662acb1a567c20fd615885f210a568bfb4d1bc1628c87c9894e5dc84af1c0517",
+    "sceneDigest": "592860f737b4c939",
+    "serializedDigest": "c36dae426b9a02a2",
+    "compiledDigest": "a48a74548b016035"
+  },
+  "projects/MQ01_Repair_20260913/weihai/repairs/explicit/weihai-site/map.json": {
+    "fileSha256": "c36dae426b9a02a20b75eefc79f09ffa7c415bd08adc0ad2cb677d4c64585315",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "662acb1a567c20fd615885f210a568bfb4d1bc1628c87c9894e5dc84af1c0517",
+    "sceneDigest": "592860f737b4c939",
+    "serializedDigest": "c36dae426b9a02a2",
+    "compiledDigest": "a48a74548b016035"
+  },
+  "projects/MQ01_Repair_20260913/xinyangzi/baseline/normalized.map.json": {
+    "fileSha256": "da65f07c016f9715981d3a7b19c591afc01eab31beea3e551292531b424a6bfe",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 293
+    },
+    "issuesDigest": "44b4effb49ca1427",
+    "contentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c",
+    "sceneDigest": "e2b3cbf6abaaa271",
+    "serializedDigest": "da65f07c016f9715",
+    "compiledDigest": "4e8386f8910c7630"
+  },
+  "projects/MQ01_Repair_20260913/xinyangzi/baseline/original.map.json": {
+    "fileSha256": "8679a1b5807351f2a7d1c5e6c7ec3dbe5338a751932522df6a924104ae7a3fbd",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 293
+    },
+    "issuesDigest": "05a939532b37a930",
+    "contentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c",
+    "sceneDigest": "5fbac713167a4365",
+    "serializedDigest": "da65f07c016f9715",
+    "compiledDigest": "f7c849f6a4387c15"
+  },
+  "projects/MQ01_Repair_20260913/xinyangzi/map.json": {
+    "fileSha256": "e8f7db8ffbceb50a8963e90d5f6f27896619629274275fb8805b3256c17dde0a",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 290
+    },
+    "issuesDigest": "93923da416f8ace2",
+    "contentHash": "88b501efb92e85ca74a6d16a500ee4d973357a9f509ac37fead0fddd0d8b9c14",
+    "sceneDigest": "a5e567b0b62d2623",
+    "serializedDigest": "e8f7db8ffbceb50a",
+    "compiledDigest": "b54d9f4fecd8f921"
+  },
+  "projects/MQ01_Repair_20260913/xinyangzi/repairs/after-A.map.json": {
+    "fileSha256": "da65f07c016f9715981d3a7b19c591afc01eab31beea3e551292531b424a6bfe",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 293
+    },
+    "issuesDigest": "44b4effb49ca1427",
+    "contentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c",
+    "sceneDigest": "e2b3cbf6abaaa271",
+    "serializedDigest": "da65f07c016f9715",
+    "compiledDigest": "4e8386f8910c7630"
+  },
+  "projects/MQ01_Repair_20260913/xinyangzi/repairs/explicit/xinyangzi-B-plan/map.json": {
+    "fileSha256": "e8f7db8ffbceb50a8963e90d5f6f27896619629274275fb8805b3256c17dde0a",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 290
+    },
+    "issuesDigest": "93923da416f8ace2",
+    "contentHash": "88b501efb92e85ca74a6d16a500ee4d973357a9f509ac37fead0fddd0d8b9c14",
+    "sceneDigest": "a5e567b0b62d2623",
+    "serializedDigest": "e8f7db8ffbceb50a",
+    "compiledDigest": "b54d9f4fecd8f921"
+  },
+  "projects/MQ01_Repair_20260913/xinyangzi/repairs/explicit/xinyangzi-B/map.json": {
+    "fileSha256": "e8f7db8ffbceb50a8963e90d5f6f27896619629274275fb8805b3256c17dde0a",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 290
+    },
+    "issuesDigest": "93923da416f8ace2",
+    "contentHash": "88b501efb92e85ca74a6d16a500ee4d973357a9f509ac37fead0fddd0d8b9c14",
+    "sceneDigest": "a5e567b0b62d2623",
+    "serializedDigest": "e8f7db8ffbceb50a",
+    "compiledDigest": "b54d9f4fecd8f921"
+  },
+  "projects/Map_Refinement_20260912/cimc_v02/checks/browser/exported.map.json": {
+    "fileSha256": "74f67bacccb542efc4fcfccf31aaba99c7fdf433183f05eb0c46d2e4438853d0",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "7667296423b24b75",
+    "contentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd",
+    "sceneDigest": "70905735b5345cc7",
+    "serializedDigest": "74f67bacccb542ef",
+    "compiledDigest": "d699e62ccf663e94"
+  },
+  "projects/Map_Refinement_20260912/cimc_v02/data/pre_simplification.map.json": {
+    "fileSha256": "0eda616cf8bef738d7e099eb2870ef2698ec0c6378c4f1d2452f0845ac4fe5af",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "8ec0edf1834af884",
+    "contentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd",
+    "sceneDigest": "6c56ba00a31e20bf",
+    "serializedDigest": "74f67bacccb542ef",
+    "compiledDigest": "3a7ffcc5442775c3"
+  },
+  "projects/Map_Refinement_20260912/cimc_v02/map.json": {
+    "fileSha256": "0eda616cf8bef738d7e099eb2870ef2698ec0c6378c4f1d2452f0845ac4fe5af",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 32,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 254
+    },
+    "issuesDigest": "8ec0edf1834af884",
+    "contentHash": "8bfadd75ad3a3b93897d8c817ac020e7fe4613e3bcf291d25b22fc03165abcdd",
+    "sceneDigest": "6c56ba00a31e20bf",
+    "serializedDigest": "74f67bacccb542ef",
+    "compiledDigest": "3a7ffcc5442775c3"
+  },
+  "projects/Map_Refinement_20260912/dalian_v02/checks/browser/exported.map.json": {
+    "fileSha256": "d0d2d2f887cd9fff16b074fc4840beb0dcdc8f92212a586e1a0dbd1a673b26e5",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 265
+    },
+    "issuesDigest": "54168a8287d88d2c",
+    "contentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f",
+    "sceneDigest": "52d7fbec46d35eab",
+    "serializedDigest": "d0d2d2f887cd9fff",
+    "compiledDigest": "67eba4cc009c8fc5"
+  },
+  "projects/Map_Refinement_20260912/dalian_v02/data/pre_simplification.map.json": {
+    "fileSha256": "c65836774f38616d7fdff877e08a43805d0b7f03b52eb0ff1532d112f7dc7b6c",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 268
+    },
+    "issuesDigest": "d849f3df624daf1c",
+    "contentHash": "15e60cf8294c5853ea5017388aebb9020758dd12ff80f4b5128dd7666c7beeb0",
+    "sceneDigest": "07dfea804dd3067d",
+    "serializedDigest": "07eac0b1e4f22b0b",
+    "compiledDigest": "2aa9208f339446b1"
+  },
+  "projects/Map_Refinement_20260912/dalian_v02/map.json": {
+    "fileSha256": "a06fa3910079d74e3e90f1b23fd840c64640500097d7ae8a057ad82293187656",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 27,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 265
+    },
+    "issuesDigest": "a4dde0bf2ca611c9",
+    "contentHash": "426e53625e714a656f7dae75357ec0685df66364c0bb58eee0dacd740d4d651f",
+    "sceneDigest": "c7720673878f3004",
+    "serializedDigest": "d0d2d2f887cd9fff",
+    "compiledDigest": "7231384a600bdbf2"
+  },
+  "projects/Map_Refinement_20260912/geoje_v02/checks/browser/exported.map.json": {
+    "fileSha256": "c39ebb10a02e61047fb5de0e5d19a4ddf02d19b9f6e3e67ad7fc355740b5ae27",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 580
+    },
+    "issuesDigest": "35f3a91b83b0706c",
+    "contentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+    "sceneDigest": "63f9f84eac3c342c",
+    "serializedDigest": "c39ebb10a02e6104",
+    "compiledDigest": "04a3ae7d53c53531"
+  },
+  "projects/Map_Refinement_20260912/geoje_v02/data/pre_simplification.map.json": {
+    "fileSha256": "6313e6cff2bda3fe418d3cf9b51c0fe413495f088d882892c58ac60ef827e0e9",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 580
+    },
+    "issuesDigest": "b5c7784a56d8fa51",
+    "contentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+    "sceneDigest": "d23a9f132a7f2ebe",
+    "serializedDigest": "c39ebb10a02e6104",
+    "compiledDigest": "026724d28edf77ab"
+  },
+  "projects/Map_Refinement_20260912/geoje_v02/map.json": {
+    "fileSha256": "6313e6cff2bda3fe418d3cf9b51c0fe413495f088d882892c58ac60ef827e0e9",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 55,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 580
+    },
+    "issuesDigest": "b5c7784a56d8fa51",
+    "contentHash": "2743a340c6ec0aa539469ff6ec4a4cfc604e468e9ea80da0b8c7a86d314f3285",
+    "sceneDigest": "d23a9f132a7f2ebe",
+    "serializedDigest": "c39ebb10a02e6104",
+    "compiledDigest": "026724d28edf77ab"
+  },
+  "projects/Map_Refinement_20260912/hanwha_v02/checks/browser/exported.map.json": {
+    "fileSha256": "a9f3dfc87390de12c3243a5f7567abe0197154764b7d1faaf550b2ae95bbf6ad",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 856
+    },
+    "issuesDigest": "6a0808371cb908c1",
+    "contentHash": "031c37f0f1a73eb09e2674d3b36ed966e7f8478cf2e6cf7514bf3adb270a9bee",
+    "sceneDigest": "28cf0cb735197acd",
+    "serializedDigest": "a9f3dfc87390de12",
+    "compiledDigest": "2daf51abfc399324"
+  },
+  "projects/Map_Refinement_20260912/hanwha_v02/data/pre_simplification.map.json": {
+    "fileSha256": "d9b3b76bf075e3e802088231b4af0c17d48dd8751c1c89bb1a66f82feada7d1d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 856
+    },
+    "issuesDigest": "1f9eeee08bb8c54e",
+    "contentHash": "031c37f0f1a73eb09e2674d3b36ed966e7f8478cf2e6cf7514bf3adb270a9bee",
+    "sceneDigest": "85f3802cc35dba3b",
+    "serializedDigest": "a9f3dfc87390de12",
+    "compiledDigest": "9d3f8310c3e11e03"
+  },
+  "projects/Map_Refinement_20260912/hanwha_v02/map.json": {
+    "fileSha256": "d9b3b76bf075e3e802088231b4af0c17d48dd8751c1c89bb1a66f82feada7d1d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 856
+    },
+    "issuesDigest": "1f9eeee08bb8c54e",
+    "contentHash": "031c37f0f1a73eb09e2674d3b36ed966e7f8478cf2e6cf7514bf3adb270a9bee",
+    "sceneDigest": "85f3802cc35dba3b",
+    "serializedDigest": "a9f3dfc87390de12",
+    "compiledDigest": "9d3f8310c3e11e03"
+  },
+  "projects/Map_Refinement_20260912/hudong_v02/checks/browser/exported.map.json": {
+    "fileSha256": "b71e6cb06dd49cbc5a9d619801c169bd7399506f356bd01194e29318985996e6",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 358
+    },
+    "issuesDigest": "14274f4357ca298a",
+    "contentHash": "4d3843bb5923467b32cf1f96772575738e4b3ab896f8b601f2f9e156196e243b",
+    "sceneDigest": "201b1ed11e09a440",
+    "serializedDigest": "b71e6cb06dd49cbc",
+    "compiledDigest": "4d4992589b484cf6"
+  },
+  "projects/Map_Refinement_20260912/hudong_v02/data/pre_simplification.map.json": {
+    "fileSha256": "7f0cfb8a235830c7d42e5cd807a9d5f85fd87a57063484c65568617ac5a71cd1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 358
+    },
+    "issuesDigest": "ef38d5556339f42b",
+    "contentHash": "4d3843bb5923467b32cf1f96772575738e4b3ab896f8b601f2f9e156196e243b",
+    "sceneDigest": "2e13c35eafeea70c",
+    "serializedDigest": "b71e6cb06dd49cbc",
+    "compiledDigest": "c68344ecf8541953"
+  },
+  "projects/Map_Refinement_20260912/hudong_v02/map.json": {
+    "fileSha256": "7f0cfb8a235830c7d42e5cd807a9d5f85fd87a57063484c65568617ac5a71cd1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 358
+    },
+    "issuesDigest": "ef38d5556339f42b",
+    "contentHash": "4d3843bb5923467b32cf1f96772575738e4b3ab896f8b601f2f9e156196e243b",
+    "sceneDigest": "2e13c35eafeea70c",
+    "serializedDigest": "b71e6cb06dd49cbc",
+    "compiledDigest": "c68344ecf8541953"
+  },
+  "projects/Map_Refinement_20260912/newtimes_v02/checks/browser/exported.map.json": {
+    "fileSha256": "8c4768d3dd541f9411ef825f53d89762875fca353993d1be5a9f17a7fef03a19",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 520
+    },
+    "issuesDigest": "ce9489be785234e1",
+    "contentHash": "06a11a95e4f2276bc04aa09a2127e1c521d19b19c6aed3b44e31ed768af61fc0",
+    "sceneDigest": "4c907bda83e6b6c4",
+    "serializedDigest": "8c4768d3dd541f94",
+    "compiledDigest": "5d869b00c1ccdfcb"
+  },
+  "projects/Map_Refinement_20260912/newtimes_v02/data/pre_simplification.map.json": {
+    "fileSha256": "101d6882283caa6af8c5afde0b3173f7fc47ebd8189cdb6dcea6a2a6be39fff1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 520
+    },
+    "issuesDigest": "83b66bfc28811023",
+    "contentHash": "06a11a95e4f2276bc04aa09a2127e1c521d19b19c6aed3b44e31ed768af61fc0",
+    "sceneDigest": "bf5f6d498ec576d1",
+    "serializedDigest": "8c4768d3dd541f94",
+    "compiledDigest": "c42f6a33986b2ea6"
+  },
+  "projects/Map_Refinement_20260912/newtimes_v02/map.json": {
+    "fileSha256": "101d6882283caa6af8c5afde0b3173f7fc47ebd8189cdb6dcea6a2a6be39fff1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 520
+    },
+    "issuesDigest": "83b66bfc28811023",
+    "contentHash": "06a11a95e4f2276bc04aa09a2127e1c521d19b19c6aed3b44e31ed768af61fc0",
+    "sceneDigest": "bf5f6d498ec576d1",
+    "serializedDigest": "8c4768d3dd541f94",
+    "compiledDigest": "c42f6a33986b2ea6"
+  },
+  "projects/Map_Refinement_20260912/samho_v02/checks/browser/exported.map.json": {
+    "fileSha256": "c75aed92cc34b13f23c02238a3230eaa18e649ef282c6e746cafb8ff44feef9a",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "38e7a1ccc112fc99",
+    "contentHash": "e9b0c61946a7f9f0792614bf2145413dc547df8956e940e454c7883aac997d38",
+    "sceneDigest": "d2273b63ee10f9de",
+    "serializedDigest": "c75aed92cc34b13f",
+    "compiledDigest": "1cb51474f6cf2752"
+  },
+  "projects/Map_Refinement_20260912/samho_v02/data/pre_simplification.map.json": {
+    "fileSha256": "fcf415b7348653e5af2d545a2f14d36ac3a21cc29225a21e2aa76d2972dfc2f9",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "9fb40aa93be2cb3a",
+    "contentHash": "a151bf8534cf92523efb9a5b8c1e9139e70e41da1b083b580a0041b6b910c3da",
+    "sceneDigest": "16e00c13fe678b53",
+    "serializedDigest": "958e27f56ee47efd",
+    "compiledDigest": "ad70e13c73d0da0b"
+  },
+  "projects/Map_Refinement_20260912/samho_v02/map.json": {
+    "fileSha256": "bfd98ddde9da61625e85e43b54805d146a8c8f6ceba543043b172550fea1463e",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 3,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "9fb40aa93be2cb3a",
+    "contentHash": "e9b0c61946a7f9f0792614bf2145413dc547df8956e940e454c7883aac997d38",
+    "sceneDigest": "4f9e2d2dfaaa10af",
+    "serializedDigest": "c75aed92cc34b13f",
+    "compiledDigest": "b332d222dcdb653c"
+  },
+  "projects/Map_Refinement_20260912/weihai_v02/checks/browser/exported.map.json": {
+    "fileSha256": "89325be2c9492a1cddfbd55726a7595e1ea715e623b542d57d8729627a3a900d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "5a331c85b9efd8f8",
+    "contentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c",
+    "sceneDigest": "692d3d98ad2fa87f",
+    "serializedDigest": "89325be2c9492a1c",
+    "compiledDigest": "8387f625404fd8e0"
+  },
+  "projects/Map_Refinement_20260912/weihai_v02/data/pre_simplification.map.json": {
+    "fileSha256": "420dcf275a16664a34d68bc8371ddce8012954eb5ce6a28c29a6793e7a28e545",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "664ce53b73dddab2",
+    "contentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c",
+    "sceneDigest": "46cb6778155e0ffd",
+    "serializedDigest": "89325be2c9492a1c",
+    "compiledDigest": "659f9e9d27e844cc"
+  },
+  "projects/Map_Refinement_20260912/weihai_v02/map.json": {
+    "fileSha256": "420dcf275a16664a34d68bc8371ddce8012954eb5ce6a28c29a6793e7a28e545",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 336
+    },
+    "issuesDigest": "664ce53b73dddab2",
+    "contentHash": "f2bd53b861a7b69d5b90533cc86f08a317f133e7196c85056c082961b5535c7c",
+    "sceneDigest": "46cb6778155e0ffd",
+    "serializedDigest": "89325be2c9492a1c",
+    "compiledDigest": "659f9e9d27e844cc"
+  },
+  "projects/Map_Refinement_20260912/xinyangzi_v02/checks/browser/exported.map.json": {
+    "fileSha256": "da65f07c016f9715981d3a7b19c591afc01eab31beea3e551292531b424a6bfe",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 293
+    },
+    "issuesDigest": "44b4effb49ca1427",
+    "contentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c",
+    "sceneDigest": "e2b3cbf6abaaa271",
+    "serializedDigest": "da65f07c016f9715",
+    "compiledDigest": "4e8386f8910c7630"
+  },
+  "projects/Map_Refinement_20260912/xinyangzi_v02/data/pre_simplification.map.json": {
+    "fileSha256": "8679a1b5807351f2a7d1c5e6c7ec3dbe5338a751932522df6a924104ae7a3fbd",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 293
+    },
+    "issuesDigest": "05a939532b37a930",
+    "contentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c",
+    "sceneDigest": "5fbac713167a4365",
+    "serializedDigest": "da65f07c016f9715",
+    "compiledDigest": "f7c849f6a4387c15"
+  },
+  "projects/Map_Refinement_20260912/xinyangzi_v02/map.json": {
+    "fileSha256": "8679a1b5807351f2a7d1c5e6c7ec3dbe5338a751932522df6a924104ae7a3fbd",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 33,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 293
+    },
+    "issuesDigest": "05a939532b37a930",
+    "contentHash": "f74618b640336d506189faf2e191a7ee7bb00a0a324c1059e12fee8c3db10b1c",
+    "sceneDigest": "5fbac713167a4365",
+    "serializedDigest": "da65f07c016f9715",
+    "compiledDigest": "f7c849f6a4387c15"
+  },
+  "projects/TIF_可导入底图_20260915/三星重工巨济造船厂/map.json": {
+    "fileSha256": "faa8cb2e194ab421755990e1f8920a0e96d8c8dfb7f601d6c51af033117c3b3f",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "c432af53e855b15a52a63115897f1e7873aef9ab1c8f1e213f2627b7a373709f",
+    "sceneDigest": "d86be2fe268288bb",
+    "serializedDigest": "faa8cb2e194ab421",
+    "compiledDigest": "0a987ceb0196aefe"
+  },
+  "projects/TIF_可导入底图_20260915/中集来福士/map.json": {
+    "fileSha256": "b39ca29f102e8b4fd30d052d07ef6c399f586f3820b0dc8f1e5caa5ae3f81ed1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "c73ba271bda82d6401ad04afd847db7059c0f8241b361cd5810a9ff2ae4e6b58",
+    "sceneDigest": "57b58e3dd7d4b128",
+    "serializedDigest": "b39ca29f102e8b4f",
+    "compiledDigest": "66c8b10cf7c0adc3"
+  },
+  "projects/TIF_可导入底图_20260915/威海船厂/map.json": {
+    "fileSha256": "3741b2b397c7e34eae1568df96aaf9f8b086fa248b83b45327e29a195c67b28d",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "f954cd765b9a80490143366ce68cc8cc483ccfeae7f14947a17adbc9d9d53e76",
+    "sceneDigest": "bd0948261b7a5a24",
+    "serializedDigest": "3741b2b397c7e34e",
+    "compiledDigest": "6bc36d6ced8eaab1"
+  },
+  "projects/TIF_可导入底图_20260915/恒力重工/map.json": {
+    "fileSha256": "85ab649d36f3181e30a2d5c8c4d23bc91f7e2f3f7204d966de96e22c4a377598",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "84efd71a3e20b521d0c573eac41766c16e6011e2736686a9a46faedc8dc6d692",
+    "sceneDigest": "cdcdbcb4d9f1e575",
+    "serializedDigest": "85ab649d36f3181e",
+    "compiledDigest": "4d5744d47c2d9db2"
+  },
+  "projects/TIF_可导入底图_20260915/新杨子造船/map.json": {
+    "fileSha256": "c751a0b7a74ff58c31ddb9e5e21c42f3dcadb14f13e7bd542c6640c0c23ad0c6",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "461ee89018a0ebc72963e5e49b96d9448cfb5c3efa006ea01b72f52bfc526a27",
+    "sceneDigest": "dfaf755f4ec4bd8c",
+    "serializedDigest": "c751a0b7a74ff58c",
+    "compiledDigest": "6101658077c438f8"
+  },
+  "projects/TIF_可导入底图_20260915/江苏新时代/map.json": {
+    "fileSha256": "8a85f418f22e88d611f016bdacfe99e1b9f9eca05caaa2f5e12cd1c6fb24a36c",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "f181d3e2c6adf3bf63afdb574e86f1395e2c3953e937d29c95b373b4324fca05",
+    "sceneDigest": "a81b205501626586",
+    "serializedDigest": "8a85f418f22e88d6",
+    "compiledDigest": "39d628e3f78ea058"
+  },
+  "projects/TIF_可导入底图_20260915/沪东中华/map.json": {
+    "fileSha256": "d69ab04b61a1219a87f39f61e6f12efe472a287f053348c1f875df43cf8a5872",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "17194eda026c66cab15a2ac8f09d7a8cfe8a0186b977034f1037c14733312b39",
+    "sceneDigest": "641102b134ad61d8",
+    "serializedDigest": "d69ab04b61a1219a",
+    "compiledDigest": "77ed1fdb9568115d"
+  },
+  "projects/TIF_可导入底图_20260915/现代三湖重工/map.json": {
+    "fileSha256": "04d141e8ae097dbc686107c4572fbf4eacbc2251f42705e92c8a467e079725c9",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1
+    },
+    "issuesDigest": "0089acf0a9ade5b6",
+    "contentHash": "cccdbe700fb3199a09f1c20c4d00fcc8ee8ffc09822baf60d15ee9ec86fcfcc1",
+    "sceneDigest": "77f4e642ff300a59",
+    "serializedDigest": "04d141e8ae097dbc",
+    "compiledDigest": "1bad9b09860a1077"
+  },
+  "projects/TIF_可导入底图_20260915/韩华海洋造船厂/map.json": {
+    "fileSha256": "445a25d98370604fc8789e751f88d57f2e144fc683a48e96f8fba7bd48e9f8c4",
+    "ok": true,
+    "issueCodes": {
+      "warning:ASSET_NOT_RESOLVED": 1,
+      "warning:MISSING_CHECKS": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 2064
+    },
+    "issuesDigest": "eb685223d876f58c",
+    "contentHash": "4efa8baaa370e355e29d396e41a378b01d981e79a43e202c207d40d1fd74f597",
+    "sceneDigest": "d0de0808880091bf",
+    "serializedDigest": "445a25d98370604f",
+    "compiledDigest": "bfb6905075658749"
+  },
+  "projects/TIF_可导入底图_20260915/韩华海洋造船厂/rs-tif-09.map.json": {
+    "fileSha256": "240a28d7d5ed93fdf2598fc94893ce28b770e29b3f8e5273ab142ab31862c4f1",
+    "ok": true,
+    "issueCodes": {
+      "warning:ASSET_NOT_RESOLVED": 1,
+      "warning:MISSING_CHECKS": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 2163
+    },
+    "issuesDigest": "0f84296ba1d044ee",
+    "contentHash": "e37369d79ff8985d6178288d9b715c7e6dc14b8ce3be5cda44bbead771130b55",
+    "sceneDigest": "3ede4b76804938d8",
+    "serializedDigest": "240a28d7d5ed93fd",
+    "compiledDigest": "fe85a106ad35aef8"
+  },
+  "projects/TIF_可导入底图_20260915/韩华海洋造船厂/rs-tif-10.map.json": {
+    "fileSha256": "9b6ce0a076ce250ead26cc7d80d82ef194164d196150068b1da52b7fe9d52c2a",
+    "ok": true,
+    "issueCodes": {
+      "warning:ASSET_NOT_RESOLVED": 1,
+      "warning:MISSING_CHECKS": 1,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 2163
+    },
+    "issuesDigest": "0f84296ba1d044ee",
+    "contentHash": "4d8db20e3ac5c15ea5d8c19da088ce77775e3b4a7586d7c6dbc625bfee4fe79b",
+    "sceneDigest": "aaf99da92a4bd782",
+    "serializedDigest": "fa9998884dca87ff",
+    "compiledDigest": "a3d06e51e04bc3de"
+  },
+  "projects/Weihai_Shipyard_Map_v01/Weihai_Shipyard_Map_v01/map.json": {
+    "fileSha256": "b24b19d744552c4dd88a39a977f8f3b5a306e319c7f477b1ab0f3030cf78cefb",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 43,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 338
+    },
+    "issuesDigest": "2806d827b83fbe5d",
+    "contentHash": "997db6299aa1d7208f019d4fb3b0e293974959c77bd74815b7160130bd2afbfa",
+    "sceneDigest": "f0f03d88d582eb7f",
+    "serializedDigest": "0eb7243524b4f532",
+    "compiledDigest": "eee6520ffb0bccba"
+  },
+  "projects/cimc_v01/map.json": {
+    "fileSha256": "93f4ef7c79286a2748649b4e9a901462bbf631e117931341f2b4b8b8cb8f85a1",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 28,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 216
+    },
+    "issuesDigest": "92e7136ee0f22adc",
+    "contentHash": "c1a343586664a6a5ae2c4ed11520ea7064c779eb9a41c6cc300bb64417c682d0",
+    "sceneDigest": "973bdbacd9317d91",
+    "serializedDigest": "f60c512414f78f88",
+    "compiledDigest": "c542569b9c86351b"
+  },
+  "projects/hanwha_v01/map.json": {
+    "fileSha256": "095c6553c437bb9e5b6df7cafe2e2e04a8061c3aec0db4b739104a2cd0f2a3f9",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 110,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 852
+    },
+    "issuesDigest": "27afad58b24a1abd",
+    "contentHash": "91e655cef4ef298b6a3617b18973210580c298ae4de3ce0a894e8ef108682143",
+    "sceneDigest": "27085b673052ed6a",
+    "serializedDigest": "e8401335729ac400",
+    "compiledDigest": "aeb8aab163269576"
+  },
+  "projects/hudong_v01/map.json": {
+    "fileSha256": "4ca9e2ea2e58b9e720dac9cc3800bdaddeee3bb464cd3fec79be1b4e95f269ba",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 42,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 358
+    },
+    "issuesDigest": "10381d3e4cf0d325",
+    "contentHash": "2592ebab804451554fea37b822fc0e2048d1a82afc80aa5e0f9f1c927c1d30a3",
+    "sceneDigest": "228ae44154d28eaf",
+    "serializedDigest": "73a17afc21956b0f",
+    "compiledDigest": "0c3cd04e8bf4b55a"
+  },
+  "projects/newtimes_v01/map.json": {
+    "fileSha256": "5cfc58038be77059bca888232fb72a788e7a06748b674c9105e589d9d32bbb60",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 57,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 520
+    },
+    "issuesDigest": "64dabb52a3a1e8e3",
+    "contentHash": "f719aec9b95fb92c453b2d182ca7da53d133c9a4a7c7abaefa5359df0654c342",
+    "sceneDigest": "d925f653b1223afc",
+    "serializedDigest": "83e30be3ab2113fc",
+    "compiledDigest": "c6a1139c24758b53"
+  },
+  "projects/samho_v01/map.json": {
+    "fileSha256": "283b1f88257b56bde37161f0a726fbbd766a5a166502da2a9a5c3638801dbb59",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:NEAR_ROAD_UNCONNECTED": 4,
+      "warning:SERVICE_ROUTE_UNCHECKED": 56,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 500
+    },
+    "issuesDigest": "d1a9b6a172ae1a0c",
+    "contentHash": "a5903c1d692140da8dc9435dc8a97773adc94b5890cd32a4d677019cdcabec08",
+    "sceneDigest": "1b9f49ba23149d58",
+    "serializedDigest": "41ab931be6473443",
+    "compiledDigest": "18ee1c2873541304"
+  },
+  "projects/xinyangzi_v01/map.json": {
+    "fileSha256": "9576f15e37ad3e680fd34f88c14d8997628d08b585f89a43190ff10d347dc6a5",
+    "ok": true,
+    "issueCodes": {
+      "warning:MISSING_CHECKS": 1,
+      "warning:SERVICE_ROUTE_UNCHECKED": 48,
+      "warning:UNKNOWN_PHYSICAL_VALUE": 342
+    },
+    "issuesDigest": "6a5cc45599929385",
+    "contentHash": "4d219e8e2780fa8c8cd427015e239a9a832966c12a3c7472b243379982b51fa0",
+    "sceneDigest": "b54b3c9289c30d70",
+    "serializedDigest": "df2c5886dc84f494",
+    "compiledDigest": "0a15a571397ce7b5"
+  }
+}

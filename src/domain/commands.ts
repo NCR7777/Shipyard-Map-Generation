@@ -16,6 +16,7 @@ import { OwnerEditError, nodeOwners, privateNodeOwner, roadOwner, pointOwner, bo
 import { inspectOwnerGeometryEdit } from '../validation/ownerEditing';
 import { runConnectedPoint, type ConnectedPointCommand } from './connectedPoint';
 import { runAccessDetachment, type DetachAccessPointCommand } from './accessDetachment';
+import { runAccessSeparation, type SeparateAccessPointCommand } from './accessSeparation';
 import { allocateMapIds, runQuickTrace, type QuickTraceCommand } from './drawingDefaults';
 import { runSemanticPatch, recordManualSemanticChanges, type ApplySemanticPatchCommand } from './semanticPatch';
 import { runResearchAccess, type ApplyResearchAccessCommand } from './researchAccess';
@@ -64,6 +65,7 @@ export type MapCommand =
   | BackgroundCommand
   | ConnectedPointCommand
   | DetachAccessPointCommand
+  | SeparateAccessPointCommand
   | QuickTraceCommand
   | ApplySemanticPatchCommand | ApplyResearchAccessCommand
   | { type: 'deleteSelection'; topologyPolicy?: 'reject' | 'cascade'; selection: Selection; facilityPolicy?: 'reject' | 'withAssociatedPoints'; zonePolicy?: 'reject' | 'withAssociatedPoints'; orphanNodes?: 'keep' | 'deleteUnused' }
@@ -503,13 +505,14 @@ function inspectSupport(map: YardMap, command: MapCommand): CommandSupport {
         && changed.some(field => { const value = (update.patch as Record<string, unknown>)[field] as PhysicalValue | undefined; return value && typeof value === 'object' && value.state === 'known' && !value.sourceRef; })) affectedRefs.push({ kind: 'sources', id: update.designAssumption.id });
       return { allowed: true, issues: [], affectedRefs };
     }
-    if (isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint') {
+    if (isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint' || command.type === 'separateAccessPoint') {
       if ('selection' in command) assertSelection(map, command.selection);
       const candidate = structuredClone(map);
       const connected = command.type === 'createConnectedPoint' ? runConnectedPoint(candidate, command, splitRoad) : undefined;
       const detached = command.type === 'detachAccessPoint' ? runAccessDetachment(candidate, command, splitRoad) : undefined;
-      if (!connected && !detached) executeTopology(candidate, command);
-      const geometryPreservedRoadIds = connected?.geometryPreservedRoadIds ?? detached?.geometryPreservedRoadIds ?? preservedTopologyGeometry(map, command);
+      const separated = command.type === 'separateAccessPoint' ? runAccessSeparation(candidate, command, (state, trace) => runQuickTrace(state, trace, splitRoad)) : undefined;
+      if (!connected && !detached && !separated) executeTopology(candidate, command);
+      const geometryPreservedRoadIds = connected?.geometryPreservedRoadIds ?? detached?.geometryPreservedRoadIds ?? separated?.geometryPreservedRoadIds ?? preservedTopologyGeometry(map, command);
       const changed = topologyChangedRefs(map, candidate);
       const retainedNodes = command.type === 'mergeNodes' ? [command.targetNodeId]
         : command.type === 'splitRoad' || command.type === 'connectNodeToRoad' ? [command.nodeId] : [];
@@ -914,6 +917,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'quickTraceRoad': case 'quickTraceBoundary': runQuickTrace(next, command, splitRoad); break;
       case 'createConnectedPoint': runConnectedPoint(next, command, splitRoad); break;
       case 'detachAccessPoint': runAccessDetachment(next, command, splitRoad); break;
+      case 'separateAccessPoint': runAccessSeparation(next, command, (state, trace) => runQuickTrace(state, trace, splitRoad)); break;
       case 'addBackground': case 'updateBackgroundTransform': case 'deleteBackground': case 'replaceBackgroundAsset': runBackgroundCommand(next, command); break;
       case 'addNode': put(next, next.nodes, command.id, command.node); break;
       case 'addRoad': {
@@ -1026,7 +1030,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
   });
   const spatialIssues = [...inspectSpatialEdit(input, next, { geometryPreservedRoadIds: support.geometryPreservedRoadIds, rigidServiceIds }), ...inspectOwnerGeometryEdit(input, next, support.geometryPreservedRoadIds, support.impact?.rigidRoadIds)];
   if (spatialIssues.some(issue => issue.severity === 'error')) return { ok: false, issues: spatialIssues };
-  const topologySources = isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint' || command.type === 'quickTraceRoad' || command.type === 'applyResearchAccess' ? recordTopologySources(input, next, support.affectedRefs, command.type === 'createConnectedPoint' ? command.source.id : undefined) : [];
+  const topologySources = isTopologyCommand(command) || command.type === 'createConnectedPoint' || command.type === 'detachAccessPoint' || command.type === 'separateAccessPoint' || command.type === 'quickTraceRoad' || command.type === 'applyResearchAccess' ? recordTopologySources(input, next, support.affectedRefs, command.type === 'createConnectedPoint' ? command.source.id : undefined) : [];
   const boundarySources = command.type === 'normalizeSiteBoundary' ? recordSiteBoundaryNormalization(input, next) : [];
   const sourceRefs = recordGeometrySources(input, next, support.affectedRefs, command.type === 'duplicateSelection' ? command.idMap : undefined);
   const directionSources = command.type === 'updateRoad' || command.type === 'updateRoadBatch' ? recordDirectionSources(input, next, support.affectedRefs) : [];

@@ -1,5 +1,5 @@
 {
-  "name": "yard-spatial-editor",
+  "name": "shipyard-map-studio",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,23 +16,20 @@
     "lint": "eslint . && node scripts/check-boundaries.mjs",
     "test": "vitest run tests/unit --exclude .cache/**",
     "test:integration": "vitest run tests/integration --exclude .cache/**",
-    "test:e2e": "playwright test",
-    "test:production": "playwright test -c playwright.production.config.ts",
-    "test:ux02": "playwright test -c playwright.ux02.config.ts",
-    "test:bg01": "playwright test -c playwright.bg01.config.ts",
     "map:diagnose": "tsx scripts/map-diagnose.ts",
     "map:validate": "tsx scripts/map-validate.ts",
     "map:migrate": "tsx scripts/map-migrate.ts",
-    "map:compile": "tsx scripts/map-compile.ts"
+    "map:compile": "tsx scripts/map-compile.ts",
+    "golden:check": "tsx scripts/golden.ts check",
+    "perf:compare": "playwright test -c tests/perf/playwright.config.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "ajv": "8.20.0",
     "js-sha256": "1.0.0",
     "jsonc-parser": "3.3.1",
-    "konva": "10.5.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "react-konva": "19.2.7"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

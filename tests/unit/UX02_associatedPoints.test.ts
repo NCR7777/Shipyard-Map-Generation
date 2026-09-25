@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { SceneSnapshot } from '../../src/adapters/contracts';
-import { associatedPointGroups } from '../../src/renderers/2d/SpatialLayer';
+import { associatedPointGroups } from '../../src/app/canvas/renderer';
 
 it('UX02 groups business identities only by shared node reference, never coincident coordinates', () => {
   const scene = {

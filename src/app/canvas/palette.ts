@@ -1,0 +1,22 @@
+/** Canvas colours. Area fills come from the spatial classification; these cover everything else. */
+export const PALETTE = {
+  background: '#f7f9fa',
+  gridMinor: '#e9eef1',
+  gridMajor: '#dbe3e8',
+  gridText: '#8a9ba6',
+  areaFallback: '#8d9ca3',
+  areaStroke: '#5f6f78',
+  roadBand: '#c8d8e1',
+  centerline: '#3f6f86',
+  centerlineUnknown: '#8ea6b4',
+  detailStroke: '#8a9aa6',
+  siteBoundary: '#687f8c',
+  node: '#2f6f86',
+  access: '#2f8a6d',
+  service: '#7a5ab8',
+  label: '#29414f',
+  accent: '#0f7c86',
+  selection: '#e2791b',
+  selectionDark: '#a9530b',
+  hover: '#e2791b',
+} as const;
