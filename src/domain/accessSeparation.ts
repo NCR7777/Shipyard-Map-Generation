@@ -7,7 +7,9 @@ import { TopologyError } from './topologyEditing';
  *  own. Only the entrance moves: the old node keeps its place, roads, turns and every service point on it, so what was on the
  *  road network stays on it (the user's decision, 2026-09-25: roads at the old node stay as they are, and none is added). The
  *  old node becomes a plain node when nothing is left standing on it. No road is built: the entrance leaves the road network
- *  until one is drawn to it.
+ *  until one is drawn to it. Service points that named it as their entrance no longer do (the user's decision, 2026-09-26:
+ *  the separated entrance lets go of its service points); for routing it was a reference only, as they are reached at
+ *  their own nodes, and a service point that enters through it by an internal route refuses the separation.
  *
  *  This is the case `detachAccessPoint` (EA01) does not cover: an entrance directly on a public junction with no internal
  *  branch of its own to split. Without it such an entrance can never move, and every outline change or move of its building
@@ -42,9 +44,11 @@ function candidate(map: YardMap, id: string): AccessSeparationInfo {
   }
   for (const [serviceId, service] of Object.entries(map.servicePoints)) {
     const arrival = service.arrival;
-    // An internal route entering at the old node (named, or implied by the entrance it goes through) would lose its start.
-    const entersHere = arrival?.mode === 'explicit_internal' && (arrival.entryNodeId === oldNodeId || service.nodeId === oldNodeId || !arrival.entryNodeId && service.accessPointId === id);
-    if (entersHere && (service.facilityId ?? service.zoneId) === access.facilityId) {
+    // An internal route through this entrance, whoever owns the point (the entrance is its start), or one of the building's
+    // entering at the old node, would lose its start.
+    const through = arrival?.mode === 'explicit_internal' && service.accessPointId === id;
+    const entersHere = arrival?.mode === 'explicit_internal' && (arrival.entryNodeId === oldNodeId || service.nodeId === oldNodeId) && (service.facilityId ?? service.zoneId) === access.facilityId;
+    if (through || entersHere) {
       fail('ACCESS_SEPARATE_ARRIVAL', `作业点「${service.name}」有从这个入口进入的内部通道，拆出入口会改变它的到达方式，这种情况不能自动拆出（入口挂在公共路口、有一条本建筑内部支路时，应沿支路拆分）。`, '/servicePoints/' + serviceId + '/arrival');
     }
   }
@@ -76,6 +80,8 @@ export function runAccessSeparation(map: YardMap, command: SeparateAccessPointCo
     fail('ACCESS_SEPARATE_POSITION', `新入口节点离已有节点「${node.name}」不到 ${NODE_CLEAR_M} m。`, '/nodes/' + command.nodeId);
   }
   access.nodeId = command.nodeId;
+  const unlinked = Object.entries(map.servicePoints).filter(([, point]) => point.accessPointId === command.id);
+  for (const [, point] of unlinked) delete point.accessPointId;
   const standing = Object.values(map.accessPoints).some(point => point.nodeId === info.oldNodeId)
     || Object.values(map.servicePoints).some(point => point.nodeId === info.oldNodeId || point.arrival?.mode === 'explicit_internal' && point.arrival.entryNodeId === info.oldNodeId);
   // The old node's kind is not a topology field, so its change is written down on the new node.
@@ -83,6 +89,6 @@ export function runAccessSeparation(map: YardMap, command: SeparateAccessPointCo
   const facility = map.facilities[access.facilityId]!;
   map.nodes[command.nodeId] = { name: access.name + '节点', position: [...position], kind: 'access', provenance: {
     category: 'drawing', ...facility.provenance.sourceRefs?.length ? { sourceRefs: [...facility.provenance.sourceRefs] } : {},
-    note: `人工拆出入口：入口「${access.name}」从共用节点 ${info.oldNodeId} 移到自己的节点；原节点及其道路、转向、作业点保持不变${retyped ? `，原节点上已无入口或作业点，类型由 ${retyped} 改为 ordinary` : ''}；入口未接路。` } };
+    note: `人工拆出入口：入口「${access.name}」从共用节点 ${info.oldNodeId} 移到自己的节点；原节点及其道路、转向保持不变，其上的作业点留在原处${retyped ? `，原节点上已无入口或作业点，类型由 ${retyped} 改为 ordinary` : ''}${unlinked.length ? `；作业点${unlinked.map(([id, point]) => `「${point.name}」（${id}）`).join('、')}不再关联这个入口` : ''}；入口未接路。` } };
   if (retyped) old.kind = 'ordinary';
 }

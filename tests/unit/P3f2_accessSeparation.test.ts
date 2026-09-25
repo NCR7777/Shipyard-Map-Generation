@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { entranceMovable, entranceSlide, onOutline } from '../../src/app/canvas/entrances';
 import { translateCommand } from '../../src/app/canvas/movePreview';
 import { separationCommand, separationSpot } from '../../src/app/canvas/separation';
+import { relatedKeys } from '../../src/app/ui/relations';
 import { inspectAccessSeparation, runAccessSeparation } from '../../src/domain/accessSeparation';
 import { applyMapCommand, commandSupport, type MapCommand } from '../../src/domain/commands';
 import { loadMap } from '../../src/domain/load';
@@ -96,15 +97,27 @@ describe('separating an entrance from a node it shares', () => {
     expect(blockers(applyMapCommand(map, move))).toEqual(['OWNER_ENTRANCE_REPOSITION_REQUIRED aGate']);
     expect(blockers(applyMapCommand(split(map).after, move))).toEqual([]);
   });
-  it("leaves the building's service points on the old node, on their roads; so is another building's; the node keeps its kind", () => {
-    const service = (facilityId: string, name: string) => ({ name, kind: 'loading', nodeId: 'nJunction', facilityId, resourceIds: [],
+  it("leaves the building's service points on the old node, on their roads, no longer linked to the entrance; so is another building's; the node keeps its kind", () => {
+    const service = (facilityId: string, name: string, nodeId = 'nJunction') => ({ name, kind: 'loading', nodeId, facilityId, resourceIds: [],
       arrival: { mode: 'node_proxy', transferAssumption: 'included_in_service_duration', note: '测试' }, provenance: { category: 'synthetic' } });
     const own = gateOnJunction(json => {
       json.servicePoints!.sGate = { ...service('fWorkshop', '门口装卸'), accessPointId: 'aGate' };
-      (json.facilities!.fWorkshop as { servicePointIds: string[] }).servicePointIds.push('sGate');
+      // Another of the building's points naming the gate, reached at a node of its own further out.
+      json.servicePoints!.sFar = { ...service('fWorkshop', '远处装卸', 'nE1'), accessPointId: 'aGate' };
+      (json.facilities!.fWorkshop as { servicePointIds: string[] }).servicePointIds.push('sGate', 'sFar');
     });
-    const { plan, after } = split(own);
-    expect(after.servicePoints).toEqual(own.servicePoints);
+    const { plan, session, after } = split(own);
+    // Each stays where it is and lets go of the gate (the user's decision, 2026-09-26), the rest of it unchanged; every other
+    // service point exactly as it was.
+    const expected = structuredClone(own.servicePoints);
+    delete expected.sGate!.accessPointId; delete expected.sFar!.accessPointId;
+    expect(after.servicePoints).toEqual(expected);
+    expect(after.nodes[plan.nodeId]!.provenance.note).toContain('作业点「门口装卸」（sGate）、「远处装卸」（sFar）不再关联这个入口');
+    // What the properties panel shows: the gate no longer lists them, and they no longer name it.
+    expect(relatedKeys(own, 'accessPoints', 'aGate').filter(([label]) => label === '经此入口作业点')).toHaveLength(2);
+    expect(relatedKeys(after, 'accessPoints', 'aGate').filter(([label]) => label === '经此入口作业点')).toEqual([]);
+    expect(relatedKeys(after, 'servicePoints', 'sGate').some(([label]) => label === '接入入口')).toBe(false);
+    expect(undoSession(session).map).toEqual(own);
     expect(after.nodes.nJunction!.kind).toBe('access');
     expect(after.nodes[plan.nodeId]!.provenance.note).not.toContain('类型由');
     // Still on the road network: the same roads reach it, and no new warning says it is cut off.
@@ -148,6 +161,20 @@ describe('separating an entrance from a node it shares', () => {
     standing.servicePoints.sHere = { name: '门内作业', kind: 'loading', nodeId: 'nJunction', facilityId: 'fWorkshop', resourceIds: [],
       arrival: { mode: 'explicit_internal', internalPath: [] }, provenance: { category: 'synthetic' } };
     expect(inspectAccessSeparation(standing, 'aGate')).toMatchObject({ supported: false, issues: [{ code: 'ACCESS_SEPARATE_ARRIVAL' }] });
+    // A route naming the entrance and an entry node elsewhere as well (a conflict the validator reports): the entrance is its
+    // entry, so the link cannot simply be let go.
+    const through = structuredClone(gateOnJunction()) as YardMap & { servicePoints: Record<string, unknown> };
+    through.servicePoints.sIn = { name: '院内作业', kind: 'loading', nodeId: 'nLoading', facilityId: 'fWorkshop', accessPointId: 'aGate', resourceIds: [],
+      arrival: { mode: 'explicit_internal', entryNodeId: 'nE1', internalPath: [] }, provenance: { category: 'synthetic' } };
+    expect(inspectAccessSeparation(through, 'aGate')).toMatchObject({ supported: false, issues: [{ code: 'ACCESS_SEPARATE_ARRIVAL' }] });
+    // A draft point with no owner declared, entering through the entrance by an internal route (only warnings, a map that
+    // loads): refused too, not cut off its start.
+    const draft = gateOnJunction(json => {
+      json.servicePoints!.sDraft = { name: '草稿作业', kind: 'loading', nodeId: 'nLoading', accessPointId: 'aGate', resourceIds: [],
+        arrival: { mode: 'explicit_internal', internalPath: [] }, provenance: { category: 'synthetic' } };
+    });
+    expect(inspectAccessSeparation(draft, 'aGate')).toMatchObject({ supported: false, issues: [{ code: 'ACCESS_SEPARATE_ARRIVAL' }] });
+    expect(code(applyMapCommand(draft, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0] }))).toBe('ACCESS_SEPARATE_ARRIVAL');
     const withResource = gateOnJunction(json => {
       json.resources!.rsGate = { name: '门口停车位', kind: 'parking', capacityUnit: 'vehicle', capacity: { state: 'unknown' }, controlModel: 'unknown',
         appliesTo: [{ entityType: 'nodes', entityId: 'nJunction' }], provenance: { category: 'synthetic' } };

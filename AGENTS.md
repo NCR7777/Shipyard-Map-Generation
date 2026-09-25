@@ -43,7 +43,11 @@ map-studio 是船厂地图编辑器的重写版，2026-09-24 经用户授权在�
 - 以 package.json 为准维护命令。每阶段至少运行：schema:check、typecheck、lint、test、test:integration、golden:check；有界面后加 build 与 test:e2e。
 - 新功能配验收测试；不通过修改或删除失败测试掩盖问题。报告实际执行的命令与结果，区分通过、失败、未运行；缺数据导致的 blocked_input 单独列出。
 - 依赖阶段未通过审查和提交，不开始下一阶段（沿用 paper01 规则）。每个阶段由独立审核者做只读审查（冗余与正确性），修正并复审后在本地提交。
-- 推送：当前分支 d4/rasc 没有上游，推送会在远端新建分支，属于 paper01 规则中的「改动远端」，因此阶段通过后只在本地提交，推送等用户指示。
+- 推送：当前分支 d4/rasc 没有上游，推送会在远端新建分支，属于 paper01 规则中的「改动远端」，不推送。用户 2026-09-26 授权「每个阶段通过后都自动推送」：阶段通过审查并在本地提交后，把该提交的 `map-studio` 目录作为新提交快进推送到 GitHub 仓库 Shipyard-Map-Generation 的 main。
+  - 方法：`git commit-tree <本地提交>:map-studio -p <远端 main 当前提交> -m <中文说明>`（不带 `-m` 会从标准输入读说明），`git push https://github.com/NCR7777/Shipyard-Map-Generation.git <新提交>:refs/heads/main`，推送后 `git ls-remote` 核实；本地 `publish/map-studio-YYYYMMDD` 分支指向当天最后一次推送的提交（同一天再推时用 `git update-ref` 带旧值前移）。阶段报告在被推送的目录里，写不进自己的推送 SHA，所以推送 SHA 记在下一阶段报告的「前置」一行，并在交付说明里告诉用户。
+  - 只快进，不强推；推送前 `git ls-remote` 看到的 main 必须等于本地最新的 `publish/map-studio-*` 分支所指提交（即本阶段报告「前置」记下的上一次推送），不一致时停下报告。
+  - 该仓库是公开的（未登录可访问），推送的每个阶段报告都会公开。推送前检查树中没有原始数据、密钥、受限明细、未授权源码、本机绝对路径。受阻如实记录 `GIT_PUSH_PENDING`，不把本地提交称为已推送。
+  - 与 paper01 AGENTS「阶段通过后……推送当前工作分支」的差异：用户的自动推送指的是 Shipyard-Map-Generation（此前的推送都是它）；推 d4/rasc 会在论文仓库 Paper-Release-burstiness 新建分支并带出 D4/RASC 研究提交，仍需另行指示。Shipyard main 上只有每个阶段的目录快照，逐阶段的开发提交留在本地 d4/rasc。
 
 ## 数据真实性
 

@@ -210,14 +210,16 @@ test('the preview shows the entrance moving with the outline while the corner is
   expect(errors).toEqual([]);
 });
 
-test('a gate split off beside its service point: the service point stays on the junction and its roads, the message says so, the gate slides alone', async ({ page }) => {
+test('a gate split off beside its service point: the service point stays on the junction and its roads, no longer linked to the gate; the message says so; the gate slides alone', async ({ page }) => {
   const errors: string[] = []; await open(page, errors, true, true);
   await selectKeys(page, ['accessPoints/aWest']);
   const before = await map(page);
   await inspector(page).getByRole('button', { name: '拆出入口节点' }).click();
   await expect(page.getByRole('status')).toContainText('本建筑在那里的 1 个作业点也留在原节点，仍接在路网上');
+  await expect(page.getByRole('status')).toContainText('原来关联这个入口的 1 个作业点不再关联它');
   const after = await map(page), nodeId = after.accessPoints.aWest!.nodeId;
-  expect(after.servicePoints).toEqual(before.servicePoints);
+  const unlinked = structuredClone(before.servicePoints.sWest!); delete unlinked.accessPointId;
+  expect(after.servicePoints).toEqual({ ...before.servicePoints, sWest: unlinked });
   expect(after.nodes.nWestGate!.kind).toBe('access');
   await page.keyboard.press('Escape');
   // The gate's marker at (20, 66): dragged out and down, it keeps to the wall; the service point stays where it was.
