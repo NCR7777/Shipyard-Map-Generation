@@ -510,9 +510,9 @@ function inspectSupport(map: YardMap, command: MapCommand): CommandSupport {
       const candidate = structuredClone(map);
       const connected = command.type === 'createConnectedPoint' ? runConnectedPoint(candidate, command, splitRoad) : undefined;
       const detached = command.type === 'detachAccessPoint' ? runAccessDetachment(candidate, command, splitRoad) : undefined;
-      const separated = command.type === 'separateAccessPoint' ? runAccessSeparation(candidate, command, (state, trace) => runQuickTrace(state, trace, splitRoad)) : undefined;
-      if (!connected && !detached && !separated) executeTopology(candidate, command);
-      const geometryPreservedRoadIds = connected?.geometryPreservedRoadIds ?? detached?.geometryPreservedRoadIds ?? separated?.geometryPreservedRoadIds ?? preservedTopologyGeometry(map, command);
+      if (command.type === 'separateAccessPoint') runAccessSeparation(candidate, command);
+      else if (!connected && !detached) executeTopology(candidate, command);
+      const geometryPreservedRoadIds = connected?.geometryPreservedRoadIds ?? detached?.geometryPreservedRoadIds ?? preservedTopologyGeometry(map, command);
       const changed = topologyChangedRefs(map, candidate);
       const retainedNodes = command.type === 'mergeNodes' ? [command.targetNodeId]
         : command.type === 'splitRoad' || command.type === 'connectNodeToRoad' ? [command.nodeId] : [];
@@ -917,7 +917,7 @@ export function applyMapCommand(input: YardMap, command: MapCommand): CommandRes
       case 'quickTraceRoad': case 'quickTraceBoundary': runQuickTrace(next, command, splitRoad); break;
       case 'createConnectedPoint': runConnectedPoint(next, command, splitRoad); break;
       case 'detachAccessPoint': runAccessDetachment(next, command, splitRoad); break;
-      case 'separateAccessPoint': runAccessSeparation(next, command, (state, trace) => runQuickTrace(state, trace, splitRoad)); break;
+      case 'separateAccessPoint': runAccessSeparation(next, command); break;
       case 'addBackground': case 'updateBackgroundTransform': case 'deleteBackground': case 'replaceBackgroundAsset': runBackgroundCommand(next, command); break;
       case 'addNode': put(next, next.nodes, command.id, command.node); break;
       case 'addRoad': {

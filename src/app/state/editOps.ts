@@ -53,14 +53,14 @@ export function nudge(dx: number, dy: number): void {
   translate(selection, delta, 'nudge:' + store.get().selection.join('|'));
 }
 
-/** Splits a fixed entrance off the node it shares (one undo step): it moves along its building's wall onto a node of its own,
- *  joined to the old node by a short connector; the old node and its roads stay. */
+/** Splits a fixed entrance off the node it shares (one undo step): it moves along its building's wall onto a node of its own;
+ *  the old node, its roads and service points stay, and no road is built. */
 export function separateEntrance(id: string): void {
   const state = store.get(), map = state.session?.map, entrance = map?.accessPoints[id]; if (!map || !entrance) return;
-  const old = map.nodes[entrance.nodeId]!, plan = separationCommand(map, id, state.drawing.roadWidthM);
+  const old = map.nodes[entrance.nodeId]!, plan = separationCommand(map, id);
   if ('reason' in plan) { notify(plan.reason, 'error'); return; }
   if (!apply(plan.command, '拆出入口节点')) return;
   select(['accessPoints/' + id]);
-  const services = Object.values(store.get().session!.map.servicePoints).filter(point => point.nodeId === plan.nodeId).length;
-  notify(`已拆出入口「${entrance.name}」：它沿外边界移开 ${Number(plan.distanceM.toFixed(2))} m 到自己的节点${services ? `（本建筑在原节点上的 ${services} 个作业点随之移过去）` : ''}，并用一段接驳路接回「${old.name}」；原节点与道路保持不变。现在可以沿外边界拖动入口，所属建筑也能随之移动或改轮廓。`);
+  const services = Object.values(store.get().session!.map.servicePoints).filter(point => point.nodeId === entrance.nodeId && point.facilityId === entrance.facilityId).length;
+  notify(`已拆出入口「${entrance.name}」：它沿外边界移开 ${Number(plan.distanceM.toFixed(2))} m 到自己的节点；「${old.name}」和它的道路保持不变${services ? `，本建筑在那里的 ${services} 个作业点也留在原节点，仍接在路网上（之后移动建筑或改轮廓时它们不跟着走）` : ''}。入口现在没有接路，需要时用道路工具从入口节点画路接上；它可以沿外边界拖动，所属建筑也能随之移动或改轮廓。`);
 }

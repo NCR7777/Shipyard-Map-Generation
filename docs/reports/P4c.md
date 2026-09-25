@@ -44,7 +44,7 @@
 
 | 项目 | 命令 | 结果 |
 | --- | --- | --- |
-| BG01 测试 | 在 map-studio 目录：`& "C:\Users\Na ChunRui\.conda\envs\paper\python.exe" tests/python/test_BG01_prepare_raster.py -v` | 5/5 通过：8 种 EXIF 方向、真实 CIMC 帧上的缩放与 EXIF 保持控制点世界坐标、跨 CRS 逐像素重投影（不是仿射拟合）、超过浏览器字节限制的大图被拒、无校准时不报成功且缺 rasterio 时明确说明 |
+| BG01 测试 | 在 map-studio 目录：`& "$env:USERPROFILE\.conda\envs\paper\python.exe" tests/python/test_BG01_prepare_raster.py -v` | 5/5 通过：8 种 EXIF 方向、真实 CIMC 帧上的缩放与 EXIF 保持控制点世界坐标、跨 CRS 逐像素重投影（不是仿射拟合）、超过浏览器字节限制的大图被拒、无校准时不报成功且缺 rasterio 时明确说明 |
 | 真实 CIMC 处理 | 同一个 python 运行 `scripts/BG01_prepare_raster.py --image ../../projects/Map_Refinement_20260912/cimc_v02/reference/satellite_local.jpg --map ../../projects/Map_Refinement_20260912/cimc_v02/map.json --georeference …/reference/georeference.json --manifest ../../projects/cimc_v01/manifest.json --reference-map ../../projects/cimc_v01/map.json --out <scratchpad>/p4c/cimc_out` | `status: prepared`，`mode: local_affine_resize`，`sourceFilesUnchanged: true`；输出 `background.jpg`（766,274 字节）、`calibration.json`、`receipt.json` |
 | 启停脚本 | 先确认 5180 空闲，再用完整路径的 pwsh 运行 `-NoProfile -File ./dev-start.ps1`；GET http://127.0.0.1:5180/；再次 `dev-start.ps1`；`dev-stop.ps1` | 启动后返回 200（vite 进程监听 5180）；端口被占用时第二次启动拒绝（退出码 1）；停止后端口释放 |
 | lint、typecheck | `npm run lint`、`npm run typecheck` | 通过 |
@@ -77,6 +77,6 @@
 
 ## 已知限制
 
-- `../map/.cache/TIF-tools`（rasterio 1.4.4 / GDAL 3.10.3）是 `prepare_tiffs.py` 与本脚本 GeoTIFF 自动读取所用的 rasterio 来源；`../map` 停用前要迁出，待用户决定。
+- TIF-tools（rasterio 1.4.4 / GDAL 3.10.3）是 `prepare_tiffs.py` 与本脚本 GeoTIFF 自动读取所用的 rasterio 来源；P4c 提交之后，用户决定把它从 `../map/.cache/TIF-tools` 移到本工具的 `.tools/TIF-tools`（见 P3f3）。
 - 真实 GeoTIFF 只有审查者的一次手动运行（威海，借用 TIF-tools），没有写成自动测试。
 - `dev-stop.ps1` 会结束监听该端口的整棵进程树，只应在 5180 上是本工具的开发服务器时使用（旧版行为）。

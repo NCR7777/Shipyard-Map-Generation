@@ -8,12 +8,19 @@ const example = fileURLToPath(new URL('../../examples/M2A1_synthetic_service_tar
 /** The synthetic example (format 0.2.0): a workshop at 0–60 × 0–30 m, its main road rMain from the corner (0, 0) to the plain
  *  road end nRoadEast (100, 0); plus a free building 20–50 × 60–80 m. With `gate`, the free building has a gate 西门 on a
  *  public junction on its left wall (20, 70), where two public roads end. */
-function mapJson(gate = false, service = false): string {
+function mapJson(gate = false, service = false, door = false): string {
   const map = JSON.parse(readFileSync(example, 'utf8')) as Record<string, Record<string, unknown>>;
   map.facilities!.fFree = {
     name: '空置厂房', kind: 'workshop', boundary: { outer: [[20, 60, 0], [50, 60, 0], [50, 80, 0], [20, 80, 0], [20, 60, 0]], holes: [] },
-    accessPointIds: gate ? ['aWest'] : [], servicePointIds: [], heightM: { state: 'unknown' }, provenance: { category: 'synthetic' },
+    accessPointIds: [...gate ? ['aWest'] : [], ...door ? ['aDoor'] : []], servicePointIds: [], heightM: { state: 'unknown' }, provenance: { category: 'synthetic' },
   };
+  if (door) {
+    // A door on the free building's right wall on a node of its own, with one road out to the east: free to move.
+    map.nodes!.nDoor = { name: '东门节点', position: [50, 70, 0], kind: 'access', provenance: { category: 'drawing' } };
+    map.nodes!.nFar = { name: '东路端', position: [70, 70, 0], kind: 'ordinary', provenance: { category: 'synthetic' } };
+    map.roads!.rDoor = { ...(map.roads!.rMain as object), name: '东门路', fromNodeId: 'nDoor', toNodeId: 'nFar', shapePoints: [] };
+    map.accessPoints!.aDoor = { name: '东门', facilityId: 'fFree', nodeId: 'nDoor', provenance: { category: 'drawing' } };
+  }
   if (gate) {
     const node = (name: string, position: number[], kind = 'ordinary') => ({ name, position, kind, provenance: { category: 'synthetic' } });
     map.nodes!.nWestGate = node('西门路口', [20, 70, 0], 'access'); map.nodes!.nW1 = node('西一', [5, 70, 0]); map.nodes!.nW2 = node('西二', [5, 76, 0]);
@@ -28,10 +35,10 @@ function mapJson(gate = false, service = false): string {
   }
   return JSON.stringify(map);
 }
-async function open(page: Page, errors: string[], gate = false, service = false) {
+async function open(page: Page, errors: string[], gate = false, service = false, door = false) {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await page.getByTestId('open-file-input').setInputFiles({ name: 'nodes.map.json', mimeType: 'application/json', buffer: Buffer.from(mapJson(gate, service)) });
+  await page.getByTestId('open-file-input').setInputFiles({ name: 'nodes.map.json', mimeType: 'application/json', buffer: Buffer.from(mapJson(gate, service, door)) });
   await expect(page.getByTestId('map-canvas')).toHaveAttribute('data-scale', /\d/);
 }
 async function at(page: Page, x: number, y: number) {
@@ -130,7 +137,7 @@ test("a building's entrances go with its outline: a corner drag carries the corn
   expect(errors).toEqual([]);
 });
 
-test('a gate on a public junction is split off: it moves 4 m along the wall onto its own node, the junction keeps its roads; one undo step', async ({ page }) => {
+test('a gate on a public junction is split off: it moves 4 m along the wall onto its own node, the junction keeps its roads, no road is built; one undo step', async ({ page }) => {
   const errors: string[] = []; await open(page, errors, true);
   await selectKeys(page, ['accessPoints/aWest']);
   const where = inspector(page).locator('.field').filter({ has: page.locator('dt', { hasText: /^位置$/ }) });
@@ -144,10 +151,11 @@ test('a gate on a public junction is split off: it moves 4 m along the wall onto
   expect(round(after.nodes[nodeId]!.position)).toEqual([20, 66, 0]);
   expect(after.nodes.nWestGate).toMatchObject({ position: [20, 70, 0], kind: 'ordinary' });
   expect([after.roads.rW1, after.roads.rW2]).toEqual([before.roads.rW1, before.roads.rW2]);
-  expect(Object.values(after.roads).filter(road => [road.fromNodeId, road.toNodeId].sort().join() === [nodeId, 'nWestGate'].sort().join())).toHaveLength(1);
+  expect(after.roads).toEqual(before.roads);
+  await expect(page.getByRole('status')).toContainText('入口现在没有接路');
   await expect(where).toContainText('在建筑外边界上：拖动或方向键沿外边界移动');
   // Now the building's outline can change with it: the rectangle's bottom-left corner in by 2 m moves the left wall, and the
-  // gate on it goes too (the old junction stays where it was, the connector stretches).
+  // gate on it goes too (the old junction stays where it was).
   await click(page, 35, 70); await expect(inspector(page).locator('.entity-heading')).toContainText('空置厂房');
   await drag(page, [20, 60], [22, 60]);
   await expect(undoButton(page)).toHaveAttribute('title', /撤销：修改建筑轮廓/);
@@ -172,19 +180,14 @@ test('hovering a road end shows its hidden node, as what a press would drag', as
   expect(errors).toEqual([]);
 });
 
-test('the end handle of a connector moves the entrance at its end along the wall; the connector stays selected', async ({ page }) => {
-  const errors: string[] = []; await open(page, errors, true);
-  await selectKeys(page, ['accessPoints/aWest']);
-  await inspector(page).getByRole('button', { name: '拆出入口节点' }).click();
-  await expect(page.getByRole('status')).toContainText('已拆出入口「西门」');
-  const split = await map(page), nodeId = split.accessPoints.aWest!.nodeId;
-  const connector = Object.entries(split.roads).find(([, road]) => [road.fromNodeId, road.toNodeId].includes(nodeId))![0];
-  await selectKeys(page, ['roads/' + connector]);
-  // Its end at the gate (20, 66), dragged out and down: the gate slides down the wall instead of leaving it.
-  await drag(page, [20, 66], [17, 63]);
+test('the end handle of a road at a door moves the door along the wall; the road stays selected', async ({ page }) => {
+  const errors: string[] = []; await open(page, errors, false, false, true);
+  await selectKeys(page, ['roads/rDoor']);
+  // Its end at the door (50, 70), dragged out and up: the door slides up the wall instead of leaving it.
+  await drag(page, [50, 70], [53, 73]);
   await expect(undoButton(page)).toHaveAttribute('title', /撤销：移动/);
-  expect(round((await map(page)).nodes[nodeId]!.position)).toEqual([20, 63, 0]);
-  await expect(inspector(page).locator('.entity-heading')).toContainText((await map(page)).roads[connector]!.name);
+  expect(round((await map(page)).nodes.nDoor!.position)).toEqual([50, 73, 0]);
+  await expect(inspector(page).locator('.entity-heading')).toContainText('东门路');
   expect(errors).toEqual([]);
 });
 
@@ -207,18 +210,21 @@ test('the preview shows the entrance moving with the outline while the corner is
   expect(errors).toEqual([]);
 });
 
-test('a gate split off with its service point: the message says so, and dragging the marker slides both along the wall', async ({ page }) => {
+test('a gate split off beside its service point: the service point stays on the junction and its roads, the message says so, the gate slides alone', async ({ page }) => {
   const errors: string[] = []; await open(page, errors, true, true);
   await selectKeys(page, ['accessPoints/aWest']);
+  const before = await map(page);
   await inspector(page).getByRole('button', { name: '拆出入口节点' }).click();
-  await expect(page.getByRole('status')).toContainText('本建筑在原节点上的 1 个作业点随之移过去');
-  const nodeId = (await map(page)).accessPoints.aWest!.nodeId;
-  expect((await map(page)).servicePoints.sWest!.nodeId).toBe(nodeId);
+  await expect(page.getByRole('status')).toContainText('本建筑在那里的 1 个作业点也留在原节点，仍接在路网上');
+  const after = await map(page), nodeId = after.accessPoints.aWest!.nodeId;
+  expect(after.servicePoints).toEqual(before.servicePoints);
+  expect(after.nodes.nWestGate!.kind).toBe('access');
   await page.keyboard.press('Escape');
-  // The shared marker 入作 at (20, 66): a press there takes the service point; the entrance still keeps to the wall.
+  // The gate's marker at (20, 66): dragged out and down, it keeps to the wall; the service point stays where it was.
   await drag(page, [20, 66], [17, 62]);
   await expect(undoButton(page)).toHaveAttribute('title', /撤销：移动/);
   expect(round((await map(page)).nodes[nodeId]!.position)).toEqual([20, 62, 0]);
+  expect((await map(page)).servicePoints.sWest!.nodeId).toBe('nWestGate');
   expect(errors).toEqual([]);
 });
 

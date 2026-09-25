@@ -8,6 +8,8 @@ import { applyMapCommand, commandSupport, type MapCommand } from '../../src/doma
 import { loadMap } from '../../src/domain/load';
 import type { YardMap } from '../../src/domain/model';
 import { createSession, editSession, undoSession } from '../../src/editor/session';
+import { inspectServiceConnections } from '../../src/topology/serviceConnections';
+import { validateMap } from '../../src/validation/validate';
 
 const EXAMPLE = new URL('../../examples/M2A1_synthetic_service_targets.map.json', import.meta.url);
 type Json = Record<string, Record<string, unknown>>;
@@ -47,8 +49,8 @@ function complexGate(change: (map: Json) => void = () => {}): YardMap {
   });
 }
 const code = (result: ReturnType<typeof applyMapCommand>) => result.ok ? 'ok' : result.issues.find(issue => issue.severity === 'error')?.code;
-function split(map: YardMap, widthM = 12) {
-  const plan = separationCommand(map, 'aGate', widthM);
+function split(map: YardMap, id = 'aGate') {
+  const plan = separationCommand(map, id);
   if ('reason' in plan) throw new Error(plan.reason);
   const result = editSession(createSession(map, true), plan.command);
   if (!result.ok) throw new Error(result.issues.map(issue => issue.code + ' ' + issue.message).join('\n'));
@@ -56,7 +58,7 @@ function split(map: YardMap, widthM = 12) {
 }
 
 describe('separating an entrance from a node it shares', () => {
-  it('moves it along the wall onto its own node joined to the old one, in one transaction; the old node keeps its roads', () => {
+  it('moves it along the wall onto its own node, in one transaction; the old node keeps its roads; no road is built', () => {
     const map = gateOnJunction();
     expect(entranceMovable(map, 'aGate')).toBe(false);
     const { plan, session, after } = split(map);
@@ -67,32 +69,26 @@ describe('separating an entrance from a node it shares', () => {
     expect(onOutline(after, 'aGate')).toBe(true);
     expect(entranceMovable(after, 'aGate')).toBe(true);
     expect(after.nodes.nJunction).toMatchObject({ position: [60, 15, 0], kind: 'ordinary' });
-    expect(after.roads.rE1).toEqual(map.roads.rE1); expect(after.roads.rE2).toEqual(map.roads.rE2);
-    const added = Object.keys(after.roads).filter(id => !map.roads[id]);
-    expect(added).toHaveLength(1);
-    const connector = after.roads[added[0]!]!;
-    expect([connector.fromNodeId, connector.toNodeId].sort()).toEqual([plan.nodeId, 'nJunction'].sort());
-    // As wide as the narrowest road at the old node (7 m of 9 and 7), never wider than new roads are drawn.
-    expect(connector.widthM).toMatchObject({ state: 'known', value: 7 });
-    expect((separationCommand(map, 'aGate', 5) as { command: { connectorWidthM: number } }).command.connectorWidthM).toBe(5);
+    // The roads, as they were; none added, none at the new node (the user connects it with the road tool when wanted).
+    expect(after.roads).toEqual(map.roads);
+    expect(Object.values(after.roads).some(road => road.fromNodeId === plan.nodeId || road.toNodeId === plan.nodeId)).toBe(false);
     // One transaction: one undo gives the map back exactly.
     expect(session.past).toHaveLength(1);
     expect(undoSession(session).map).toEqual(map);
-    // Its node change is recorded as a topology change, like every drawn connection.
+    // Its node change is recorded as a topology change; the old node's kind change (not a topology field) on the new node.
     expect(after.accessPoints.aGate!.provenance.fieldSources?.nodeId).toMatch(/^source_editor_topology/);
+    expect(after.nodes[plan.nodeId]!.provenance.note).toContain('类型由 access 改为 ordinary');
   });
-  it('works on a complex map: the connector gets a turn into and out of each road at the junction, the old turns stay', () => {
+  it('works on a complex map, turns and roads untouched, and a junction of two nodes is no obstacle', () => {
     const map = complexGate();
-    const plan = separationCommand(map, 'aGate', 12) as { command: MapCommand };
+    const plan = separationCommand(map, 'aGate') as { command: MapCommand };
     expect(commandSupport(map, plan.command).allowed).toBe(true);
     const { after } = split(map);
-    expect(after.movements.mOneTwo).toEqual(map.movements.mOneTwo);
-    expect(after.movements.mTwoOne).toEqual(map.movements.mTwoOne);
-    const added = Object.entries(after.movements).filter(([id]) => !map.movements[id]).map(([, movement]) => movement);
-    const connector = Object.keys(after.roads).find(id => !map.roads[id])!;
-    const pairs = added.map(movement => movement.incomingArc.roadId + '>' + movement.outgoingArc.roadId).sort();
-    expect(pairs).toEqual([connector + '>rE1', connector + '>rE2', 'rE1>' + connector, 'rE2>' + connector].sort());
-    expect(added.every(movement => movement.junctionId === 'jGate' && movement.allowed)).toBe(true);
+    expect(after.movements).toEqual(map.movements);
+    expect(after.junctions).toEqual(map.junctions);
+    expect(after.roads).toEqual(map.roads);
+    const pair = complexGate(json => { (json.junctions!.jGate as { nodeIds: string[] }).nodeIds = ['nJunction', 'nE1']; });
+    expect(code(applyMapCommand(pair, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0] }))).toBe('ok');
   });
   it('no longer holds the building back: a move refused for it goes through', () => {
     const map = gateOnJunction(), move = translateCommand({ nodes: [], roads: [], facilities: ['fWorkshop'] }, [-0.5, 0, 0]);
@@ -100,7 +96,7 @@ describe('separating an entrance from a node it shares', () => {
     expect(blockers(applyMapCommand(map, move))).toEqual(['OWNER_ENTRANCE_REPOSITION_REQUIRED aGate']);
     expect(blockers(applyMapCommand(split(map).after, move))).toEqual([]);
   });
-  it("takes the building's own node-proxy service point on that node along; another building's stays, and so does the node's kind", () => {
+  it("leaves the building's service points on the old node, on their roads; so is another building's; the node keeps its kind", () => {
     const service = (facilityId: string, name: string) => ({ name, kind: 'loading', nodeId: 'nJunction', facilityId, resourceIds: [],
       arrival: { mode: 'node_proxy', transferAssumption: 'included_in_service_duration', note: '测试' }, provenance: { category: 'synthetic' } });
     const own = gateOnJunction(json => {
@@ -108,12 +104,19 @@ describe('separating an entrance from a node it shares', () => {
       (json.facilities!.fWorkshop as { servicePointIds: string[] }).servicePointIds.push('sGate');
     });
     const { plan, after } = split(own);
-    expect(after.servicePoints.sGate!.nodeId).toBe(plan.nodeId);
-    expect(after.nodes.nJunction!.kind).toBe('ordinary');
-    // Grabbed by the service point (its marker comes first on the shared node), or by the node, the entrance still slides
-    // along the wall, and the kernel takes the move.
+    expect(after.servicePoints).toEqual(own.servicePoints);
+    expect(after.nodes.nJunction!.kind).toBe('access');
+    expect(after.nodes[plan.nodeId]!.provenance.note).not.toContain('类型由');
+    // Still on the road network: the same roads reach it, and no new warning says it is cut off.
+    const roadsAt = (map: YardMap) => inspectServiceConnections(map).find(summary => summary.servicePointId === 'sGate')!.incidentRoadIds;
+    expect(roadsAt(after)).toEqual(roadsAt(own));
+    expect(roadsAt(after).length).toBe(2);
+    const codes = (map: YardMap) => validateMap(map).issues.map(issue => issue.code).sort();
+    expect(codes(after)).toEqual(codes(own));
+    // The building still moves, and grabbed by its node or itself the entrance slides along the wall.
+    expect(applyMapCommand(after, translateCommand({ nodes: [], roads: [], facilities: ['fWorkshop'] }, [-0.5, 0, 0])).ok).toBe(true);
     const start = after.nodes[plan.nodeId]!.position;
-    for (const selection of [{ nodes: [], roads: [], servicePoints: ['sGate'] }, { nodes: [plan.nodeId], roads: [] }, { nodes: [], roads: [], accessPoints: ['aGate'] }]) {
+    for (const selection of [{ nodes: [plan.nodeId], roads: [] }, { nodes: [], roads: [], accessPoints: ['aGate'] }]) {
       const slide = entranceSlide(after, selection, start)!;
       expect(slide([63, 23, 0])).toEqual([0, 4, 0]);
       expect(applyMapCommand(after, translateCommand(selection, slide([63, 23, 0]))).ok).toBe(true);
@@ -126,11 +129,11 @@ describe('separating an entrance from a node it shares', () => {
     const other = split(shared).after;
     expect(other.servicePoints.sYard!.nodeId).toBe('nJunction');
     expect(other.nodes.nJunction!.kind).toBe('access');
-    // Another building's internal route entering at the old node keeps it too (the rule alone, on a copy with a stub trace).
+    // Another building's internal route entering at the old node keeps it too (the rule alone, on a copy).
     const entered = structuredClone(gateOnJunction()) as YardMap & { servicePoints: Record<string, unknown> };
     entered.servicePoints.sBehind = { name: '院内作业', kind: 'loading', nodeId: 'nE1', zoneId: 'zWaiting', resourceIds: [],
       arrival: { mode: 'explicit_internal', entryNodeId: 'nJunction', internalPath: [] }, provenance: { category: 'synthetic' } };
-    runAccessSeparation(entered, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0], connectorWidthM: 7 }, () => ({ geometryPreservedRoadIds: [], entityId: '' }));
+    runAccessSeparation(entered, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0] });
     expect(entered.nodes.nJunction!.kind).toBe('access');
   });
   it('refuses when an internal route enters through the entrance (implied or named), or a resource stands on the old node', () => {
@@ -150,42 +153,37 @@ describe('separating an entrance from a node it shares', () => {
         appliesTo: [{ entityType: 'nodes', entityId: 'nJunction' }], provenance: { category: 'synthetic' } };
     });
     expect(inspectAccessSeparation(withResource, 'aGate')).toMatchObject({ supported: false, issues: [{ code: 'ACCESS_SEPARATE_RESOURCES' }] });
-    expect(separationCommand(withResource, 'aGate', 12)).toEqual({ reason: expect.stringContaining('门口停车位') });
+    expect(separationCommand(withResource, 'aGate')).toEqual({ reason: expect.stringContaining('门口停车位') });
   });
-  it('the kernel command refuses a taken or malformed ID, the same place, another height, a bad width', () => {
+  it('the kernel command refuses a taken or malformed ID, a spot within 0.5 m of a node, another height', () => {
     const map = gateOnJunction(), run = (patch: Partial<Extract<MapCommand, { type: 'separateAccessPoint' }>>) =>
-      code(applyMapCommand(map, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0], connectorWidthM: 7, ...patch }));
+      code(applyMapCommand(map, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0], ...patch }));
     expect(run({ nodeId: 'nE1' })).toBe('ACCESS_SEPARATE_ID_CONFLICT');
     expect(run({ nodeId: '1bad id' })).toBe('ACCESS_SEPARATE_ID_CONFLICT');
     expect(run({ position: [60, 15, 0] })).toBe('ACCESS_SEPARATE_POSITION');
+    expect(run({ position: [60, 15.3, 0] })).toBe('ACCESS_SEPARATE_POSITION');
     expect(run({ position: [60, 19, 2] })).toBe('LOCAL_NONPLANAR_EDIT');
-    expect(run({ connectorWidthM: 0 })).toBe('ACCESS_SEPARATE_CONNECTOR');
-    // Said as a width problem, not as a connector that cannot reach the old node.
-    const zero = applyMapCommand(map, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0], connectorWidthM: 0 });
-    expect(zero.ok ? '' : zero.issues[0]!.message).toBe('接驳路宽度必须为有限正数。');
     expect(run({ id: 'missing' })).toBe('ACCESS_SEPARATE_MISSING');
     expect(run({})).toBe('ok');
+    const beside = gateOnJunction(json => { json.nodes!.nBeside = node('墙边点', [60, 19.3, 0]); });
+    expect(code(applyMapCommand(beside, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0] }))).toBe('ACCESS_SEPARATE_POSITION');
   });
-  it('is refused as a whole when the connector cannot join the old node (a junction of two nodes)', () => {
-    const map = complexGate(json => { (json.junctions!.jGate as { nodeIds: string[] }).nodeIds = ['nJunction', 'nE1']; });
-    const result = applyMapCommand(map, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0], connectorWidthM: 7 });
-    expect(code(result)).toBe('ACCESS_SEPARATE_CONNECTOR');
-  });
-  it('does not join a road the connector meets on its way (only its two ends are connected)', () => {
-    // A road drawn with the road tool (only such roads take part in joining crossings), then, as on real maps traced before
-    // the band checks, its end put on the wall at (60, 17): halfway along where the connector will run from (60, 19) down.
-    const base = gateOnJunction(), drawn = applyMapCommand(base, { type: 'quickTraceRoad', points: [[70, 20, 0], [66, 17, 0]], disconnect: true, defaults: { widthM: 1 } });
-    if (!drawn.ok) throw new Error(drawn.issues.map(issue => issue.message).join('; '));
-    const json = structuredClone(drawn.map) as unknown as { roads: Record<string, { toNodeId: string }>; nodes: Record<string, { position: number[] }> };
-    const met = Object.keys(json.roads).find(id => !Object.hasOwn(base.roads, id))!;
-    json.nodes[json.roads[met]!.toNodeId]!.position = [60, 17, 0];
-    const loaded = loadMap(JSON.stringify(json));
-    if (!loaded.ok) throw new Error('fixture');
-    const map = loaded.map;
-    const result = applyMapCommand(map, { type: 'separateAccessPoint', id: 'aGate', nodeId: 'nNew', position: [60, 19, 0], connectorWidthM: 1 });
-    if (!result.ok) throw new Error(result.issues.map(issue => issue.code + ' ' + issue.message).join('; '));
-    expect(result.map.roads[met]).toEqual(map.roads[met]);
-    expect(Object.keys(result.map.roads).length).toBe(Object.keys(map.roads).length + 1);
+  it('the kernel command refuses an entrance on a node of its own, and one whose building has its own road at the old node', () => {
+    // A door on its own node with one road out: it already slides along the wall; splitting it would cut it off that road.
+    const door = gateOnJunction(json => {
+      json.nodes!.nDoor = node('南门节点', [30, 0, 0], 'access'); json.nodes!.nOut = node('南路端', [30, -20, 0]);
+      json.roads!.rDoor = { ...(json.roads!.rMain as object), name: '南门路', fromNodeId: 'nDoor', toNodeId: 'nOut', shapePoints: [] };
+      json.accessPoints!.aDoor = { name: '南门', facilityId: 'fWorkshop', nodeId: 'nDoor', provenance: { category: 'drawing' } };
+      (json.facilities!.fWorkshop as { accessPointIds: string[] }).accessPointIds.push('aDoor');
+    });
+    expect(entranceMovable(door, 'aDoor')).toBe(true);
+    expect(inspectAccessSeparation(door, 'aDoor')).toMatchObject({ supported: false, issues: [{ code: 'ACCESS_SEPARATE_OWN_NODE' }] });
+    expect(code(applyMapCommand(door, { type: 'separateAccessPoint', id: 'aDoor', nodeId: 'nNew', position: [34, 0, 0] }))).toBe('ACCESS_SEPARATE_OWN_NODE');
+    // A road of the building's own at the junction besides the two public ones (an internal branch): it would be left without
+    // its entrance (the check alone). With one public road only, the node would count as the building's own, as above.
+    const branch = structuredClone(gateOnJunction()) as YardMap;
+    branch.roads.rIn = { ...branch.roads.rE1!, name: '厂内支路', toNodeId: 'nLoading', extensions: { 'sr02.planning': { ownerEntityId: 'fWorkshop' } } };
+    expect(inspectAccessSeparation(branch, 'aGate')).toMatchObject({ supported: false, issues: [{ code: 'ACCESS_SEPARATE_BRANCH' }] });
   });
 });
 
@@ -205,28 +203,28 @@ describe('where a separated entrance goes', () => {
     });
     expect(separationSpot(short, 'aGate')).toEqual({ position: [60, 3.5, 0], distanceM: 1.5 });
   });
-  it('not along a road that runs along the wall from the old node, nor near another road', () => {
+  it('not on a road nor within 1 m of one', () => {
     const along = (json: Json, name: string, to: string, at: number[], reverse = false) => {
       json.nodes![to] = node(name + '端', at);
       json.roads!['r' + to] = { ...(json.roads!.rMain as object), name, fromNodeId: reverse ? to : 'nJunction', toNodeId: reverse ? 'nJunction' : to, shapePoints: [] };
     };
-    // A road up the wall from the junction: the entrance goes down the wall instead.
+    // A road up the wall from the junction: the entrance would stand on it, so it goes down the wall instead.
     const up = gateOnJunction(json => along(json, '沿墙路北', 'nUp', [60, 28, 0]));
     expect(separationSpot(up, 'aGate')).toEqual({ position: [60, 11, 0], distanceM: 4 });
     // And one down the wall too: nowhere to go, and it says why.
     const both = gateOnJunction(json => { along(json, '沿墙路北', 'nUp', [60, 28, 0]); along(json, '沿墙路南', 'nDown', [60, 2, 0], true); });
-    expect(separationSpot(both, 'aGate')).toEqual({ reason: expect.stringContaining('都有道路经过或贴近') });
-    // A road leaving 17° off the wall upwards: 1.17 m from where the entrance would go, clear, but running along the wall.
+    expect(separationSpot(both, 'aGate')).toEqual({ reason: expect.stringContaining('都在道路上或离道路不到 1 m') });
+    // A road leaving 17° off the wall upwards passes 1.17 m from the spot up the wall: clear, so up it goes.
     const slant = gateOnJunction(json => along(json, '斜路', 'nSlant', [60 + 10 * Math.sin(17 * Math.PI / 180), 15 + 10 * Math.cos(17 * Math.PI / 180), 0]));
-    expect(separationSpot(slant, 'aGate')).toEqual({ position: [60, 11, 0], distanceM: 4 });
-    // Another road passing 0.5 m from where the entrance would go up the wall: it goes down instead.
+    expect(separationSpot(slant, 'aGate')).toEqual({ position: [60, 19, 0], distanceM: 4 });
+    // Another road passing 0.55 m from the spot up the wall: it goes down instead.
     const passing = gateOnJunction(json => {
-      json.nodes!.nP1 = node('过路一', [60.5, 18, 0]); json.nodes!.nP2 = node('过路二', [70, 30, 0]);
+      json.nodes!.nP1 = node('过路一', [60.3, 18.5, 0]); json.nodes!.nP2 = node('过路二', [70, 30, 0]);
       json.roads!.rPass = { ...(json.roads!.rMain as object), name: '过路', fromNodeId: 'nP1', toNodeId: 'nP2', shapePoints: [] };
     });
     expect(separationSpot(passing, 'aGate')).toEqual({ position: [60, 11, 0], distanceM: 4 });
   });
-  it('not within 1 m of a road at the old node, which on a short step happens well off the along-the-wall angle', () => {
+  it('not within 1 m of a road at the old node, which on a short step happens well off the wall', () => {
     // A 4 m wall, the junction in its middle: 1.5 m up the wall is 0.63 m from a road leaving 25° off the wall; down the wall
     // is 0.5 m from the main road. Nowhere, and it says why.
     const crowded = gateOnJunction(json => {
@@ -235,11 +233,28 @@ describe('where a separated entrance goes', () => {
       (json.nodes!.nE2 as { position: number[] }).position = [60 + 10 * Math.sin(25 * Math.PI / 180), 2 + 10 * Math.cos(25 * Math.PI / 180), 0];
       (json.nodes!.nLoading as { position: number[] }).position = [15, 2, 0];
     });
-    expect(separationSpot(crowded, 'aGate')).toEqual({ reason: expect.stringContaining('都有道路经过或贴近') });
+    expect(separationSpot(crowded, 'aGate')).toEqual({ reason: expect.stringContaining('都在道路上或离道路不到 1 m') });
+  });
+  it('not within 1 m of a node: a second entrance split off the same junction, or a node already up the wall, sends it the other way', () => {
+    // Two gates of the building on one junction: the first goes up the wall, the second down, never onto the same spot.
+    const pair = gateOnJunction(json => {
+      json.accessPoints!.aGate2 = { name: '东门二', facilityId: 'fWorkshop', nodeId: 'nJunction', provenance: { category: 'drawing' } };
+      (json.facilities!.fWorkshop as { accessPointIds: string[] }).accessPointIds.push('aGate2');
+    });
+    const first = split(pair), second = split(first.after, 'aGate2');
+    expect(first.after.nodes[first.plan.nodeId]!.position).toEqual([60, 19, 0]);
+    expect(second.after.nodes[second.plan.nodeId]!.position).toEqual([60, 11, 0]);
+    expect(second.after.nodes.nJunction!.kind).toBe('ordinary');
+    // An entrance node already 4 m up the wall (as the entrance tool makes): down it goes.
+    const taken = gateOnJunction(json => { json.nodes!.nTaken = node('墙上入口节点', [60, 19, 0], 'access'); });
+    expect(separationSpot(taken, 'aGate')).toEqual({ position: [60, 11, 0], distanceM: 4 });
+    // Nodes on both spots: nowhere, and it says why.
+    const both = gateOnJunction(json => { json.nodes!.nTaken = node('北侧节点', [60, 19.5, 0]); json.nodes!.nTaken2 = node('南侧节点', [60, 11.5, 0]); });
+    expect(separationSpot(both, 'aGate')).toEqual({ reason: expect.stringContaining('都离已有节点不到 1 m') });
   });
   it('nowhere when the node is off the outline', () => {
     const off = gateOnJunction(json => { (json.nodes!.nJunction as { position: number[] }).position = [65, 15, 0]; });
     expect(separationSpot(off, 'aGate')).toEqual({ reason: expect.stringContaining('不在所属建筑的外边界上') });
-    expect(separationCommand(off, 'aGate', 12)).toEqual({ reason: expect.stringContaining('不在所属建筑的外边界上') });
+    expect(separationCommand(off, 'aGate')).toEqual({ reason: expect.stringContaining('不在所属建筑的外边界上') });
   });
 });

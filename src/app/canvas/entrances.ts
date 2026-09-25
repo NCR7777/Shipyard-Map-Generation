@@ -90,8 +90,8 @@ export function entranceMovable(map: YardMap, entranceId: string): boolean {
 
 /** The entrance a drag of this selection must keep on its building's outline: the selection is one object (the entrance, a
  *  service point on its node, or the node itself), and its node carries exactly one entrance, on the outline, free to move.
- *  After an entrance is split off a junction its building's service point usually stands on the same node, and a press there
- *  takes the service point (its marker comes first). */
+ *  A service point sharing a movable entrance's node (drawn that way, or split off before P3f3) is grabbed first, as its
+ *  marker comes first, and the entrance still keeps to the wall. */
 function slidingEntrance(map: YardMap, selection: Selection): string | null {
   const items = Object.entries(selection).flatMap(([kind, list]) => ((list ?? []) as string[]).map(id => [kind, id] as const));
   if (items.length !== 1) return null;

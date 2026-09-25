@@ -246,7 +246,7 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
       <Field key="where" label="位置"><span className="muted">{!entranceMovable(map, id) ? '与公共道路或其他对象共用节点：保持固定，不能移动；所属建筑的移动也可能因此被拒。'
         : onOutline(map, id) ? '在建筑外边界上：拖动或方向键沿外边界移动。'
         : '不在建筑外边界上（设计上的接入点）：自由移动，内核保持它在轮廓内或外的原有关系。'}</span>
-        {!entranceMovable(map, id) && <button className="link" title="入口沿外边界移开几米到自己的节点，用一段接驳路接回原节点；原节点与道路保持不变" onClick={() => separateEntrance(id)}>拆出入口节点</button>}</Field>);
+        {!entranceMovable(map, id) && <button className="link" title="入口沿外边界移开几米到自己的节点；原节点及其道路、作业点保持不变，不新建道路，入口拆出后不接路" onClick={() => separateEntrance(id)}>拆出入口节点</button>}</Field>);
   } else if (item.kind === 'servicePoints') {
     const point = map.servicePoints[id]!;
     rows.push(name(value => ({ type: 'updateServicePoint', id, patch: { name: value } }), point.name),
