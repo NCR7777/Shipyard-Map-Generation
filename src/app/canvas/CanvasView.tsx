@@ -105,7 +105,7 @@ export function CanvasView() {
   const map = useApp(state => state.session?.map ?? null);
   const drawing = useApp(state => state.drawing);
   const selection = useApp(state => state.selection);
-  const tool = useApp(state => state.tool), entranceFor = useApp(state => state.entranceFor), serviceKind = useApp(state => state.serviceKind), serviceTransfer = useApp(state => state.serviceTransfer);
+  const tool = useApp(state => state.tool), entranceFor = useApp(state => state.entranceFor), serviceKind = useApp(state => state.serviceKind), serviceTransfer = useApp(state => state.serviceTransfer), serviceInside = useApp(state => state.serviceInside), routeWidthM = useApp(state => state.routeWidthM);
   const frameRequest = useApp(state => state.frameRequest);
   const rasters = useApp(state => state.rasters);
   const backgroundView = useApp(state => state.backgroundView);
@@ -125,7 +125,7 @@ export function CanvasView() {
   /** Everything a drawing tool needs, read fresh at each event. */
   function drawingContext(): DrawingContext | null {
     const state = store.get(), current = state.session?.map; if (!current) return null;
-    return { map: current, scene: sceneOf(current), camera: camera.current, drawing: state.drawing, tool: state.tool, token: state.session!.changeToken, shapes: state.shapes, entranceFor: state.entranceFor, serviceKind: state.serviceKind, serviceTransfer: state.serviceTransfer };
+    return { map: current, scene: sceneOf(current), camera: camera.current, drawing: state.drawing, tool: state.tool, token: state.session!.changeToken, shapes: state.shapes, entranceFor: state.entranceFor, serviceKind: state.serviceKind, serviceTransfer: state.serviceTransfer, serviceInside: state.serviceInside, routeWidthM: state.routeWidthM };
   }
   function pointerInput(event: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean }): PointerInput {
     const at = point(event);
@@ -248,7 +248,7 @@ export function CanvasView() {
   // Another map: no draft, measurement or click history carries over (its change token starts again at 0).
   useEffect(() => { draftStore.set(null); lastClick.current = null; }, [mapEpoch]);
   useEffect(() => draftStore.subscribe(() => refreshDraft()), []);
-  useEffect(() => { refreshDraft(); }, [tool, drawing, entranceFor, serviceKind, serviceTransfer]);
+  useEffect(() => { refreshDraft(); }, [tool, drawing, entranceFor, serviceKind, serviceTransfer, serviceInside, routeWidthM]);
   // A double-click is two clicks of one tool with nothing in between.
   useEffect(() => { lastClick.current = null; }, [tool]);
 

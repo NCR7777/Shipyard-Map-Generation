@@ -6,7 +6,7 @@ import type { PhysicalValue, Polygon, Provenance, YardMap } from '../../domain/m
 import { polygonArea2D } from '../../geometry/polygons';
 import { rectangleFrame } from '../../geometry/rectangles';
 import { geometryBounds } from '../../geometry/roads';
-import type { DesignAssumption, MapCommand } from '../../domain/commands';
+import { serviceArrivalLock, type DesignAssumption, type MapCommand } from '../../domain/commands';
 import { continuousRoadIds } from '../../domain/ownerEditing';
 import { entranceMovable, onOutline } from '../canvas/entrances';
 import { selectedTarget } from '../canvas/handles';
@@ -14,7 +14,7 @@ import { uid } from '../canvas/movePreview';
 import { operation, runOperation } from '../ops/registry';
 import { apply, editBlock } from '../state/edit';
 import { separateEntrance } from '../state/editOps';
-import { TRANSFER_LABELS } from '../canvas/servicePoints';
+import { proxyNote, restatedNote, serviceCheck, TRANSFER_LABELS, type Transfer } from '../canvas/servicePoints';
 import { blockedDirections, displayNumber, fixedServiceKind, readNumber, type Unit } from '../state/properties';
 import { BackgroundProperties } from './BackgroundInspector';
 import { CommitSelect, CommitText, PhysicalField } from './PropertyFields';
@@ -254,19 +254,42 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
       <Field key="kind" label="作业类型">{fixedServiceKind(map, id)
         ? <>{SERVICE_KIND[point.kind] ?? point.kind}<p className="muted">{fixedServiceKind(map, id)}</p></>
         : <CommitSelect label="作业类型" value={point.kind} options={Object.entries(SERVICE_KIND) as [typeof point.kind, string][]}
-          onCommit={kind => run({ type: 'updateServicePoint', id, patch: { kind } }, '修改作业类型')} />}</Field>,
-      <Field key="arrival" label="到达方式">{arrivalText(point)}</Field>);
+          onCommit={kind => run({ type: 'updateServicePoint', id, patch: { kind } }, '修改作业类型')} />}</Field>);
+    // Declared here for a point reached at its own node (or an entrance's), unless the kernel's rule for maps with turns locks it
+    // (shown on every map): a resource or planning declaration rests on it, it has an internal route, or its node is inside a
+    // workshop. An internal route comes with its road from the tool.
+    const lock = serviceArrivalLock(map, id), proxy = point.arrival?.mode === 'node_proxy' ? point.arrival : undefined;
+    if (lock) rows.push(<Field key="arrival" label="到达方式">{arrivalText(point)}<p className="muted">{lock.message}</p></Field>);
+    else {
+      const own = !Object.values(map.accessPoints).some(entrance => entrance.nodeId === point.nodeId), transfer: Transfer = 'included_in_service_duration';
+      const restate = (patch: Partial<NonNullable<typeof proxy>>) => ({ type: 'updateServicePoint' as const, id, patch: { arrival: { ...proxy!, ...patch } } });
+      rows.push(<Field key="arrival" label="到达方式"><CommitSelect label="到达方式" value={proxy ? 'node_proxy' : ''} options={[['', '未声明（草稿）'], ['node_proxy', '节点代理（车辆到达它的节点）']]}
+        onCommit={mode => run({ type: 'updateServicePoint', id, patch: { arrival: mode ? { mode: 'node_proxy', transferAssumption: transfer, note: proxyNote(transfer, own) } : null } }, mode ? '声明节点代理' : '改为草稿')} /></Field>);
+      if (proxy) rows.push(
+        <Field key="transfer" label="场内转运"><CommitSelect label="场内转运" value={proxy.transferAssumption} options={Object.entries(TRANSFER_LABELS) as [Transfer, string][]}
+          onCommit={to => run(restate({ transferAssumption: to, note: restatedNote(proxy.note, proxy.transferAssumption, to) }), '修改场内转运')} /></Field>,
+        <Field key="note" label="到达说明"><CommitText label="到达说明" value={proxy.note}
+          onCommit={text => !text.trim() ? '不能为空：节点代理须写明场内转运如何处理。' : run(restate({ note: text.trim() }), '修改到达说明')} /></Field>);
+    }
     // Which of its building's entrances it is reached through: a record only for a point reached at its own node, so it can be
     // changed or cleared (an entrance split off is linked up again here); an internal route starts there, so it stays.
     const facility = point.facilityId ? map.facilities[point.facilityId] : undefined, linked = point.accessPointId ? map.accessPoints[point.accessPointId] : undefined;
     if (facility) rows.push(<Field key="access" label="接入入口">{point.arrival?.mode === 'explicit_internal'
-      ? <>{linked ? <Link entityKey={'accessPoints/' + point.accessPointId} map={map} /> : '未指定'}<p className="muted">显式内部通道从这个入口出发；要改关联，先改到达方式。</p></>
+      ? <>{linked ? <Link entityKey={'accessPoints/' + point.accessPointId} map={map} /> : '未指定'}<p className="muted">显式内部通道从这个入口出发；要换入口，连同内部通道删除后重新添加。</p></>
       : <><CommitSelect label="接入入口" value={point.accessPointId ?? ''} options={[['', '（不关联）'], ...facility.accessPointIds.map(entrance => [entrance, map.accessPoints[entrance]?.name ?? entrance] as const)]}
           onCommit={entrance => run({ type: 'updateServicePoint', id, patch: { accessPointId: entrance || null } }, entrance ? '关联入口' : '解除入口关联')} />
         {linked && !Object.values(map.roads).some(road => road.fromNodeId === linked.nodeId || road.toNodeId === linked.nodeId)
           && <p className="muted">这个入口的节点还没有连着道路。节点代理作业点按自己的节点接入路网，不经过入口。</p>}</>}</Field>);
+    rows.push(<Field key="check" label="接路检查"><ServiceCheck map={map} id={id} /></Field>);
   } else if (item.reason) rows.push(<Field key="reason" label="说明">{item.reason}</Field>);
   return <dl className="fields">{rows}</dl>;
+}
+
+/** How the point connects (`serviceCheck`); never a claim that the whole network reaches it. */
+function ServiceCheck({ map, id }: { map: YardMap; id: string }) {
+  const { summary, lines } = serviceCheck(map, id);
+  return <>{summary}{lines.map((line, index) => <p key={index} className="muted">{line}</p>)}
+    <p className="muted">只查节点与到达声明；全网是否可达、转向与净空未查。</p></>;
 }
 
 /** How a service point is reached, the node proxy's transfer assumption and note included. */
@@ -310,7 +333,7 @@ function ReadOnlyProperties({ map, item, units }: { map: YardMap; item: SceneIte
   } else if (item.kind === 'servicePoints') {
     const point = map.servicePoints[id]!;
     rows.push(<Field key="kind" label="作业类型">{SERVICE_KIND[point.kind] ?? point.kind}</Field>,
-      <Field key="arrival" label="到达方式">{arrivalText(point)}</Field>);
+      <Field key="arrival" label="到达方式">{arrivalText(point)}</Field>, <Field key="check" label="接路检查"><ServiceCheck map={map} id={id} /></Field>);
   } else if (item.reason) rows.push(<Field key="reason" label="说明">{item.reason}</Field>);
   return <dl className="fields">{rows}</dl>;
 }

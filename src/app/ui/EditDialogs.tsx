@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { SceneKind } from '../../adapters/contracts';
 import { commandSupport, type MapCommand } from '../../domain/commands';
 import { MOVE_POLICY } from '../canvas/movePreview';
+import { deleteCommand } from '../canvas/servicePoints';
 import { setTool } from '../state/draft';
 import { apply } from '../state/edit';
 import { selectionOf } from '../state/editOps';
@@ -20,15 +21,17 @@ function stale(token: number | undefined): boolean {
   notify('地图在对话框打开后已改变，请重新打开再确认。', 'error'); close(); return true;
 }
 
-/** Delete with an impact preview. Options start conservative, as in ../map: dependencies refuse the delete until allowed. */
+/** Delete with an impact preview. Options start conservative, as in ../map: dependencies refuse the delete until allowed. The
+ *  one exception: the internal routes only the deleted service points use go with them unless unticked (left behind, a route
+ *  and its node would stay in the building, and a click there would land on the stray node), as long as that touches nothing
+ *  else the options guard (`deleteCommand`). */
 export function DeleteDialog() {
   const session = useApp(state => state.session), keys = useApp(state => state.selection), token = useOpenedToken();
-  const [cascade, setCascade] = useState(false), [members, setMembers] = useState(false), [orphans, setOrphans] = useState(false);
+  const [cascade, setCascade] = useState(false), [members, setMembers] = useState(false), [orphans, setOrphans] = useState(false), [routes, setRoutes] = useState(true);
   const selection = selectionOf(keys);
-  const command = useMemo((): MapCommand | null => typeof selection === 'string' ? null : {
-    type: 'deleteSelection', selection, topologyPolicy: cascade ? 'cascade' : 'reject', orphanNodes: orphans ? 'deleteUnused' : 'keep',
-    facilityPolicy: members ? 'withAssociatedPoints' : 'reject', zonePolicy: members ? 'withAssociatedPoints' : 'reject',
-  }, [selection, cascade, members, orphans]);
+  const built = useMemo(() => session && typeof selection !== 'string' ? deleteCommand(session.map, selection, { cascade, members, orphans, routes }) : null,
+    [session, keys, cascade, members, orphans, routes]);
+  const command: MapCommand | null = built?.command ?? null, own = built?.own ?? { roads: [], nodes: [] };
   const support = useMemo(() => session && command ? commandSupport(session.map, command) : null, [session, command]);
   const groups = useMemo(() => {
     const byKind = new Map<string, string[]>(), scene = session ? sceneOf(session.map) : null;
@@ -51,6 +54,8 @@ export function DeleteDialog() {
         <label className="check"><input type="checkbox" checked={cascade} onChange={event => setCascade(event.target.checked)} />关联的道路、转向和因此变空的路口（资源容量保留）</label>
         <label className="check"><input type="checkbox" checked={members} onChange={event => setMembers(event.target.checked)} />建筑与区域的成员入口和作业点</label>
         <label className="check"><input type="checkbox" checked={orphans} onChange={event => setOrphans(event.target.checked)} />之后不再使用的节点</label>
+        {own.roads.length > 0 && <label className="check"><input type="checkbox" checked={routes} onChange={event => setRoutes(event.target.checked)} />作业点独用的内部通道（{own.roads.length} 条道路，连同其上的转向与作业点的节点）</label>}
+        {built?.held && <p className="muted">{built.held}</p>}
       </fieldset>
       <section className="impact" aria-label="影响">
         <h3 className="section-title">{support?.allowed ? '将删除或改动' : '所选对象'}</h3>

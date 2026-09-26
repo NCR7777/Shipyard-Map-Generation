@@ -294,12 +294,15 @@ test('the service point tool: a click on a door puts a node-proxy point on its n
   await expect(page.getByRole('status')).toContainText('在入口「东门」的节点上');
   // Its properties show how it is reached, the assumption included.
   await selectKeys(page, ['servicePoints/' + added[0]!]);
-  await expect(inspector(page)).toContainText('节点代理 · 场内转运不在模型内');
+  await expect(inspector(page).getByRole('combobox', { name: '到达方式' })).toHaveValue('node_proxy');
+  await expect(inspector(page).getByRole('combobox', { name: '场内转运' })).toHaveValue('excluded_from_model');
   // The same kind on the same door again: refused.
   await click(page, 50, 70);
   await expect(page.getByRole('alert')).toContainText('此处已有同类作业点');
-  // Inside the free building, a workshop: a road could never reach a new node there, so no point.
-  await click(page, 35, 72);
+  // Inside the free building, a workshop, as a draft (P3b2c: the tool's default is an internal route): a road could never
+  // reach a new node there, so no point. (Low in the building: the options, one row taller since P3b2c, cover its top.)
+  await options.getByRole('combobox', { name: '建筑内部作业点' }).selectOption('draft');
+  await click(page, 35, 65);
   await expect(page.getByRole('alert')).toContainText('是厂房，新道路不能穿进厂房');
   expect(Object.keys((await map(page)).servicePoints)).toEqual(Object.keys(after.servicePoints));
   // Inside the waiting zone: a draft on a node of its own, not connected.
@@ -362,6 +365,69 @@ test('a double click on the selected road inserts a bend there, Alt+click on it 
   await expect(page.getByRole('status')).toContainText('并打开');
   await expect.poll(active).not.toBe(original);
   expect(await active()).toBeTruthy();
+  expect(errors).toEqual([]);
+});
+
+test('inside a workshop the tool adds a point with its internal route from the door; a draft in the zone is declared a node proxy in its properties; each one undo step (P3b2c)', async ({ page }) => {
+  const errors: string[] = []; await open(page, errors, false, false, true);
+  await page.getByTestId('map-canvas').focus();
+  await page.keyboard.press('s');
+  const options = page.getByRole('region', { name: '绘图选项' });
+  await expect(options.getByRole('combobox', { name: '建筑内部作业点' })).toHaveValue('internal');
+  await options.getByRole('spinbutton', { name: '内部通道宽度（米）' }).fill('6');
+  const before = await map(page);
+  // Inside the free building (a workshop), 15.8 m from its east door at (50, 70); low in it, below the options.
+  await click(page, 35, 65);
+  await expect(page.getByRole('status')).toContainText('经入口「东门」的内部通道到达（15.8 m，宽 6 m，已批准入口处进出转向 2 个）。');
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：添加作业点/);
+  const after = await map(page), added = Object.keys(after.servicePoints).find(id => !before.servicePoints[id])!;
+  const point = after.servicePoints[added]!, route = (point.arrival as { internalPath: { roadId: string }[] }).internalPath[0]!.roadId;
+  expect(point).toMatchObject({ facilityId: 'fFree', accessPointId: 'aDoor', arrival: { mode: 'explicit_internal' } });
+  expect(after.roads[route]).toMatchObject({ fromNodeId: 'nDoor', toNodeId: point.nodeId, direction: 'both', widthM: { state: 'known', value: 6 } });
+  await selectKeys(page, ['servicePoints/' + added]);
+  await expect(inspector(page)).toContainText('显式内部通道');
+  await expect(inspector(page)).toContainText('内部通道连续，长 15.8 m');
+  // A draft in the waiting zone: not connected, arrival undeclared; declared a node proxy, then its transfer changed.
+  await click(page, 80, 42);
+  const drafted = await map(page), draft = Object.keys(drafted.servicePoints).find(id => !after.servicePoints[id])!;
+  await selectKeys(page, ['servicePoints/' + draft]);
+  await expect(inspector(page)).toContainText('节点还没有接路');
+  await expect(inspector(page)).toContainText('到达方式未声明（草稿）');
+  await inspector(page).getByRole('combobox', { name: '到达方式' }).selectOption('node_proxy');
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：声明节点代理/);
+  expect((await map(page)).servicePoints[draft]!.arrival).toEqual({ mode: 'node_proxy', transferAssumption: 'included_in_service_duration', note: '在作业点自己的节点作业，车辆经道路到达；场内转运计入作业时长。' });
+  await inspector(page).getByRole('combobox', { name: '场内转运' }).selectOption('excluded_from_model');
+  expect((await map(page)).servicePoints[draft]!.arrival).toMatchObject({ transferAssumption: 'excluded_from_model', note: expect.stringContaining('场内转运不在模型内') });
+  await expect(inspector(page).getByRole('textbox', { name: '到达说明' })).toHaveValue(/场内转运不在模型内/);
+  await undoButton(page).click(); await undoButton(page).click();
+  expect((await map(page)).servicePoints[draft]!.arrival).toBeUndefined();
+  // The internal route's arrival is not offered for change.
+  await selectKeys(page, ['servicePoints/' + added]);
+  await expect(inspector(page).getByRole('combobox', { name: '到达方式' })).toHaveCount(0);
+  // Deleted, it takes its own route along by default (road, node and the turns on it), one undo step; the undo brings all back.
+  const withPoint = await map(page);
+  await page.getByTestId('map-canvas').focus();
+  await page.keyboard.press('Delete');
+  const dialog = page.getByRole('dialog', { name: '删除选中对象' });
+  await expect(dialog.getByRole('checkbox', { name: /作业点独用的内部通道（1 条道路/ })).toBeChecked();
+  await dialog.getByRole('button', { name: '删除', exact: true }).click();
+  const deleted = await map(page);
+  expect(deleted.servicePoints[added]).toBeUndefined();
+  expect(deleted.roads[route]).toBeUndefined();
+  expect(deleted.nodes[point.nodeId]).toBeUndefined();
+  expect(Object.values(deleted.movements).filter(turn => turn.incomingArc.roadId === route || turn.outgoingArc.roadId === route)).toEqual([]);
+  await undoButton(page).click();
+  expect(await map(page)).toEqual(withPoint);
+  // Where a resource rests on a point (every point of the real maps), how it is reached is shown with the reason, not offered.
+  const withResource = JSON.parse(mapJson(false, false, true));
+  withResource.resources.rBay = { name: '卸货位', kind: 'other', capacityUnit: 'vehicle', capacity: { state: 'unknown' }, controlModel: 'unknown',
+    appliesTo: [{ entityType: 'servicePoints', entityId: 'sZoneUnload' }], provenance: { category: 'synthetic' } };
+  withResource.servicePoints.sZoneUnload.resourceIds = ['rBay'];
+  await page.getByTestId('open-file-input').setInputFiles({ name: 'resource.map.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(withResource)) });
+  await expect(page.getByRole('status')).toContainText('resource.map.json');
+  await selectKeys(page, ['servicePoints/sZoneUnload']);
+  await expect(inspector(page)).toContainText('关联着资源');
+  await expect(inspector(page).getByRole('combobox', { name: '到达方式' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

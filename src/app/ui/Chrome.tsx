@@ -7,6 +7,7 @@ import { fileStatus, useLocalFile } from '../state/localFile';
 import { saveStatus, useProjectState } from '../state/project';
 import { issuesOf, store, useApp } from '../state/store';
 import { Icon, type IconName } from './icons';
+import { serviceStep } from '../canvas/servicePoints';
 
 export const shortcut = (op: Operation) => op.keys?.[0]?.replace('Escape', 'Esc');
 
@@ -98,13 +99,12 @@ const TOOL_HINTS: Record<string, string> = {
   road: '点击放置折点 · 点到节点或道路即接上 · Alt 不接路 · Shift 水平或竖直 · Enter 或双击完成 · Backspace 撤回一点 · Esc 取消',
   curve: '点终点，再点经过点 · 按 R 接直线段 · Enter 完成 · Esc 取消',
   entrance: '点选建筑外边界添加入口 · 靠近角点取角点 · Enter 或 Esc 结束',
-  service: '点选入口：作业点在入口节点上（节点代理）· 点选建筑或区域内部：草稿作业点 · Enter 或 Esc 结束',
   building: '两点矩形可直接拖出 · 多边形点回起点完成 · Shift 水平或竖直 · Esc 取消',
   zone: '两点矩形可直接拖出 · 多边形点回起点完成 · Shift 水平或竖直 · Esc 取消',
   measure: '点击测量 · Enter 或双击结束 · Esc 清除 · 不改动地图',
 };
 export function StatusBar() {
-  const tool = useApp(state => state.tool);
+  const tool = useApp(state => state.tool), serviceInside = useApp(state => state.serviceInside);
   const selection = useApp(state => state.selection.length);
   const scale = useApp(state => state.scale);
   const session = useApp(state => state.session);
@@ -115,7 +115,7 @@ export function StatusBar() {
   const status = saveStatus({ session, project }, useProjectState());
   const file = fileStatus(session?.map ?? null, useLocalFile());
   return <footer className="statusbar">
-    <span className="hint">{TOOL_HINTS[tool]}</span>
+    <span className="hint">{tool === 'service' ? serviceStep(serviceInside) : TOOL_HINTS[tool]}</span>
     <span className="spacer" />
     {cursor && <span className="num">X {cursor[0].toFixed(2)} · Y {cursor[1].toFixed(2)} m</span>}
     {status && <span className={'save-status ' + status.tone} data-testid="save-status">{status.text}</span>}

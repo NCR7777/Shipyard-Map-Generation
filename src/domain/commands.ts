@@ -4,7 +4,7 @@ import { inspectSpatialEdit } from '../validation/spatialDiagnostics';
 import { mapCapabilities } from './capabilities';
 import { BackgroundError, isBackgroundCommand, runBackgroundCommand, type BackgroundCommand } from './backgrounds';
 import { utf8Size } from './serialization';
-import { transformPolygon, normalizePolygonBetweenVertices } from '../geometry/polygons';
+import { transformPolygon, normalizePolygonBetweenVertices, pointInRing } from '../geometry/polygons';
 import { polylineLength2D, roadPoints } from '../geometry/roads';
 import { newNode } from './factory';
 import { sameValue, freezeDeep, isDeepFrozen } from './value';
@@ -18,7 +18,7 @@ import { runConnectedPoint, type ConnectedPointCommand } from './connectedPoint'
 import { runAccessDetachment, type DetachAccessPointCommand } from './accessDetachment';
 import { runAccessSeparation, type SeparateAccessPointCommand } from './accessSeparation';
 import { allocateMapIds, runQuickTrace, type QuickTraceCommand } from './drawingDefaults';
-import { runSemanticPatch, recordManualSemanticChanges, type ApplySemanticPatchCommand } from './semanticPatch';
+import { isInferredSemantic, runSemanticPatch, recordManualSemanticChanges, type ApplySemanticPatchCommand } from './semanticPatch';
 import { runResearchAccess, type ApplyResearchAccessCommand } from './researchAccess';
 import { upgradeMapToV03 } from './upgradeV03';
 import { SPATIAL_CLASSIFICATION_NAMESPACE, SpatialClassificationError, applySpatialClassification, setSpatialClasses, spatialClassificationEditable, type SpatialClassification, type SetSpatialClassesCommand } from './spatialClassification';
@@ -146,6 +146,30 @@ function serviceAccessLinkSupport(map: YardMap, id: string, accessPointId: unkno
   const point = map.servicePoints[id]!, path = '/servicePoints/' + id + '/accessPointId';
   if (accessPointId !== null && (!point.facilityId || typeof accessPointId !== 'string' || map.accessPoints[accessPointId]?.facilityId !== point.facilityId)) fail('SERVICE_ACCESS_LINK_OWNER', '只能把建筑的作业点关联到同一建筑的入口。', path);
   if (point.arrival?.mode === 'explicit_internal') fail('SERVICE_ACCESS_LINK_INTERNAL', `作业点「${point.name}」有显式内部通道，通道从所关联的入口出发，改关联会改变通道起点；请先改到达方式。`, path);
+}
+/** Why how a point is reached cannot change on a map with turns, or null. A resource's occupancy rests on it (whether the
+ *  in-site transfer counts in the service duration), as does a planning declaration of that transfer; neither has a rule yet
+ *  to keep it in step. An internal route is created with its own roads and dropping it would leave them unused. A point not
+ *  yet a node proxy cannot become one on a node inside a workshop (the connection check's PROXY_INSIDE_BUILDING: no route
+ *  through its walls); one already there may still be edited or made a draft. */
+export function serviceArrivalLock(map: YardMap, id: string): { code: string; message: string } | null {
+  const point = map.servicePoints[id]!;
+  if (point.resourceIds.length || Object.values(map.resources).some(resource => resource.appliesTo.some(ref => ref.entityType === 'servicePoints' && ref.entityId === id)))
+    return { code: 'OPERATION_DEPENDENCIES_UNSUPPORTED', message: `作业点「${point.name}」关联着资源：到达方式（含场内转运是否计入作业时长）决定资源占用的口径，尚无同步维护规则，不能单独修改。` };
+  if ((point.extensions?.[PLANNING] as { handling?: unknown } | undefined)?.handling !== undefined)
+    return { code: 'OPERATION_DEPENDENCIES_UNSUPPORTED', message: `作业点「${point.name}」的规划扩展声明了场内转运的处理方式，与到达方式说的是同一件事，尚无同步维护规则，不能单独修改。` };
+  if (point.arrival?.mode === 'explicit_internal') return { code: 'SERVICE_ARRIVAL_INTERNAL', message: `作业点「${point.name}」有显式内部通道，改到达方式会留下没有作业点使用的内部道路；要改，请连同它的内部通道删除后重新添加。` };
+  const facility = point.facilityId ? map.facilities[point.facilityId] : undefined, node = map.nodes[point.nodeId];
+  if (point.arrival?.mode !== 'node_proxy' && facility?.kind === 'workshop' && !isInferredSemantic(facility) && node && pointInRing(node.position, facility.boundary.outer) === 'inside' && facility.boundary.holes.every(ring => pointInRing(node.position, ring) === 'outside'))
+    return { code: 'SERVICE_ARRIVAL_INSIDE_BUILDING', message: `作业点「${point.name}」的节点在厂房「${facility.name}」内部，车辆不能穿墙到达，不能声明为节点代理；厂房内的作业点请用作业点工具经内部通道添加。` };
+  return null;
+}
+/** Otherwise a point reached at its own node may be declared a node proxy (its transfer assumption and note restated) or left
+ *  undeclared again: nothing else refers to how it is reached. */
+function serviceArrivalSupport(map: YardMap, id: string, arrival: unknown): void {
+  const lock = serviceArrivalLock(map, id), path = '/servicePoints/' + id + '/arrival';
+  if (lock) fail(lock.code, lock.message, path);
+  if (arrival !== null && (arrival as { mode?: unknown } | undefined)?.mode !== 'node_proxy') fail('SERVICE_ARRIVAL_INTERNAL', '显式内部通道只能与它的道路一起创建（作业点工具在建筑内部点选）。', path);
 }
 function advancedMap(map: YardMap): boolean {
   if (onlySubdivisionJunctions(map)) return false;
@@ -461,9 +485,10 @@ function inspectSupport(map: YardMap, command: MapCommand): CommandSupport {
         const localFields: Record<typeof kind, readonly string[]> = {
           nodes: ['name', 'position'], roads: ['name', 'shapePoints', 'geometry', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps'],
           facilities: ['name', 'kind', 'heightM', 'boundary'], zones: ['name', 'kind', 'passability', 'boundary'],
-          accessPoints: ['name'], servicePoints: ['name', 'kind', 'accessPointId'],
+          accessPoints: ['name'], servicePoints: ['name', 'kind', 'accessPointId', 'arrival'],
         };
         if (kind === 'servicePoints' && changed.includes('accessPointId')) serviceAccessLinkSupport(map, update.id, (update.patch as { accessPointId?: unknown }).accessPointId);
+        if (kind === 'servicePoints' && changed.includes('arrival')) serviceArrivalSupport(map, update.id, (update.patch as { arrival?: unknown }).arrival);
         const unsupported = changed.find(field => !localFields[kind].includes(field)) ?? ('newNode' in update && update.newNode ? 'nodeId' : undefined);
         if (unsupported) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '字段 ' + unsupported + ' 尚无此地图的引用维护规则；请保留该关联，或使用明确的接路/关联操作。', '/' + kind + '/' + update.id + '/' + unsupported);
         const changesBoundary = changed.includes('boundary') || update.type === 'updateFacility' && !!update.entranceAdjustments?.length;

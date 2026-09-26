@@ -69,7 +69,7 @@ describe('where a service point goes', () => {
     // The workshop's loading point's node (15, 10): the workshop's own.
     const spot = serviceSpot(map, [15.3, 10.2, 0], camera)!;
     expect(spot).toEqual({ owner: workshop, point: [15, 10, 0], entrance: null, node: 'nLoading' });
-    expect(serviceRefusal(map, spot)).toBeNull();
+    expect(serviceRefusal(map, spot, 'draft')).toBeNull();
     expect(serviceSpot(map, [15.7, 10, 0], camera)).toMatchObject({ node: null });
     // A node just outside the owner is not taken (the point gets its own node inside): the yard's west edge x = 62.
     const outside = example(json => { yard(json); json.nodes!.nWestOf = { name: '场西节点', position: [61.8, 15, 0], kind: 'ordinary', provenance: { category: 'synthetic' } }; });
@@ -78,7 +78,7 @@ describe('where a service point goes', () => {
     const over = example(json => { json.facilities!.fYard = facility('堆场', 'yard', [[75, 25, 0], [85, 25, 0], [85, 32, 0], [75, 32, 0], [75, 25, 0]]); });
     const shared = serviceSpot(over, [80, 30.2, 0], camera)!;
     expect(shared).toMatchObject({ owner: yardOwner, node: 'nZoneTarget' });
-    expect(serviceRefusal(over, shared)).toContain('已属于「');
+    expect(serviceRefusal(over, shared, 'draft')).toContain('已属于「');
   });
   it("a node there whose road out bends would stop its owner moving once the point stands on it: refused; a straight one is fine", () => {
     // A road from a node inside the yard (65, 15) out to (65, 25), with a bend at (66, 22) or straight.
@@ -90,29 +90,29 @@ describe('where a service point goes', () => {
     });
     const bent = withRoad(true), spot = serviceSpot(bent, [65.2, 15, 0], camera)!;
     expect(spot).toMatchObject({ owner: yardOwner, node: 'nIn' });
-    expect(serviceRefusal(bent, spot)).toContain('将不能移动');
+    expect(serviceRefusal(bent, spot, 'draft')).toContain('将不能移动');
     const straight = withRoad(false);
-    expect(serviceRefusal(straight, serviceSpot(straight, [65.2, 15, 0], camera)!)).toBeNull();
+    expect(serviceRefusal(straight, serviceSpot(straight, [65.2, 15, 0], camera)!, 'draft')).toBeNull();
   });
   it('a new node only where a road can reach it: not in a workshop, a building closed to vehicles, or a water or obstacle zone', () => {
     const map = withYard();
-    expect(serviceRefusal(map, serviceSpot(map, [30, 15, 0], camera)!)).toContain('是厂房，新道路不能穿进厂房');
-    expect(serviceRefusal(map, serviceSpot(map, [65, 15, 0], camera)!)).toBeNull();
-    expect(serviceRefusal(map, serviceSpot(map, [80, 40, 0], camera)!)).toBeNull();
+    expect(serviceRefusal(map, serviceSpot(map, [30, 15, 0], camera)!, 'draft')).toContain('是厂房，新道路不能穿进厂房');
+    expect(serviceRefusal(map, serviceSpot(map, [65, 15, 0], camera)!, 'draft')).toBeNull();
+    expect(serviceRefusal(map, serviceSpot(map, [80, 40, 0], camera)!, 'draft')).toBeNull();
     // A building its planning extension closes to vehicles (the check alone, on a copy).
     const closedYard = structuredClone(map) as YardMap;
     closedYard.facilities.fYard = { ...closedYard.facilities.fYard!, extensions: { 'sr02.planning': { vehicleAccess: 'forbidden' } } };
-    expect(serviceRefusal(closedYard, serviceSpot(closedYard, [65, 15, 0], camera)!)).toContain('禁止车辆通行');
+    expect(serviceRefusal(closedYard, serviceSpot(closedYard, [65, 15, 0], camera)!, 'draft')).toContain('禁止车辆通行');
     // Another object's closed space under the point counts too: a forbidden zone laid over part of the yard (the check alone).
     const overlaid = structuredClone(map) as YardMap;
     overlaid.zones.zClosed = { name: '封闭带', kind: 'work', passability: 'forbidden', boundary: { outer: [[64, 12, 0], [67, 12, 0], [67, 18, 0], [64, 18, 0], [64, 12, 0]], holes: [] }, provenance: { category: 'synthetic' } };
-    expect(serviceRefusal(overlaid, serviceSpot(overlaid, [65, 15, 0], camera)!)).toContain('在「封闭带」内');
-    expect(serviceRefusal(overlaid, serviceSpot(overlaid, [63, 15, 0], camera)!)).toBeNull();
+    expect(serviceRefusal(overlaid, serviceSpot(overlaid, [65, 15, 0], camera)!, 'draft')).toContain('在「封闭带」内');
+    expect(serviceRefusal(overlaid, serviceSpot(overlaid, [63, 15, 0], camera)!, 'draft')).toBeNull();
     // On a workshop's outline but not at an entrance: says to add an entrance there first.
-    expect(serviceRefusal(map, serviceSpot(map, [30, 0, 0], camera)!)).toContain('请先用入口工具（E）');
+    expect(serviceRefusal(map, serviceSpot(map, [30, 0, 0], camera)!, 'draft')).toContain('请先用入口工具（E）');
     for (const change of [{ kind: 'water' }, { kind: 'obstacle' }, { passability: 'forbidden' }]) {
       const closed = example(json => { Object.assign(json.zones!.zWaiting as object, change); });
-      expect(serviceRefusal(closed, serviceSpot(closed, [80, 40, 0], camera)!)).toContain('水域、障碍或禁入区域');
+      expect(serviceRefusal(closed, serviceSpot(closed, [80, 40, 0], camera)!, 'draft')).toContain('水域、障碍或禁入区域');
     }
   });
   it('names 作业点001… per owner, and a second click of the same kind at the same place finds the first', () => {
@@ -137,10 +137,11 @@ describe('where a service point goes', () => {
       expect(undoSession(atEntrance).map).toEqual(map);
     }
     expect(proxyNote('excluded_from_model')).toContain('场内转运不在模型内');
-    // On the workshop's loading node: no new node, a draft on it.
+    // On the workshop's loading node: no new node. (P3b2c: the loading point there is reached by an internal route, and the new
+    // point is reached by the same route; P3b2b made it a draft, which could only be declared a node proxy inside the workshop.)
     const onNode = place(map, [15.2, 10], 'unloading', 'included_in_service_duration', { point: 'sOn', node: 'nUnused' });
     expect(onNode.map.servicePoints.sOn).toMatchObject({ nodeId: 'nLoading', facilityId: 'fWorkshop' });
-    expect(onNode.map.servicePoints.sOn!.arrival).toBeUndefined();
+    expect(onNode.map.servicePoints.sOn!.arrival).toEqual(map.servicePoints.sLoading!.arrival);
     expect(Object.keys(onNode.map.nodes)).toEqual(Object.keys(map.nodes));
     expect(undoSession(onNode).map).toEqual(map);
     const inside = place(map, [65, 15], 'loading', 'included_in_service_duration', { point: 'sIn', node: 'nIn' });
@@ -198,7 +199,7 @@ describe('the service point tool in the editor', () => {
   function start(map: YardMap, locked: Drawing['lockedTypes'] = [], hidden: Drawing['hiddenTypes'] = [], serviceKind: ServicePoint['kind'] = 'loading'): DrawingContext {
     store.set({ session: createSession(map, true), selection: [], tool: 'service', serviceKind, message: null, drawing: { ...store.get().drawing, lockedTypes: locked, hiddenTypes: hidden } });
     return { map, scene: toSceneSnapshot(map), camera, drawing: { ...DEFAULT_DRAWING_CONFIG, hiddenTypes: hidden, lockedTypes: locked }, tool: 'service', token: 0,
-      shapes: { building: 'rect2', zone: 'rect2' }, entranceFor: null, serviceKind, serviceTransfer: 'included_in_service_duration' };
+      shapes: { building: 'rect2', zone: 'rect2' }, entranceFor: null, serviceKind, serviceTransfer: 'included_in_service_duration', serviceInside: 'draft', routeWidthM: 8 };
   }
   const at = (x: number, y: number) => ({ screen: [x * 10, -y * 10] as [number, number], world: [x, y, 0] as [number, number, number], alt: false, shift: false });
   const count = () => Object.keys(store.get().session!.map.servicePoints).length;

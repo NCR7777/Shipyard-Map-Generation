@@ -65,10 +65,13 @@ export interface AppState {
   objectGroups: { epoch: number; open: readonly SceneKind[] };
   /** The entrance tool places entrances on this building only (started from the building's inspector); null: any building. */
   entranceFor: string | null;
-  /** The kind of service point the service point tool places, and the in-site transfer assumption it declares for one placed
-   *  on an entrance (a node proxy must state one). */
+  /** The kind of service point the service point tool places, the in-site transfer assumption it declares for one placed
+   *  on an entrance (a node proxy must state one), how one inside a building is reached, and its internal route's width
+   *  (8 m: the real maps' routes are 8 or 6 m wide, narrower than a new public road). */
   serviceKind: ServicePoint['kind'];
   serviceTransfer: 'included_in_service_duration' | 'excluded_from_model';
+  serviceInside: 'internal' | 'draft';
+  routeWidthM: number;
 }
 export interface Adjusting { id: string; epoch: number; keepAspect: boolean; measure: readonly Vec2[] | null }
 export interface DisplayUnits { mass: 't' | 'kg'; speed: 'km/h' | 'm/s' }
@@ -80,7 +83,7 @@ const initial: AppState = {
   panels: { left: true, right: true, drawer: false }, leftTab: 'objects', rightTab: 'properties',
   overlay: null, upgradeFor: null, shapes: { building: 'rect2', zone: 'polygon' }, mapChoice: null, message: null, scale: 1, frameRequest: null,
   rasters: {}, backgroundView: { hidden: [], opacity: {}, comparison: false }, mapEpoch: 0, boundaryMode: 'rect', units: DEFAULT_UNITS,
-  project: { phase: 'starting', failure: null }, camera: null, switching: false, adjusting: null, objectGroups: { epoch: 0, open: [] }, entranceFor: null, serviceKind: 'loading', serviceTransfer: 'included_in_service_duration',
+  project: { phase: 'starting', failure: null }, camera: null, switching: false, adjusting: null, objectGroups: { epoch: 0, open: [] }, entranceFor: null, serviceKind: 'loading', serviceTransfer: 'included_in_service_duration', serviceInside: 'internal', routeWidthM: 8,
 };
 
 let state = initial;

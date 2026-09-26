@@ -12,10 +12,10 @@ import { notify, select, store, type ShapeKind, type Tool } from '../state/store
 import { entranceAt, entranceCommand, entranceSpot, nextEntranceName, nodeAt, roadsAt, SAME_PLACE_PX } from './entrances';
 import { constrainAxis, formatReadout, roadCommand, segmentReadout, selfIntersects, shapeBoundary, shapeCommand, SHAPE_CLICKS, snapTarget, snapToGrid, SNAP_PX, type SnapTarget } from './drafting';
 import { uid } from './movePreview';
-import { nextServiceName, serviceAt, serviceCommand, serviceRefusal, serviceSpot, TRANSFER_LABELS, type Transfer } from './servicePoints';
+import { nextServiceName, publicRoadsAt, routed, routedCommand, routeEntrance, serviceAt, serviceCommand, serviceRefusal, serviceSpot, sharedRoute, TRANSFER_LABELS, upgradeNote, type Inside, type ServiceSpot, type Transfer } from './servicePoints';
 import type { DraftVisual } from './renderer';
 
-export interface DrawingContext { map: YardMap; scene: SceneSnapshot; camera: Camera; drawing: DrawingConfig; tool: Tool; token: number; shapes: Record<'building' | 'zone', ShapeKind>; entranceFor: string | null; serviceKind: ServicePoint['kind']; serviceTransfer: Transfer }
+export interface DrawingContext { map: YardMap; scene: SceneSnapshot; camera: Camera; drawing: DrawingConfig; tool: Tool; token: number; shapes: Record<'building' | 'zone', ShapeKind>; entranceFor: string | null; serviceKind: ServicePoint['kind']; serviceTransfer: Transfer; serviceInside: Inside; routeWidthM: number }
 export interface PointerInput { screen: Vec2; world: Vec3; alt: boolean; shift: boolean }
 
 const lastPoint = (draft: Draft | null): Vec3 | undefined => !draft ? undefined : draft.kind === 'road' ? draft.road.curveEnd?.point ?? draft.road.points.at(-1) : draft.points.at(-1);
@@ -104,43 +104,67 @@ function entrancePreview(context: DrawingContext, input: PointerInput | null): D
 }
 
 const OWNER_LAYER = { facilities: '建筑', zones: '区域' } as const;
-/** Where a service point click lands (hidden layers passed over), and why it cannot go there, if it cannot. */
-function serviceTarget(context: DrawingContext, world: Vec3) {
-  const spot = serviceSpot(context.map, world, context.camera, context.drawing.hiddenTypes);
-  const refusal = !spot ? null : context.drawing.lockedTypes.includes(spot.owner.kind) ? `${OWNER_LAYER[spot.owner.kind]}图层已锁定，可在「图层」页解锁。` : serviceRefusal(context.map, spot);
-  return { spot, refusal };
+/** Where a service point click lands (hidden layers passed over), why it cannot go there, if it cannot, and the entrance its
+ *  internal route starts from, if it gets one: a route is a road from an entrance, so both layers must be shown and unlocked. */
+function serviceTarget(context: DrawingContext, world: Vec3): { spot: ServiceSpot | null; refusal: string | null; entrance: string | null } {
+  const { map, drawing } = context, spot = serviceSpot(map, world, context.camera, drawing.hiddenTypes);
+  if (!spot) return { spot, refusal: null, entrance: null };
+  const refusal = drawing.lockedTypes.includes(spot.owner.kind) ? `${OWNER_LAYER[spot.owner.kind]}图层已锁定，可在「图层」页解锁。` : serviceRefusal(map, spot, context.serviceInside);
+  if (refusal || !routed(spot, context.serviceInside)) return { spot, refusal, entrance: null };
+  const layer = (['roads', 'accessPoints'] as const).find(kind => drawing.hiddenTypes.includes(kind) || drawing.lockedTypes.includes(kind));
+  if (layer) return { spot, entrance: null, refusal: `内部通道是从入口出发的道路，${layer === 'roads' ? '道路' : '入口'}图层已${drawing.hiddenTypes.includes(layer) ? '隐藏' : '锁定'}：在「图层」页${drawing.hiddenTypes.includes(layer) ? '显示' : '解锁'}后再放，或在绘图选项里把「建筑内部」改为草稿。` };
+  const route = routeEntrance(map, spot);
+  return 'refusal' in route ? { spot, refusal: route.refusal, entrance: null } : { spot, refusal: null, entrance: route.entrance };
 }
+/** The internal route's centreline, from the entrance's node to the point. */
+const routeLine = (map: YardMap, entrance: string, spot: ServiceSpot): [Vec3, Vec3] => [map.nodes[map.accessPoints[entrance]!.nodeId]!.position, spot.point];
 /** Each click adds one service point (one undo step): on an entrance, on its node and reached there; elsewhere inside a
- *  building or zone, on the node already there or a node of its own, as a draft. The tool stays for the next. */
+ *  building, on a node of its own with its internal route from an entrance (unless the options say drafts); on a node already
+ *  there, or elsewhere inside a zone, as a draft. The tool stays for the next. */
 function placeService(context: DrawingContext, input: PointerInput): void {
   if (context.drawing.hiddenTypes.includes('servicePoints')) { notify('作业点图层已隐藏，显示后才能放作业点。', 'error'); return; }
-  const { map } = context, { spot, refusal } = serviceTarget(context, input.world);
+  const { map } = context, { spot, refusal, entrance } = serviceTarget(context, input.world);
   if (!spot) { notify('请点选入口，或建筑、区域的内部（孔洞与对象外不能放作业点）。', 'error'); return; }
   if (refusal) { notify(refusal, 'error'); return; }
   const existing = serviceAt(map, spot, context.serviceKind, context.camera);
   if (existing) { notify(`此处已有同类作业点「${map.servicePoints[existing]!.name}」。`, 'error'); return; }
-  const { command, name } = serviceCommand(map, spot, context.serviceKind, context.serviceTransfer, { point: uid('service'), node: uid('node') });
-  if (!apply(command, '添加作业点')) return;
   const owner = map[spot.owner.kind][spot.owner.id]!.name, more = '继续点选可再加，Esc 或 Enter 结束。';
-  if (spot.entrance) { notify(`已添加${name}（${owner}），在入口「${map.accessPoints[spot.entrance]!.name}」的节点上：节点代理，关联这个入口，${TRANSFER_LABELS[context.serviceTransfer]}。${more}`); return; }
-  if (spot.node) {
-    const roads = roadsAt(map, spot.node);
-    notify(`已添加${name}（${owner}），用的是此处已有的节点「${map.nodes[spot.node]!.name}」${roads ? `，它连着 ${roads} 条道路` : '（该节点没有接路）'}；到达方式未声明（草稿）。${more}`);
+  if (entrance) {
+    // Two kernel checks per click (the turns it proposes, then the commit): up to about a second on the largest maps under load.
+    const width = context.routeWidthM, { command, name, turns } = routedCommand(map, spot, entrance, context.serviceKind, width,
+      { point: uid('service'), node: uid('node'), road: uid('road'), junction: uid('junction'), source: uid('source'), movement: () => uid('movement') });
+    if (!apply(command, '添加作业点', undefined, '可换个位置，或在绘图选项里减小通道宽度。')) return;
+    const access = map.accessPoints[entrance]!, [from, to] = routeLine(map, entrance, spot);
+    notify(`已添加${name}（${owner}），经入口「${access.name}」的内部通道到达（${Math.hypot(to[0] - from[0], to[1] - from[1]).toFixed(1)} m，宽 ${width} m`
+      + (turns ? `，已批准入口处进出转向 ${turns} 个）` : '）') + (publicRoadsAt(map, access.nodeId) ? '。' : `；这个入口的节点还没有接公共道路，从它画路即可接入路网${upgradeNote(map)}。`) + more);
     return;
   }
-  notify(`已添加${name}（${owner}）：有自己的节点，还没有接路，到达方式未声明（草稿）；从它的节点画路即可接入路网${map.schemaVersion !== '0.3.0' ? '（这张地图画路前要先升级到 0.3）' : ''}。${more}`);
+  const { command, name } = serviceCommand(map, spot, context.serviceKind, context.serviceTransfer, { point: uid('service'), node: uid('node') });
+  if (!apply(command, '添加作业点')) return;
+  if (spot.entrance) { notify(`已添加${name}（${owner}），在入口「${map.accessPoints[spot.entrance]!.name}」的节点上：节点代理，关联这个入口，${TRANSFER_LABELS[context.serviceTransfer]}。${more}`); return; }
+  if (spot.node) {
+    const roads = roadsAt(map, spot.node), shared = sharedRoute(map, spot);
+    notify(`已添加${name}（${owner}），用的是此处已有的节点「${map.nodes[spot.node]!.name}」${shared ? `，与「${map.servicePoints[shared]!.name}」经同一内部通道到达。`
+      : `${roads ? `，它连着 ${roads} 条道路` : '（该节点没有接路）'}；到达方式未声明（草稿）。`}${more}`);
+    return;
+  }
+  notify(`已添加${name}（${owner}）：有自己的节点，还没有接路，到达方式未声明（草稿）；从它的节点画路即可接入路网${upgradeNote(map)}。${more}`);
 }
 /** The owner under the pointer with its outline dashed; a ring where the point would join a node that is already there (an
- *  entrance's or another), a plain mark where it would get a node of its own; what it would be, or why not. */
+ *  entrance's or another), a plain mark where it would get a node of its own, with the internal route's band if it gets one;
+ *  what it would be, or why not. */
 function servicePreview(context: DrawingContext, input: PointerInput | null): DraftVisual | null {
   if (!input) return null;
-  const { map } = context, { spot, refusal } = serviceTarget(context, input.world); if (!spot) return null;
+  const { map } = context, { spot, refusal, entrance } = serviceTarget(context, input.world); if (!spot) return null;
   const owner = map[spot.owner.kind][spot.owner.id]!;
   const visual: DraftVisual = { vertices: [], area: { polygon: null, outline: owner.boundary.outer } };
   const existing = refusal ? null : serviceAt(map, spot, context.serviceKind, context.camera);
   if (refusal || existing) { visual.label = { at: spot.point, lines: [refusal ? '不能放在这里' : `已有「${map.servicePoints[existing!]!.name}」`, owner.name] }; return visual; }
   if (spot.entrance || spot.node) visual.snap = { position: spot.point, kind: 'node' }; else visual.vertices = [spot.point];
-  const what = spot.entrance ? `（入口「${map.accessPoints[spot.entrance]!.name}」处，节点代理）` : spot.node ? `（用已有节点「${map.nodes[spot.node]!.name}」，草稿）` : '（自己的节点，草稿）';
+  if (entrance) visual.road = { path: { anchors: routeLine(map, entrance, spot), spans: [{ kind: 'line' }] }, widthM: context.routeWidthM };
+  const what = spot.entrance ? `（入口「${map.accessPoints[spot.entrance]!.name}」处，节点代理）`
+    : spot.node ? `（用已有节点「${map.nodes[spot.node]!.name}」，${sharedRoute(map, spot) ? '同一内部通道' : '草稿'}）`
+    : entrance ? `（经入口「${map.accessPoints[entrance]!.name}」内部通道）` : '（自己的节点，草稿）';
   visual.label = { at: spot.point, lines: [nextServiceName(map, spot.owner) + what, owner.name] };
   return visual;
 }

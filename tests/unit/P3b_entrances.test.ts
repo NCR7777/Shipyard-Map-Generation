@@ -241,7 +241,7 @@ describe('the entrance tool in the editor', () => {
   function start(map: YardMap, entranceFor: string | null = null, hiddenTypes: DrawingContext['drawing']['hiddenTypes'] = []): DrawingContext {
     store.set({ session: createSession(map, true), selection: [], tool: 'entrance', entranceFor, message: null, drawing: { ...store.get().drawing, lockedTypes: [], hiddenTypes: [] } });
     return { map, scene: toSceneSnapshot(map), camera, drawing: { ...DEFAULT_DRAWING_CONFIG, hiddenTypes, lockedTypes: [] }, tool: 'entrance', token: 0,
-      shapes: { building: 'rect2', zone: 'rect2' }, entranceFor, serviceKind: 'loading', serviceTransfer: 'included_in_service_duration' };
+      shapes: { building: 'rect2', zone: 'rect2' }, entranceFor, serviceKind: 'loading', serviceTransfer: 'included_in_service_duration', serviceInside: 'internal', routeWidthM: 8 };
   }
   const at = (x: number, y: number) => ({ screen: [x * 10, -y * 10] as [number, number], world: [x, y, 0] as [number, number, number], alt: false, shift: false });
   const count = () => Object.keys(store.get().session!.map.accessPoints).length;

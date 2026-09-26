@@ -3,6 +3,7 @@ import type { MapCommand, SplitMapping } from './commands';
 import { TopologyError, enumerateMergeTurns, mergeNodes, splitPosition, type ApprovedMovement } from './topologyEditing';
 import { newNode, newRoad, newAccessPoint, newServicePoint } from './factory';
 import { pointInRing } from '../geometry/polygons';
+import { roadForMap } from '../geometry/roadPath';
 import { inspectPlanning, PLANNING_NAMESPACE } from './planning';
 import { nodeOwners, roadOwner } from './ownerEditing';
 
@@ -137,7 +138,8 @@ export function runConnectedPoint(map: YardMap, command: ConnectedPointCommand, 
       map.extensionNamespaces[PLANNING_NAMESPACE] ??= { version: '1.0', category: 'behavior' };
       service = { ...newServicePoint(geometry.nodeId, command.name, command.serviceKind), ...(command.owner.kind === 'facilities' ? { facilityId: command.owner.id, accessPointId: command.arrival.accessPointId } : { zoneId: command.owner.id }), arrival: { mode: 'explicit_internal', ...(command.owner.kind === 'zones' ? { entryNodeId: accessNode } : {}), internalPath: [...structuredClone(command.arrival.prefixPath), { roadId: geometry.connectorRoadId, direction: 'forward' }] }, resourceIds: [...resources], provenance };
     }
-    map.nodes[geometry.nodeId] = { ...newNode(geometry.position, command.name), provenance };
+    // The point's own node is typed as the point is (as the real maps' and the old tool's point nodes are).
+    map.nodes[geometry.nodeId] = { ...newNode(geometry.position, command.name), kind: command.kind === 'accessPoint' ? 'access' : 'service', provenance };
     // Reuse TE01 merge turn checks on a disposable, co-located joining node; no public node moves.
     let joinId = 'node_connected_point_join', suffix = 0;
     while (collections.some(kind => Object.hasOwn(map[kind], joinId)) || inspectPlanning(map).slots.some(slot => slot.id === joinId) || joinId === command.pointId || joinId === command.source.id || joinId === geometry.junctionId || approvals.some(v => v.id === joinId)) joinId = 'node_connected_point_join_' + ++suffix;
@@ -145,7 +147,8 @@ export function runConnectedPoint(map: YardMap, command: ConnectedPointCommand, 
     map.nodes[joinId] = { ...structuredClone(target), provenance };
     const connector = { ...newRoad(joinId, geometry.nodeId, [], command.name + ' 接入段'), direction: geometry.connector.direction, widthM: geometry.connector.widthM.state === 'known' ? { state: 'known' as const, value: geometry.connector.widthM.value, sourceRef: command.source.id } : structuredClone(geometry.connector.widthM), provenance };
     if (command.kind === 'servicePoint') connector.extensions = { [PLANNING_NAMESPACE]: { role: 'internal', ownerEntityId: command.owner.id, physicalMeaning: 'design_declared_corridor_not_surveyed_clearance' } };
-    map.roads[geometry.connectorRoadId] = connector;
+    // A 0.3 map stores path geometry, not shape points (as quickTraceRoad does).
+    map.roads[geometry.connectorRoadId] = roadForMap(map, connector);
     const junctions = Object.entries(map.junctions).filter(([, j]) => j.nodeIds.includes(targetNode));
     if (!junctions.length) {
       freeIds(map, [geometry.junctionId]);

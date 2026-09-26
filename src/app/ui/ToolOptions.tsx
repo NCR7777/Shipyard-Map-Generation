@@ -5,16 +5,17 @@ import { DRAWING_TOOLS, draftStore, setTool, useDraft, type Draft } from '../sta
 
 import { setDrawing, store, useApp, type ShapeKind, type Tool } from '../state/store';
 import { SERVICE_KIND } from './labels';
-import { TRANSFER_LABELS } from '../canvas/servicePoints';
+import { INSIDE_LABELS, TRANSFER_LABELS, type Inside } from '../canvas/servicePoints';
 
 const SHAPES: [ShapeKind, string][] = [['rect2', '两点矩形'], ['rect3', '三点斜矩形'], ['polygon', '多边形']];
 const TOOL_NAMES: Partial<Record<Tool, string>> = { node: '节点', road: '道路', curve: '弯道', building: '建筑', zone: '区域', measure: '量距', entrance: '入口', service: '作业点' };
 
 /** What the next click does, from the tool and how far the draft has got. */
-function nextStep(tool: Tool, shape: ShapeKind | undefined, draft: Draft | null): string {
+function nextStep(tool: Tool, shape: ShapeKind | undefined, draft: Draft | null, inside: Inside): string {
   if (tool === 'node') return '点击放置节点';
   if (tool === 'entrance') return '点选建筑外边界添加入口（绿色圆点处），靠近角点时取角点；每点一次加一个，Esc 结束';
-  if (tool === 'service') return '点选入口：作业点放在入口节点上（节点代理）；点选建筑或区域内部：作业点用那里的节点或自己的节点（草稿）。每点一次加一个，Esc 结束';
+  // Short: the panel floats over the map (the status bar has the whole hint).
+  if (tool === 'service') return inside === 'internal' ? '点入口：入口处作业 · 建筑内部：经内部通道 · 区域内部或已有节点：草稿' : '点入口：入口处作业 · 建筑、区域内部或已有节点：草稿';
   if (tool === 'measure') return draft?.kind === 'measure' && !draft.finished ? '继续点击；Enter 或双击结束，Esc 清除' : '点击起点开始量距';
   if (tool === 'road' || tool === 'curve') {
     if (draft?.kind !== 'road') return tool === 'curve' ? '点击起点；随后点终点，再点曲线经过的位置' : '点击起点；在节点或道路上点击会明确接上（绿圈）';
@@ -28,11 +29,11 @@ function nextStep(tool: Tool, shape: ShapeKind | undefined, draft: Draft | null)
 }
 
 /** New-road width: may be empty while typing; values in 0.1–1000 m apply, anything else reverts when the field is left. */
-function WidthInput({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+function WidthInput({ value, onChange, label = '新道路宽度（米）' }: { value: number; onChange: (value: number) => void; label?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
   const valid = (input: string) => { const number = Number(input); return input.trim() !== '' && Number.isFinite(number) && number >= 0.1 && number <= 1000 ? number : null; };
-  return <input type="number" min={0.1} max={1000} step={0.5} value={text} aria-label="新道路宽度（米）" aria-invalid={valid(text) === null}
+  return <input type="number" min={0.1} max={1000} step={0.5} value={text} aria-label={label} aria-invalid={valid(text) === null}
     onChange={event => { setText(event.target.value); const number = valid(event.target.value); if (number !== null) onChange(number); }}
     onBlur={() => setText(String(value))} />;
 }
@@ -41,7 +42,7 @@ function WidthInput({ value, onChange }: { value: number; onChange: (value: numb
 export function ToolOptions() {
   const tool = useApp(state => state.tool), drawing = useApp(state => state.drawing), shapes = useApp(state => state.shapes);
   const hasMap = useApp(state => !!state.session), draft = useDraft();
-  const serviceKind = useApp(state => state.serviceKind), serviceTransfer = useApp(state => state.serviceTransfer);
+  const serviceKind = useApp(state => state.serviceKind), serviceTransfer = useApp(state => state.serviceTransfer), serviceInside = useApp(state => state.serviceInside), routeWidthM = useApp(state => state.routeWidthM);
   const entranceFor = useApp(state => state.entranceFor), only = useApp(state => state.entranceFor ? state.session?.map.facilities[state.entranceFor]?.name ?? null : null);
   if (!hasMap || !DRAWING_TOOLS.includes(tool)) return null;
   const area = tool === 'building' || tool === 'zone' ? tool : null, shape = area ? shapes[area] : undefined;
@@ -49,7 +50,7 @@ export function ToolOptions() {
   const set = (patch: Partial<DrawingConfig>) => setDrawing(patch);
   return <div className="tool-options" role="region" aria-label="绘图选项">
     <div className="tool-options-row">
-      <strong>{TOOL_NAMES[tool]}</strong><span className="tool-step" aria-live="polite">{nextStep(tool, shape, draft)}</span>
+      <strong>{TOOL_NAMES[tool]}</strong><span className="tool-step" aria-live="polite">{nextStep(tool, shape, draft, serviceInside)}</span>
     </div>
     {area && <div className="segmented" role="radiogroup" aria-label="形状">
       {SHAPES.map(([value, label]) => <button key={value} role="radio" aria-checked={shape === value}
@@ -70,7 +71,10 @@ export function ToolOptions() {
       <label>作业类型<select value={serviceKind} aria-label="新作业点类型" onChange={event => store.set({ serviceKind: event.target.value as typeof serviceKind })}>
         {Object.entries(SERVICE_KIND).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
       <label title="放在入口处的作业点按节点代理到达，须声明场内转运如何计入">入口处<select value={serviceTransfer} aria-label="入口处作业点的场内转运" onChange={event => store.set({ serviceTransfer: event.target.value as typeof serviceTransfer })}>
-        {Object.entries(TRANSFER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        {Object.entries(TRANSFER_LABELS).map(([value, label]) => <option key={value} value={value}>{label.replace('场内转运', '')}</option>)}</select></label>
+      <label title="建筑内部的作业点：从最近的可用入口建一条直线内部通道（属于该建筑），或先放草稿、稍后画路">建筑内部<select value={serviceInside} aria-label="建筑内部作业点" onChange={event => store.set({ serviceInside: event.target.value as typeof serviceInside })}>
+        {Object.entries(INSIDE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      {serviceInside === 'internal' && <label title="内部通道的宽度（真实地图多为 8 m 或 6 m）">宽<WidthInput value={routeWidthM} onChange={value => store.set({ routeWidthM: value })} label="内部通道宽度（米）" />m</label>}
       <button className="button primary" onClick={() => setTool('select')} title="Esc">完成添加作业点</button>
     </div>}
     {tool !== 'measure' && tool !== 'entrance' && tool !== 'service' && <div className="tool-options-row">
