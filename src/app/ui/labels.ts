@@ -12,6 +12,7 @@ export const KIND_ICONS: Partial<Record<SceneKind, IconName>> = {
   facilities: 'building', zones: 'zone', roads: 'road', nodes: 'node', accessPoints: 'point', servicePoints: 'point', siteBoundary: 'zone', backgroundLayers: 'layers',
 };
 // Plain severities until P5 defines publication profiles; "blocks publishing" would overclaim for a draft check.
+export const SERVICE_KIND: Record<string, string> = { loading: '装载', unloading: '卸载', parking: '停车', berth: '泊位', other: '其他' };
 export const SEVERITY_LABELS = { error: '错误', warning: '提示' } as const;
 
 export const splitKey = (key: string): { kind: SceneKind; id: string } => {

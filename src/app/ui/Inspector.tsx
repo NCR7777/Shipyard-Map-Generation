@@ -14,12 +14,13 @@ import { uid } from '../canvas/movePreview';
 import { operation, runOperation } from '../ops/registry';
 import { apply, editBlock } from '../state/edit';
 import { separateEntrance } from '../state/editOps';
+import { TRANSFER_LABELS } from '../canvas/servicePoints';
 import { blockedDirections, displayNumber, fixedServiceKind, readNumber, type Unit } from '../state/properties';
 import { BackgroundProperties } from './BackgroundInspector';
 import { CommitSelect, CommitText, PhysicalField } from './PropertyFields';
 import { frame, itemOf, sceneOf, select, setUnits, store, useApp, type RightTab } from '../state/store';
 import { Icon } from './icons';
-import { KIND_LABELS, splitKey } from './labels';
+import { KIND_LABELS, SERVICE_KIND, splitKey } from './labels';
 import { relatedKeys } from './relations';
 
 const TABS: { id: RightTab; label: string }[] = [{ id: 'properties', label: '属性' }, { id: 'relations', label: '关联' }, { id: 'sources', label: '来源' }];
@@ -28,7 +29,6 @@ const CATEGORY: Record<string, string> = { surveyed: '实测', drawing: '描图'
 const DIRECTION: Record<string, string> = { unknown: '待配置', forward: '沿箭头单向', backward: '反向单向', both: '双向' };
 const PASSABILITY: Record<string, string> = { unknown: '未知', allowed: '允许通行', forbidden: '禁止通行', explicit_access_only: '仅显式接入' };
 const NODE_KIND: Record<string, string> = { ordinary: '普通节点', junction: '路口节点', access: '入口节点', service: '作业节点' };
-const SERVICE_KIND: Record<string, string> = { loading: '装载', unloading: '卸载', parking: '停车', berth: '泊位', other: '其他' };
 
 const fixed = (value: number, digits = 2) => Number.isFinite(value) ? value.toFixed(digits).replace(/\.?0+$/, '') : '—';
 /** Stored SI values shown in the unit people use; unknown is never shown as 0. */
@@ -254,7 +254,7 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
         ? <>{SERVICE_KIND[point.kind] ?? point.kind}<p className="muted">{fixedServiceKind(map, id)}</p></>
         : <CommitSelect label="作业类型" value={point.kind} options={Object.entries(SERVICE_KIND) as [typeof point.kind, string][]}
           onCommit={kind => run({ type: 'updateServicePoint', id, patch: { kind } }, '修改作业类型')} />}</Field>,
-      <Field key="arrival" label="到达方式">{!point.arrival ? '未声明（草稿）' : point.arrival.mode === 'node_proxy' ? '节点代理' : `显式内部通道 · ${point.arrival.internalPath.length} 段`}</Field>);
+      <Field key="arrival" label="到达方式">{arrivalText(point)}</Field>);
     // Which of its building's entrances it is reached through: a record only for a point reached at its own node, so it can be
     // changed or cleared (an entrance split off is linked up again here); an internal route starts there, so it stays.
     const facility = point.facilityId ? map.facilities[point.facilityId] : undefined, linked = point.accessPointId ? map.accessPoints[point.accessPointId] : undefined;
@@ -266,6 +266,13 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
           && <p className="muted">这个入口的节点还没有连着道路。节点代理作业点按自己的节点接入路网，不经过入口。</p>}</>}</Field>);
   } else if (item.reason) rows.push(<Field key="reason" label="说明">{item.reason}</Field>);
   return <dl className="fields">{rows}</dl>;
+}
+
+/** How a service point is reached, the node proxy's transfer assumption and note included. */
+function arrivalText(point: YardMap['servicePoints'][string]) {
+  return !point.arrival ? '未声明（草稿）' : point.arrival.mode === 'node_proxy'
+    ? <>节点代理 · {TRANSFER_LABELS[point.arrival.transferAssumption]}{point.arrival.note && <p className="muted">{point.arrival.note}</p>}</>
+    : `显式内部通道 · ${point.arrival.internalPath.length} 段`;
 }
 
 function ReadOnlyProperties({ map, item, units }: { map: YardMap; item: SceneItem; units: { mass: Unit; speed: Unit } }) {
@@ -302,7 +309,7 @@ function ReadOnlyProperties({ map, item, units }: { map: YardMap; item: SceneIte
   } else if (item.kind === 'servicePoints') {
     const point = map.servicePoints[id]!;
     rows.push(<Field key="kind" label="作业类型">{SERVICE_KIND[point.kind] ?? point.kind}</Field>,
-      <Field key="arrival" label="到达方式">{!point.arrival ? '未声明（草稿）' : point.arrival.mode === 'node_proxy' ? '节点代理' : `显式内部通道 · ${point.arrival.internalPath.length} 段`}</Field>);
+      <Field key="arrival" label="到达方式">{arrivalText(point)}</Field>);
   } else if (item.reason) rows.push(<Field key="reason" label="说明">{item.reason}</Field>);
   return <dl className="fields">{rows}</dl>;
 }

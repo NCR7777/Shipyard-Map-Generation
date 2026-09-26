@@ -105,7 +105,7 @@ export function CanvasView() {
   const map = useApp(state => state.session?.map ?? null);
   const drawing = useApp(state => state.drawing);
   const selection = useApp(state => state.selection);
-  const tool = useApp(state => state.tool), entranceFor = useApp(state => state.entranceFor);
+  const tool = useApp(state => state.tool), entranceFor = useApp(state => state.entranceFor), serviceKind = useApp(state => state.serviceKind), serviceTransfer = useApp(state => state.serviceTransfer);
   const frameRequest = useApp(state => state.frameRequest);
   const rasters = useApp(state => state.rasters);
   const backgroundView = useApp(state => state.backgroundView);
@@ -122,7 +122,7 @@ export function CanvasView() {
   /** Everything a drawing tool needs, read fresh at each event. */
   function drawingContext(): DrawingContext | null {
     const state = store.get(), current = state.session?.map; if (!current) return null;
-    return { map: current, scene: sceneOf(current), camera: camera.current, drawing: state.drawing, tool: state.tool, token: state.session!.changeToken, shapes: state.shapes, entranceFor: state.entranceFor };
+    return { map: current, scene: sceneOf(current), camera: camera.current, drawing: state.drawing, tool: state.tool, token: state.session!.changeToken, shapes: state.shapes, entranceFor: state.entranceFor, serviceKind: state.serviceKind, serviceTransfer: state.serviceTransfer };
   }
   function pointerInput(event: { clientX: number; clientY: number; altKey: boolean; shiftKey: boolean }): PointerInput {
     const at = point(event);
@@ -245,7 +245,7 @@ export function CanvasView() {
   // Another map: no draft, measurement or click history carries over (its change token starts again at 0).
   useEffect(() => { draftStore.set(null); lastClick.current = null; }, [mapEpoch]);
   useEffect(() => draftStore.subscribe(() => refreshDraft()), []);
-  useEffect(() => { refreshDraft(); }, [tool, drawing, entranceFor]);
+  useEffect(() => { refreshDraft(); }, [tool, drawing, entranceFor, serviceKind, serviceTransfer]);
   // A double-click is two clicks of one tool with nothing in between.
   useEffect(() => { lastClick.current = null; }, [tool]);
 
@@ -285,7 +285,7 @@ export function CanvasView() {
       // Drawing keys: Enter finishes, Backspace takes back a point, Escape drops the draft and then leaves the tool.
       if (DRAWING_TOOLS.includes(store.get().tool) && !isEditableTarget(event.target) && !store.get().overlay) {
         const context = drawingContext(), draft = draftStore.get();
-        const handled = event.key === 'Enter' && store.get().tool === 'entrance' ? (setTool('select'), true)
+        const handled = event.key === 'Enter' && ['entrance', 'service'].includes(store.get().tool) ? (setTool('select'), true)
           : event.key === 'Enter' && draft ? (context && drawFinish(context), true)
           // Delete also takes back a point while drawing: it must not open the delete dialog for the road just drawn.
           : (event.key === 'Backspace' || event.key === 'Delete') && draft ? (removeLast(), true)
@@ -437,7 +437,7 @@ export function CanvasView() {
       const context = drawingContext(); if (!context) return;
       const input = pointerInput(event), previous = lastClick.current, now = performance.now();
       // The second click of a double-click only finishes: it never places a point, a node, or a new draft.
-      if (context.tool !== 'entrance' && previous && now - previous.at < DOUBLE_CLICK_MS && Math.hypot(input.screen[0] - previous.screen[0], input.screen[1] - previous.screen[1]) <= DRAG_PX * 2) {
+      if (context.tool !== 'entrance' && context.tool !== 'service' && previous && now - previous.at < DOUBLE_CLICK_MS && Math.hypot(input.screen[0] - previous.screen[0], input.screen[1] - previous.screen[1]) <= DRAG_PX * 2) {
         lastClick.current = null; drawFinish(context); return;
       }
       lastClick.current = { at: now, screen: input.screen };

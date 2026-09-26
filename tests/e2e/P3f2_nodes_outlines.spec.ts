@@ -276,6 +276,54 @@ test('the entrance field lists only the building\'s entrances and notes one off 
   expect(errors).toEqual([]);
 });
 
+test('the service point tool: a click on a door puts a node-proxy point on its node with the chosen transfer; a workshop interior is refused; a zone gets a draft on its own node; one undo each (P3b2b)', async ({ page }) => {
+  const errors: string[] = []; await open(page, errors, false, false, true);
+  await page.getByTestId('map-canvas').focus();
+  await page.keyboard.press('s');
+  const options = page.getByRole('region', { name: '绘图选项' });
+  await expect(options).toContainText('作业点');
+  await options.getByRole('combobox', { name: '新作业点类型' }).selectOption('unloading');
+  await options.getByRole('combobox', { name: '入口处作业点的场内转运' }).selectOption('excluded_from_model');
+  const before = await map(page);
+  // The east door of the free building, at (50, 70).
+  await click(page, 50, 70);
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：添加作业点/);
+  const after = await map(page), added = Object.keys(after.servicePoints).filter(id => !before.servicePoints[id]);
+  expect(added).toHaveLength(1);
+  expect(after.servicePoints[added[0]!]).toMatchObject({ nodeId: 'nDoor', facilityId: 'fFree', accessPointId: 'aDoor', kind: 'unloading', arrival: { mode: 'node_proxy', transferAssumption: 'excluded_from_model' } });
+  await expect(page.getByRole('status')).toContainText('在入口「东门」的节点上');
+  // Its properties show how it is reached, the assumption included.
+  await selectKeys(page, ['servicePoints/' + added[0]!]);
+  await expect(inspector(page)).toContainText('节点代理 · 场内转运不在模型内');
+  // The same kind on the same door again: refused.
+  await click(page, 50, 70);
+  await expect(page.getByRole('alert')).toContainText('此处已有同类作业点');
+  // Inside the free building, a workshop: a road could never reach a new node there, so no point.
+  await click(page, 35, 72);
+  await expect(page.getByRole('alert')).toContainText('是厂房，新道路不能穿进厂房');
+  expect(Object.keys((await map(page)).servicePoints)).toEqual(Object.keys(after.servicePoints));
+  // Inside the waiting zone: a draft on a node of its own, not connected.
+  await click(page, 80, 42);
+  await expect(page.getByRole('status')).toContainText('到达方式未声明（草稿）');
+  const drafted = await map(page), second = Object.keys(drafted.servicePoints).find(id => !after.servicePoints[id])!;
+  expect(drafted.servicePoints[second]).toMatchObject({ zoneId: 'zWaiting', kind: 'unloading' });
+  expect(drafted.servicePoints[second]!.arrival).toBeUndefined();
+  expect(round(drafted.nodes[drafted.servicePoints[second]!.nodeId]!.position)).toEqual([80, 42, 0]);
+  await undoButton(page).click();
+  expect(Object.keys((await map(page)).servicePoints)).toEqual(Object.keys(after.servicePoints));
+  // A double click adds one point; its second click is refused as the same place (it never finishes the tool).
+  const there = await at(page, 82, 44);
+  await page.mouse.dblclick(there.x, there.y);
+  await expect(page.getByRole('alert')).toContainText('此处已有同类作业点');
+  expect(Object.keys((await map(page)).servicePoints)).toHaveLength(Object.keys(after.servicePoints).length + 1);
+  await expect(options).toBeVisible();
+  // Enter ends the tool, as it does the entrance tool.
+  await page.getByTestId('map-canvas').focus();
+  await page.keyboard.press('Enter');
+  await expect(options).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('a click at a road end selects its node whether or not the pointer rested there first; mid-road selects the road', async ({ page }) => {
   const errors: string[] = []; await open(page, errors);
   const end = await at(page, 100 - await px(page, 5), 0);

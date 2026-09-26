@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { SceneItem, SceneKind, SceneSnapshot } from '../../adapters/contracts';
 import { toSceneSnapshot } from '../../compiler/scene';
 import { loadMap } from '../../domain/load';
-import type { Issue, Vec2, Vec3, YardMap } from '../../domain/model';
+import type { Issue, ServicePoint, Vec2, Vec3, YardMap } from '../../domain/model';
 import { DEFAULT_DRAWING_CONFIG, type DrawingConfig } from '../../editor/projectController';
 import type { EditorSession } from '../../editor/session';
 import type { Camera } from '../../geometry/coordinates';
@@ -10,7 +10,7 @@ import { validateMap } from '../../validation/validate';
 import { createDisplayIndex, type DisplayIndex } from '../canvas/display';
 import type { Raster } from './backgrounds';
 
-export type Tool = 'select' | 'pan' | 'node' | 'road' | 'curve' | 'building' | 'zone' | 'measure' | 'entrance';
+export type Tool = 'select' | 'pan' | 'node' | 'road' | 'curve' | 'building' | 'zone' | 'measure' | 'entrance' | 'service';
 export type ShapeKind = 'rect2' | 'rect3' | 'polygon';
 export type LeftTab = 'objects' | 'layers';
 export type RightTab = 'properties' | 'relations' | 'sources';
@@ -65,6 +65,10 @@ export interface AppState {
   objectGroups: { epoch: number; open: readonly SceneKind[] };
   /** The entrance tool places entrances on this building only (started from the building's inspector); null: any building. */
   entranceFor: string | null;
+  /** The kind of service point the service point tool places, and the in-site transfer assumption it declares for one placed
+   *  on an entrance (a node proxy must state one). */
+  serviceKind: ServicePoint['kind'];
+  serviceTransfer: 'included_in_service_duration' | 'excluded_from_model';
 }
 export interface Adjusting { id: string; epoch: number; keepAspect: boolean; measure: readonly Vec2[] | null }
 export interface DisplayUnits { mass: 't' | 'kg'; speed: 'km/h' | 'm/s' }
@@ -76,7 +80,7 @@ const initial: AppState = {
   panels: { left: true, right: true, drawer: false }, leftTab: 'objects', rightTab: 'properties',
   overlay: null, upgradeFor: null, shapes: { building: 'rect2', zone: 'polygon' }, mapChoice: null, message: null, scale: 1, frameRequest: null,
   rasters: {}, backgroundView: { hidden: [], opacity: {}, comparison: false }, mapEpoch: 0, boundaryMode: 'rect', units: DEFAULT_UNITS,
-  project: { phase: 'starting', failure: null }, camera: null, switching: false, adjusting: null, objectGroups: { epoch: 0, open: [] }, entranceFor: null,
+  project: { phase: 'starting', failure: null }, camera: null, switching: false, adjusting: null, objectGroups: { epoch: 0, open: [] }, entranceFor: null, serviceKind: 'loading', serviceTransfer: 'included_in_service_duration',
 };
 
 let state = initial;

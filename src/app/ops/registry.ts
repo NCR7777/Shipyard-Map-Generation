@@ -62,6 +62,18 @@ const needEntrances = (state: AppState): true | string => {
   if (hiddenTypes.includes('accessPoints')) return '入口图层已隐藏';
   return true;
 };
+/** Service points need a building or zone to go in, and must not write a locked or hidden layer (the point and its node;
+ *  the owner's layer is checked where the click lands). */
+const needServices = (state: AppState): true | string => {
+  const blocked = editBlock(state.session); if (blocked) return blocked;
+  const map = state.session!.map;
+  if (map.schemaVersion === '0.1.0') return '0.1.0 地图没有作业点的到达方式与区域归属，请先升级地图版本';
+  if (!Object.keys(map.facilities).length && !Object.keys(map.zones).length) return '地图中还没有建筑或区域';
+  const { lockedTypes, hiddenTypes } = state.drawing;
+  if ((['servicePoints', 'nodes'] as const).some(kind => lockedTypes.includes(kind))) return '作业点或节点图层已锁定，可在「图层」页解锁';
+  if (hiddenTypes.includes('servicePoints')) return '作业点图层已隐藏';
+  return true;
+};
 const togglePanel = (panel: keyof AppState['panels']) => () => store.set(({ panels }) => ({ panels: { ...panels, [panel]: !panels[panel] } }));
 
 export const OPERATIONS: readonly Operation[] = [
@@ -107,6 +119,7 @@ export const OPERATIONS: readonly Operation[] = [
   { id: 'tool.zone', label: '区域', keys: ['A'], tool: 'zone', enabled: needDrawable, run: useTool('zone', 'polygon') },
   { id: 'tool.zoneRect', label: '矩形区域', keys: ['G'], enabled: needDrawable, run: useTool('zone', 'rect2') },
   { id: 'tool.entrance', label: '入口', keys: ['E'], tool: 'entrance', enabled: needEntrances, run: useTool('entrance') },
+  { id: 'tool.service', label: '作业点', keys: ['S'], tool: 'service', enabled: needServices, run: useTool('service') },
   { id: 'tool.measure', label: '量距', keys: ['M'], tool: 'measure', run: useTool('measure') },
   { id: 'view.fit', label: '适应地图', menu: 'view', keys: ['F'], enabled: needMap, run: () => frame() },
   { id: 'view.frameSelection', label: '定位选中对象', menu: 'view', keys: ['Shift+F'], enabled: needSelection, run: () => frame(store.get().selection) },

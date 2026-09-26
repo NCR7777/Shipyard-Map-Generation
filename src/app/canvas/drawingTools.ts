@@ -1,7 +1,7 @@
 import type { SceneSnapshot } from '../../adapters/contracts';
 import { getQuickTraceCrossings } from '../../domain/drawingDefaults';
 import { newNode } from '../../domain/factory';
-import type { Vec3, YardMap } from '../../domain/model';
+import type { ServicePoint, Vec3, YardMap } from '../../domain/model';
 import type { DrawingConfig } from '../../editor/projectController';
 import { appendDraftCurve, appendDraftLine, draftRoadGeometry, previewDraftPath, type DraftRoad } from '../../editor/roadDrawing';
 import { worldToScreen, type Camera, type Vec2 } from '../../geometry/coordinates';
@@ -12,9 +12,10 @@ import { notify, select, store, type ShapeKind, type Tool } from '../state/store
 import { entranceAt, entranceCommand, entranceSpot, nextEntranceName, nodeAt, roadsAt, SAME_PLACE_PX } from './entrances';
 import { constrainAxis, formatReadout, roadCommand, segmentReadout, selfIntersects, shapeBoundary, shapeCommand, SHAPE_CLICKS, snapTarget, snapToGrid, SNAP_PX, type SnapTarget } from './drafting';
 import { uid } from './movePreview';
+import { nextServiceName, serviceAt, serviceCommand, serviceRefusal, serviceSpot, TRANSFER_LABELS, type Transfer } from './servicePoints';
 import type { DraftVisual } from './renderer';
 
-export interface DrawingContext { map: YardMap; scene: SceneSnapshot; camera: Camera; drawing: DrawingConfig; tool: Tool; token: number; shapes: Record<'building' | 'zone', ShapeKind>; entranceFor: string | null }
+export interface DrawingContext { map: YardMap; scene: SceneSnapshot; camera: Camera; drawing: DrawingConfig; tool: Tool; token: number; shapes: Record<'building' | 'zone', ShapeKind>; entranceFor: string | null; serviceKind: ServicePoint['kind']; serviceTransfer: Transfer }
 export interface PointerInput { screen: Vec2; world: Vec3; alt: boolean; shift: boolean }
 
 const lastPoint = (draft: Draft | null): Vec3 | undefined => !draft ? undefined : draft.kind === 'road' ? draft.road.curveEnd?.point ?? draft.road.points.at(-1) : draft.points.at(-1);
@@ -102,9 +103,52 @@ function entrancePreview(context: DrawingContext, input: PointerInput | null): D
   return visual;
 }
 
+const OWNER_LAYER = { facilities: '建筑', zones: '区域' } as const;
+/** Where a service point click lands (hidden layers passed over), and why it cannot go there, if it cannot. */
+function serviceTarget(context: DrawingContext, world: Vec3) {
+  const spot = serviceSpot(context.map, world, context.camera, context.drawing.hiddenTypes);
+  const refusal = !spot ? null : context.drawing.lockedTypes.includes(spot.owner.kind) ? `${OWNER_LAYER[spot.owner.kind]}图层已锁定，可在「图层」页解锁。` : serviceRefusal(context.map, spot);
+  return { spot, refusal };
+}
+/** Each click adds one service point (one undo step): on an entrance, on its node and reached there; elsewhere inside a
+ *  building or zone, on the node already there or a node of its own, as a draft. The tool stays for the next. */
+function placeService(context: DrawingContext, input: PointerInput): void {
+  if (context.drawing.hiddenTypes.includes('servicePoints')) { notify('作业点图层已隐藏，显示后才能放作业点。', 'error'); return; }
+  const { map } = context, { spot, refusal } = serviceTarget(context, input.world);
+  if (!spot) { notify('请点选入口，或建筑、区域的内部（孔洞与对象外不能放作业点）。', 'error'); return; }
+  if (refusal) { notify(refusal, 'error'); return; }
+  const existing = serviceAt(map, spot, context.serviceKind, context.camera);
+  if (existing) { notify(`此处已有同类作业点「${map.servicePoints[existing]!.name}」。`, 'error'); return; }
+  const { command, name } = serviceCommand(map, spot, context.serviceKind, context.serviceTransfer, { point: uid('service'), node: uid('node') });
+  if (!apply(command, '添加作业点')) return;
+  const owner = map[spot.owner.kind][spot.owner.id]!.name, more = '继续点选可再加，Esc 或 Enter 结束。';
+  if (spot.entrance) { notify(`已添加${name}（${owner}），在入口「${map.accessPoints[spot.entrance]!.name}」的节点上：节点代理，关联这个入口，${TRANSFER_LABELS[context.serviceTransfer]}。${more}`); return; }
+  if (spot.node) {
+    const roads = roadsAt(map, spot.node);
+    notify(`已添加${name}（${owner}），用的是此处已有的节点「${map.nodes[spot.node]!.name}」${roads ? `，它连着 ${roads} 条道路` : '（该节点没有接路）'}；到达方式未声明（草稿）。${more}`);
+    return;
+  }
+  notify(`已添加${name}（${owner}）：有自己的节点，还没有接路，到达方式未声明（草稿）；从它的节点画路即可接入路网${map.schemaVersion !== '0.3.0' ? '（这张地图画路前要先升级到 0.3）' : ''}。${more}`);
+}
+/** The owner under the pointer with its outline dashed; a ring where the point would join a node that is already there (an
+ *  entrance's or another), a plain mark where it would get a node of its own; what it would be, or why not. */
+function servicePreview(context: DrawingContext, input: PointerInput | null): DraftVisual | null {
+  if (!input) return null;
+  const { map } = context, { spot, refusal } = serviceTarget(context, input.world); if (!spot) return null;
+  const owner = map[spot.owner.kind][spot.owner.id]!;
+  const visual: DraftVisual = { vertices: [], area: { polygon: null, outline: owner.boundary.outer } };
+  const existing = refusal ? null : serviceAt(map, spot, context.serviceKind, context.camera);
+  if (refusal || existing) { visual.label = { at: spot.point, lines: [refusal ? '不能放在这里' : `已有「${map.servicePoints[existing!]!.name}」`, owner.name] }; return visual; }
+  if (spot.entrance || spot.node) visual.snap = { position: spot.point, kind: 'node' }; else visual.vertices = [spot.point];
+  const what = spot.entrance ? `（入口「${map.accessPoints[spot.entrance]!.name}」处，节点代理）` : spot.node ? `（用已有节点「${map.nodes[spot.node]!.name}」，草稿）` : '（自己的节点，草稿）';
+  visual.label = { at: spot.point, lines: [nextServiceName(map, spot.owner) + what, owner.name] };
+  return visual;
+}
+
 /** One click of the active drawing tool. */
 export function click(context: DrawingContext, input: PointerInput): void {
   if (context.tool === 'entrance') { placeEntrance(context, input); return; }
+  if (context.tool === 'service') { placeService(context, input); return; }
   const { tool, token } = context, draft = draftStore.get(), { point, snap } = resolvePoint(context, input);
   if (tool === 'node') {
     apply({ type: 'addNode', id: uid('node'), node: newNode(point, `节点 ${Object.keys(context.map.nodes).length + 1}`) }, '添加节点');
@@ -184,6 +228,7 @@ let crossings: { at: number; key: string; points: Vec3[] } = { at: 0, key: '', p
 /** The preview for the pointer at `input`: nothing is committed. */
 export function preview(context: DrawingContext, input: PointerInput | null): DraftVisual | null {
   if (context.tool === 'entrance') return entrancePreview(context, input);
+  if (context.tool === 'service') return servicePreview(context, input);
   const draft = draftStore.get(), { tool, drawing } = context;
   const resolved = input ? resolvePoint(context, input) : null, cursor = resolved?.point ?? null;
   const visual: DraftVisual = { vertices: [], snap: resolved?.snap ? { position: resolved.snap.position, kind: resolved.snap.connection.kind === 'node' ? 'node' : 'road' } : null };

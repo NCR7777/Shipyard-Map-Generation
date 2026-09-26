@@ -59,7 +59,7 @@ export function MenuBar() {
 
 const TOOL_ICONS: Record<string, IconName> = {
   'tool.select': 'select', 'tool.pan': 'pan', 'tool.node': 'node', 'tool.road': 'road', 'tool.curve': 'curve',
-  'tool.building': 'building', 'tool.zone': 'zone', 'tool.entrance': 'point', 'tool.measure': 'measure',
+  'tool.building': 'building', 'tool.zone': 'zone', 'tool.entrance': 'point', 'tool.service': 'service', 'tool.measure': 'measure',
 };
 export function Toolbar() {
   const tool = useApp(state => state.tool);
@@ -97,6 +97,8 @@ const TOOL_HINTS: Record<string, string> = {
   node: '点击放置节点 · Esc 回到选择',
   road: '点击放置折点 · 点到节点或道路即接上 · Alt 不接路 · Shift 水平或竖直 · Enter 或双击完成 · Backspace 撤回一点 · Esc 取消',
   curve: '点终点，再点经过点 · 按 R 接直线段 · Enter 完成 · Esc 取消',
+  entrance: '点选建筑外边界添加入口 · 靠近角点取角点 · Enter 或 Esc 结束',
+  service: '点选入口：作业点在入口节点上（节点代理）· 点选建筑或区域内部：草稿作业点 · Enter 或 Esc 结束',
   building: '两点矩形可直接拖出 · 多边形点回起点完成 · Shift 水平或竖直 · Esc 取消',
   zone: '两点矩形可直接拖出 · 多边形点回起点完成 · Shift 水平或竖直 · Esc 取消',
   measure: '点击测量 · Enter 或双击结束 · Esc 清除 · 不改动地图',
