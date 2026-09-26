@@ -255,6 +255,15 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
         : <CommitSelect label="作业类型" value={point.kind} options={Object.entries(SERVICE_KIND) as [typeof point.kind, string][]}
           onCommit={kind => run({ type: 'updateServicePoint', id, patch: { kind } }, '修改作业类型')} />}</Field>,
       <Field key="arrival" label="到达方式">{!point.arrival ? '未声明（草稿）' : point.arrival.mode === 'node_proxy' ? '节点代理' : `显式内部通道 · ${point.arrival.internalPath.length} 段`}</Field>);
+    // Which of its building's entrances it is reached through: a record only for a point reached at its own node, so it can be
+    // changed or cleared (an entrance split off is linked up again here); an internal route starts there, so it stays.
+    const facility = point.facilityId ? map.facilities[point.facilityId] : undefined, linked = point.accessPointId ? map.accessPoints[point.accessPointId] : undefined;
+    if (facility) rows.push(<Field key="access" label="接入入口">{point.arrival?.mode === 'explicit_internal'
+      ? <>{linked ? <Link entityKey={'accessPoints/' + point.accessPointId} map={map} /> : '未指定'}<p className="muted">显式内部通道从这个入口出发；要改关联，先改到达方式。</p></>
+      : <><CommitSelect label="接入入口" value={point.accessPointId ?? ''} options={[['', '（不关联）'], ...facility.accessPointIds.map(entrance => [entrance, map.accessPoints[entrance]?.name ?? entrance] as const)]}
+          onCommit={entrance => run({ type: 'updateServicePoint', id, patch: { accessPointId: entrance || null } }, entrance ? '关联入口' : '解除入口关联')} />
+        {linked && !Object.values(map.roads).some(road => road.fromNodeId === linked.nodeId || road.toNodeId === linked.nodeId)
+          && <p className="muted">这个入口的节点还没有连着道路。节点代理作业点按自己的节点接入路网，不经过入口。</p>}</>}</Field>);
   } else if (item.reason) rows.push(<Field key="reason" label="说明">{item.reason}</Field>);
   return <dl className="fields">{rows}</dl>;
 }

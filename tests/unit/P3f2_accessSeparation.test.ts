@@ -4,6 +4,7 @@ import { entranceMovable, entranceSlide, onOutline } from '../../src/app/canvas/
 import { translateCommand } from '../../src/app/canvas/movePreview';
 import { separationCommand, separationSpot } from '../../src/app/canvas/separation';
 import { relatedKeys } from '../../src/app/ui/relations';
+import { refusalMessage } from '../../src/app/state/properties';
 import { inspectAccessSeparation, runAccessSeparation } from '../../src/domain/accessSeparation';
 import { applyMapCommand, commandSupport, type MapCommand } from '../../src/domain/commands';
 import { loadMap } from '../../src/domain/load';
@@ -38,8 +39,9 @@ function gateOnJunction(change: (map: Json) => void = () => {}): YardMap {
     change(json);
   });
 }
-/** The same with the junction declared and its turns explicit (east road one to two and back): a map the kernel treats as
- *  complex, as every real map is. */
+/** The same with the junction declared and its turns explicit (east road one to two and back). A junction of only two roads
+ *  counts as a plain subdivision (`onlySubdivisionJunctions`), so the kernel's command checks still treat this map as simple;
+ *  the P3b2a tests below add a road resource to make it complex, as every real map is. */
 function complexGate(change: (map: Json) => void = () => {}): YardMap {
   return gateOnJunction(json => {
     json.junctions!.jGate = { name: '东墙路口', nodeIds: ['nJunction'], model: 'explicit_movements', resourceIds: [], provenance: { category: 'synthetic' } };
@@ -283,5 +285,89 @@ describe('where a separated entrance goes', () => {
     const off = gateOnJunction(json => { (json.nodes!.nJunction as { position: number[] }).position = [65, 15, 0]; });
     expect(separationSpot(off, 'aGate')).toEqual({ reason: expect.stringContaining('不在所属建筑的外边界上') });
     expect(separationCommand(off, 'aGate')).toEqual({ reason: expect.stringContaining('不在所属建筑的外边界上') });
+  });
+});
+
+describe('linking a service point to an entrance of its building (P3b2a)', () => {
+  const service = { name: '门口装卸', kind: 'loading', nodeId: 'nJunction', facilityId: 'fWorkshop', accessPointId: 'aGate', resourceIds: [],
+    arrival: { mode: 'node_proxy', transferAssumption: 'included_in_service_duration', note: '测试' }, provenance: { category: 'synthetic' } };
+  /** The gate map made complex for the kernel (a road resource: a junction of two roads alone counts as a plain subdivision)
+   *  with the workshop's point at the gate, a second door of the workshop on a node of its own (as the entrance tool adds
+   *  one), and another building with a door of its own. */
+  const withService = () => complexGate(json => {
+    json.resources!.rsMain = { name: '主路通行', kind: 'road', capacityUnit: 'vehicle', capacity: { state: 'unknown' }, controlModel: 'unknown',
+      appliesTo: [{ entityType: 'roads', entityId: 'rE1' }], provenance: { category: 'synthetic' } };
+    json.servicePoints!.sGate = { ...service };
+    json.nodes!.nSouth = node('南门节点', [30, 0, 0], 'access');
+    json.accessPoints!.aSouth = { name: '南门', facilityId: 'fWorkshop', nodeId: 'nSouth', provenance: { category: 'drawing' } };
+    (json.facilities!.fWorkshop as { accessPointIds: string[]; servicePointIds: string[] }).accessPointIds.push('aSouth');
+    (json.facilities!.fWorkshop as { servicePointIds: string[] }).servicePointIds.push('sGate');
+    json.facilities!.fYard = { name: '东侧堆场', kind: 'workshop', boundary: { outer: [[62, 0, 0], [90, 0, 0], [90, 10, 0], [62, 10, 0], [62, 0, 0]], holes: [] },
+      accessPointIds: ['aYard'], servicePointIds: [], heightM: { state: 'unknown' }, provenance: { category: 'synthetic' } };
+    json.nodes!.nYard = node('堆场门节点', [76, 10, 0], 'access');
+    json.accessPoints!.aYard = { name: '堆场门', facilityId: 'fYard', nodeId: 'nYard', provenance: { category: 'drawing' } };
+  });
+  const link = (map: YardMap, accessPointId: string | null, id = 'sGate') => editSession(createSession(map, true), { type: 'updateServicePoint', id, patch: { accessPointId } });
+
+  it('after a split on a complex map the user links it again: to the split-off entrance, to another door, or to none; one undo step each', () => {
+    const map = withService();
+    const { after } = split(map);
+    expect(after.servicePoints.sGate!.accessPointId).toBeUndefined();
+    // Complex to the kernel: moving the point to another node stays refused.
+    expect(commandSupport(after, { type: 'updateServicePoint', id: 'sGate', patch: { nodeId: 'nE1' } }).issues[0]?.code).toBe('OPERATION_DEPENDENCIES_UNSUPPORTED');
+    // The kernel refused this before P3b2a on complex maps (OPERATION_DEPENDENCIES_UNSUPPORTED).
+    for (const target of ['aGate', 'aSouth']) {
+      const result = link(after, target);
+      if (!result.ok) throw new Error(result.issues.map(issue => issue.code).join());
+      expect(result.session.map.servicePoints.sGate).toEqual({ ...after.servicePoints.sGate, accessPointId: target });
+      expect(result.session.past).toHaveLength(1);
+      expect(undoSession(result.session).map).toEqual(after);
+      // Only the link changed: the point is reached at its node as before.
+      expect(relatedKeys(result.session.map, 'accessPoints', target)).toContainEqual(['经此入口作业点', 'servicePoints/sGate']);
+    }
+    const cleared = link(map, null);
+    if (!cleared.ok) throw new Error(cleared.issues.map(issue => issue.code).join());
+    expect(cleared.session.map.servicePoints.sGate!.accessPointId).toBeUndefined();
+    expect(cleared.session.past).toHaveLength(1);
+    expect(undoSession(cleared.session).map).toEqual(map);
+    // The old and new entrances count as affected, as the old and new owner do for a change of owner.
+    expect(commandSupport(after, { type: 'updateServicePoint', id: 'sGate', patch: { accessPointId: 'aSouth' } }).affectedRefs)
+      .toEqual(expect.arrayContaining([{ kind: 'servicePoints', id: 'sGate' }, { kind: 'accessPoints', id: 'aSouth' }]));
+    expect(commandSupport(map, { type: 'updateServicePoint', id: 'sGate', patch: { accessPointId: null } }).affectedRefs).toContainEqual({ kind: 'accessPoints', id: 'aGate' });
+  });
+  it("refuses another building's entrance, a point with an internal route, a zone's point; its other fields stay as refused as before", () => {
+    const map = withService(), refused = (result: ReturnType<typeof link>) => result.ok ? 'ok' : result.issues.find(issue => issue.severity === 'error')?.code;
+    expect(refused(link(map, 'aYard'))).toBe('SERVICE_ACCESS_LINK_OWNER');
+    expect(refused(link(map, 'aGate', 'sZoneUnload'))).toBe('SERVICE_ACCESS_LINK_OWNER');
+    // A zone's point has no entrance to name, whatever is named and whatever its arrival (not the internal-route reason).
+    expect(commandSupport(map, { type: 'updateServicePoint', id: 'sZoneUnload', patch: { accessPointId: 'nope' } }).issues[0]?.code).toBe('SERVICE_ACCESS_LINK_OWNER');
+    const zoneRoute = structuredClone(map) as YardMap;
+    zoneRoute.servicePoints.sZoneUnload = { ...zoneRoute.servicePoints.sZoneUnload!, arrival: { mode: 'explicit_internal', entryNodeId: 'nE1', internalPath: [] } };
+    expect(commandSupport(zoneRoute, { type: 'updateServicePoint', id: 'sZoneUnload', patch: { accessPointId: 'aGate' } }).issues[0]?.code).toBe('SERVICE_ACCESS_LINK_OWNER');
+    // Deleting an entrance a point is linked to is refused, and the message says to unlink it first (not only to select it).
+    const deleting = applyMapCommand(map, { type: 'deleteSelection', selection: { nodes: [], roads: [], accessPoints: ['aGate'] } });
+    expect(deleting.ok ? '' : refusalMessage(deleting.issues, map)).toContain('作业点「门口装卸」关联着要删除的入口：先在它的属性栏「接入入口」选「（不关联）」');
+    // A point entering by an internal route cannot let go of its entrance: the only way offered is deleting it along (the
+    // example as it is: its loading point's internal route starts at the corner entrance).
+    const original = example(), internalDelete = applyMapCommand(original, { type: 'deleteSelection', selection: { nodes: [], roads: [], accessPoints: ['aWorkshop'] } });
+    expect(original.servicePoints.sLoading!.arrival?.mode).toBe('explicit_internal');
+    const internalText = internalDelete.ok ? '' : refusalMessage(internalDelete.issues, original);
+    expect(internalText).toContain('它的显式内部通道从这个入口出发，不能单独解除关联');
+    expect(internalText).not.toContain('（不关联）');
+    // A draft point with no owner may still let go of an entrance it names (only setting one needs the building).
+    const draft = complexGate(json => {
+      json.resources!.rsMain = { name: '主路通行', kind: 'road', capacityUnit: 'vehicle', capacity: { state: 'unknown' }, controlModel: 'unknown',
+        appliesTo: [{ entityType: 'roads', entityId: 'rE1' }], provenance: { category: 'synthetic' } };
+      json.servicePoints!.sDraft = { name: '草稿作业', kind: 'loading', nodeId: 'nLoading', accessPointId: 'aGate', resourceIds: [],
+        arrival: { mode: 'node_proxy', transferAssumption: 'included_in_service_duration', note: '测试' }, provenance: { category: 'synthetic' } };
+    });
+    expect(refused(link(draft, null, 'sDraft'))).toBe('ok');
+    expect(refused(link(draft, 'aGate', 'sDraft'))).toBe('ok');
+    expect(refused(link(draft, 'aSouth', 'sDraft'))).toBe('SERVICE_ACCESS_LINK_OWNER');
+    const internal = structuredClone(map) as YardMap;
+    internal.servicePoints.sGate = { ...internal.servicePoints.sGate!, arrival: { mode: 'explicit_internal', internalPath: [] } };
+    expect(commandSupport(internal, { type: 'updateServicePoint', id: 'sGate', patch: { accessPointId: 'aSouth' } }).issues[0]?.code).toBe('SERVICE_ACCESS_LINK_INTERNAL');
+    expect(refused(editSession(createSession(map, true), { type: 'updateServicePoint', id: 'sGate', patch: { nodeId: 'nE1' } }))).toBe('OPERATION_DEPENDENCIES_UNSUPPORTED');
+    expect(refused(editSession(createSession(map, true), { type: 'updateServicePoint', id: 'sGate', patch: { accessPointId: 'aSouth', nodeId: 'nE1' } }))).toBe('OPERATION_DEPENDENCIES_UNSUPPORTED');
   });
 });

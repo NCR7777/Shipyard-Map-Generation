@@ -63,5 +63,5 @@ export function separateEntrance(id: string): void {
   if (!apply(plan.command, '拆出入口节点')) return;
   select(['accessPoints/' + id]);
   const services = Object.values(store.get().session!.map.servicePoints).filter(point => point.nodeId === entrance.nodeId && point.facilityId === entrance.facilityId).length;
-  notify(`已拆出入口「${entrance.name}」：它沿外边界移开 ${Number(plan.distanceM.toFixed(2))} m 到自己的节点；「${old.name}」和它的道路保持不变${services ? `，本建筑在那里的 ${services} 个作业点也留在原节点，仍接在路网上（之后移动建筑或改轮廓时它们不跟着走）` : ''}${linked ? `；原来关联这个入口的 ${linked} 个作业点不再关联它` : ''}。入口现在没有接路，需要时用道路工具从入口节点画路接上；它可以沿外边界拖动，所属建筑也能随之移动或改轮廓。`);
+  notify(`已拆出入口「${entrance.name}」：它沿外边界移开 ${Number(plan.distanceM.toFixed(2))} m 到自己的节点；「${old.name}」和它的道路保持不变${services ? `，本建筑在那里的 ${services} 个作业点也留在原节点，仍接在路网上（之后移动建筑或改轮廓时它们不跟着走）` : ''}${linked ? `；原来关联这个入口的 ${linked} 个作业点不再关联它（可在作业点属性栏「接入入口」重新关联）` : ''}。入口现在没有接路，需要时用道路工具从入口节点画路接上；它可以沿外边界拖动，所属建筑也能随之移动或改轮廓。`);
 }

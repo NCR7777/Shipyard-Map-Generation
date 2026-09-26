@@ -139,6 +139,14 @@ function planningFields(entity: { extensions?: Record<string, unknown> }): Recor
   const value = entity.extensions?.[PLANNING];
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
+/** A building's service point reached at its own node (node proxy, or arrival not yet declared) may name another entrance of
+ *  its building, or none: routing never goes through it (the user's workflow, 2026-09-26: an entrance split off is linked up
+ *  again by hand). An internal route starts at the entrance it names, so there the link cannot simply change. */
+function serviceAccessLinkSupport(map: YardMap, id: string, accessPointId: unknown): void {
+  const point = map.servicePoints[id]!, path = '/servicePoints/' + id + '/accessPointId';
+  if (accessPointId !== null && (!point.facilityId || typeof accessPointId !== 'string' || map.accessPoints[accessPointId]?.facilityId !== point.facilityId)) fail('SERVICE_ACCESS_LINK_OWNER', '只能把建筑的作业点关联到同一建筑的入口。', path);
+  if (point.arrival?.mode === 'explicit_internal') fail('SERVICE_ACCESS_LINK_INTERNAL', `作业点「${point.name}」有显式内部通道，通道从所关联的入口出发，改关联会改变通道起点；请先改到达方式。`, path);
+}
 function advancedMap(map: YardMap): boolean {
   if (onlySubdivisionJunctions(map)) return false;
   return Object.hasOwn(map.extensionNamespaces, PLANNING) || (['junctions', 'movements', 'resources'] as const).some(key => Object.keys(map[key]).length > 0);
@@ -453,8 +461,9 @@ function inspectSupport(map: YardMap, command: MapCommand): CommandSupport {
         const localFields: Record<typeof kind, readonly string[]> = {
           nodes: ['name', 'position'], roads: ['name', 'shapePoints', 'geometry', 'direction', 'widthM', 'heightLimitM', 'massLimitKg', 'speedLimitMps'],
           facilities: ['name', 'kind', 'heightM', 'boundary'], zones: ['name', 'kind', 'passability', 'boundary'],
-          accessPoints: ['name'], servicePoints: ['name', 'kind'],
+          accessPoints: ['name'], servicePoints: ['name', 'kind', 'accessPointId'],
         };
+        if (kind === 'servicePoints' && changed.includes('accessPointId')) serviceAccessLinkSupport(map, update.id, (update.patch as { accessPointId?: unknown }).accessPointId);
         const unsupported = changed.find(field => !localFields[kind].includes(field)) ?? ('newNode' in update && update.newNode ? 'nodeId' : undefined);
         if (unsupported) fail('OPERATION_DEPENDENCIES_UNSUPPORTED', '字段 ' + unsupported + ' 尚无此地图的引用维护规则；请保留该关联，或使用明确的接路/关联操作。', '/' + kind + '/' + update.id + '/' + unsupported);
         const changesBoundary = changed.includes('boundary') || update.type === 'updateFacility' && !!update.entranceAdjustments?.length;
@@ -497,8 +506,8 @@ function inspectSupport(map: YardMap, command: MapCommand): CommandSupport {
       }
       if (update.type === 'updateAccessPoint' || update.type === 'updateServicePoint') {
         if (update.newNode) affectedRefs.push({ kind: 'nodes', id: update.newNode.id });
-        for (const field of ['facilityId', 'zoneId'] as const) if (changed.includes(field)) {
-          for (const id of [previous[field], (update.patch as Record<string, unknown>)[field]]) if (typeof id === 'string') affectedRefs.push({ kind: field === 'facilityId' ? 'facilities' : 'zones', id });
+        for (const [field, owner] of [['facilityId', 'facilities'], ['zoneId', 'zones'], ['accessPointId', 'accessPoints']] as const) if (changed.includes(field)) {
+          for (const id of [previous[field], (update.patch as Record<string, unknown>)[field]]) if (typeof id === 'string') affectedRefs.push({ kind: owner, id });
         }
       }
       if ((update.type === 'updateRoad' || update.type === 'updateFacility') && update.designAssumption

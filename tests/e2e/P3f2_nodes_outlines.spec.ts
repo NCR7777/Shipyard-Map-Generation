@@ -230,6 +230,52 @@ test('a gate split off beside its service point: the service point stays on the 
   expect(errors).toEqual([]);
 });
 
+test('after a split the service point is linked to an entrance again in its properties, and unlinked; one undo step each (P3b2a)', async ({ page }) => {
+  const errors: string[] = []; await open(page, errors, true, true);
+  await selectKeys(page, ['accessPoints/aWest']);
+  await inspector(page).getByRole('button', { name: '拆出入口节点' }).click();
+  await expect(page.getByRole('status')).toContainText('不再关联它');
+  await selectKeys(page, ['servicePoints/sWest']);
+  const choice = inspector(page).getByRole('combobox', { name: '接入入口' });
+  await expect(choice).toHaveValue('');
+  await choice.selectOption('aWest');
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：关联入口/);
+  expect((await map(page)).servicePoints.sWest!.accessPointId).toBe('aWest');
+  // The gate is off the road network until a road is drawn to it; the point is reached at its own node all the same.
+  await expect(inspector(page)).toContainText('这个入口的节点还没有连着道路');
+  await choice.selectOption('');
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：解除入口关联/);
+  expect((await map(page)).servicePoints.sWest!.accessPointId).toBeUndefined();
+  await undoButton(page).click();
+  expect((await map(page)).servicePoints.sWest!.accessPointId).toBe('aWest');
+  expect(errors).toEqual([]);
+});
+
+test('the entrance field lists only the building\'s entrances and notes one off the roads; an internal route shows its entrance, a zone\'s point has no field (P3b2a)', async ({ page }) => {
+  const errors: string[] = []; await open(page, errors, true, true, true);
+  await selectKeys(page, ['accessPoints/aWest']);
+  await inspector(page).getByRole('button', { name: '拆出入口节点' }).click();
+  await expect(page.getByRole('status')).toContainText('可在作业点属性栏「接入入口」重新关联');
+  await selectKeys(page, ['servicePoints/sWest']);
+  const choice = inspector(page).getByRole('combobox', { name: '接入入口' });
+  // The free building's two doors and none; not the workshop's entrance.
+  expect(await choice.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value))).toEqual(['', 'aWest', 'aDoor']);
+  const note = inspector(page).getByText('这个入口的节点还没有连着道路');
+  await choice.selectOption('aDoor');
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：关联入口/);
+  await expect(note).toHaveCount(0);
+  await choice.selectOption('aWest');
+  await expect(note).toBeVisible();
+  // The workshop's loading point enters by an internal route: its entrance shown, no choice.
+  await selectKeys(page, ['servicePoints/sLoading']);
+  await expect(inspector(page).getByRole('combobox', { name: '接入入口' })).toHaveCount(0);
+  await expect(inspector(page)).toContainText('显式内部通道从这个入口出发');
+  // A zone's point has no entrance to name.
+  await selectKeys(page, ['servicePoints/sZoneUnload']);
+  await expect(inspector(page).locator('dt', { hasText: /^接入入口$/ })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('a click at a road end selects its node whether or not the pointer rested there first; mid-road selects the road', async ({ page }) => {
   const errors: string[] = []; await open(page, errors);
   const end = await at(page, 100 - await px(page, 5), 0);

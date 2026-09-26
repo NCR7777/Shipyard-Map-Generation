@@ -68,6 +68,12 @@ export function refusalMessage(issues: readonly Issue[], map?: YardMap): string 
 /** An entrance the edit would carry across its building's outline (an outline drag under a corner entrance, say): its name,
  *  and what to do on the canvas, in place of the kernel's IDs and its advice for moves of public roads. */
 function readableRefusal(issue: Issue, map: YardMap): string | null {
+  // Deleting an entrance a service point is linked to: the kernel says to select the point too, which would delete it as well.
+  const linked = issue.code === 'ENTITY_IN_USE' ? /^\/servicePoints\/([^/]+)\/accessPointId$/.exec(issue.jsonPath ?? '') : null;
+  const point = linked ? map.servicePoints[linked[1]!] : undefined;
+  if (point) return point.arrival?.mode === 'explicit_internal'
+    ? `作业点「${point.name}」关联着要删除的入口，它的显式内部通道从这个入口出发，不能单独解除关联；要删除这个入口，请把它一并选中删除（作业点也会删除）。`
+    : `作业点「${point.name}」关联着要删除的入口：先在它的属性栏「接入入口」选「（不关联）」，或把它一并选中删除（作业点也会删除）。`;
   const entrance = issue.code === 'OWNER_ENTRANCE_REPOSITION_REQUIRED' && issue.entityId ? map.accessPoints[issue.entityId] : undefined;
   if (!entrance) return null;
   const facility = map.facilities[entrance.facilityId]?.name ?? entrance.facilityId, where = /位于(轮廓外|轮廓内|边界上)/.exec(issue.message)?.[1] ?? '轮廓另一侧';
