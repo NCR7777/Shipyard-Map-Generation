@@ -324,6 +324,57 @@ test('the service point tool: a click on a door puts a node-proxy point on its n
   expect(errors).toEqual([]);
 });
 
+test('a double click on the selected road inserts a bend there, Alt+click on it removes it; one undo step each; save as a browser project from the file menu (P3i)', async ({ page }) => {
+  const errors: string[] = []; await open(page, errors);
+  // Not selected yet: a double click only selects the road (its first click), nothing is inserted.
+  const first = await at(page, 40, 0);
+  await page.mouse.dblclick(first.x, first.y);
+  await expect(inspector(page).locator('.entity-heading')).toContainText((await map(page)).roads.rMain!.name);
+  expect((await map(page)).roads.rMain!.shapePoints).toEqual([]);
+  await expect(undoButton(page)).not.toHaveAttribute('title', /插入折点/);
+  await selectKeys(page, ['roads/rMain']);
+  // The road's properties say how.
+  await expect(inspector(page)).toContainText('双击道路线身插入折点');
+  await expect(inspector(page)).toContainText('Alt+点击折点删除');
+  const on = await at(page, 70, 0);
+  await page.mouse.dblclick(on.x, on.y);
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：插入折点/);
+  await expect(page.getByRole('status')).toContainText('已在道路上插入折点');
+  const inserted = await map(page);
+  // Where the pointer was (screen pixels round it by a few centimetres), on the line.
+  const bend = inserted.roads.rMain!.shapePoints!;
+  expect(bend).toHaveLength(1);
+  expect(Math.abs(bend[0]![0] - 70)).toBeLessThan(0.1);
+  expect(bend[0]!.slice(1)).toEqual([0, 0]);
+  await expect(inspector(page).locator('.entity-heading')).toContainText(inserted.roads.rMain!.name);
+  // Alt+click on the new bend: gone again, the road as it was.
+  await page.keyboard.down('Alt'); await page.mouse.click(on.x, on.y); await page.keyboard.up('Alt');
+  await expect(undoButton(page)).toHaveAttribute('title', /撤销：删除折点/);
+  expect((await map(page)).roads.rMain!.shapePoints).toEqual([]);
+  await undoButton(page).click();
+  expect((await map(page)).roads.rMain!.shapePoints).toEqual(bend);
+  // Another browser project with the open map, from the file menu: the copy is the one open afterwards.
+  // Built, not literal: tsc would try to resolve a literal module path of the dev server.
+  const active = () => page.evaluate(async () => (await import('/src/app/state/' + 'project.ts')).activeProjectId());
+  const original = await active();
+  await page.getByRole('navigation', { name: '主菜单' }).getByRole('button', { name: '文件' }).click();
+  await page.getByRole('menuitem', { name: /另存为浏览器工程/ }).click();
+  await expect(page.getByRole('status')).toContainText('并打开');
+  await expect.poll(active).not.toBe(original);
+  expect(await active()).toBeTruthy();
+  expect(errors).toEqual([]);
+});
+
+test("a double click on a door's connector road is refused: a bend there would pin the building (P3i)", async ({ page }) => {
+  const errors: string[] = []; await open(page, errors, false, false, true);
+  await selectKeys(page, ['roads/rDoor']);
+  const on = await at(page, 60, 70);
+  await page.mouse.dblclick(on.x, on.y);
+  await expect(page.getByRole('alert')).toContainText('将不能移动');
+  expect((await map(page)).roads.rDoor!.shapePoints).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('a click at a road end selects its node whether or not the pointer rested there first; mid-road selects the road', async ({ page }) => {
   const errors: string[] = []; await open(page, errors);
   const end = await at(page, 100 - await px(page, 5), 0);

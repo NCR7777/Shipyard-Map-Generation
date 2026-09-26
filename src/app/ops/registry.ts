@@ -4,6 +4,7 @@ import { editBlock, redo, undo } from '../state/edit';
 import { duplicate, duplicateRefusal, lockedSelection, selectionOf } from '../state/editOps';
 import { setTool } from '../state/draft';
 import { files, linkFile, openLinked, saveAll, saveAs } from '../state/localFile';
+import { saveAsBrowserProject } from '../state/project';
 import { frame, frameBounds, notify, sceneOf, select, store, type AppState, type ShapeKind, type Tool } from '../state/store';
 
 export type MenuId = 'file' | 'edit' | 'view' | 'check' | 'help';
@@ -52,6 +53,9 @@ const useTool = (tool: Tool, shape?: ShapeKind) => () => {
   setTool(tool);
 };
 const needDrawable = (state: AppState): true | string => editBlock(state.session) ?? true;
+/** An open map in a ready browser project (saving, and saving as another project). */
+const needProject = (state: AppState): true | string => !state.session ? '请先打开地图'
+  : state.project.phase === 'open' ? true : state.project.phase === 'memory' ? '地图只在本页内存中，请用「导出副本」' : '浏览器工程尚未就绪';
 /** Entrances need a building to go on, and must not write a locked or hidden layer (the entrance, its node, the building's list). */
 const needEntrances = (state: AppState): true | string => {
   const blocked = editBlock(state.session); if (blocked) return blocked;
@@ -82,9 +86,10 @@ export const OPERATIONS: readonly Operation[] = [
   { id: 'file.openLinked', label: '打开并关联本地 JSON…', menu: 'file', enabled: () => files.capabilities().open ? true : '这个浏览器不能直接读写本地文件', run: () => { void openLinked(); } },
   { id: 'file.projects', label: '浏览器工程…', menu: 'file', keys: ['Ctrl+Shift+O'], run: () => store.set({ overlay: 'projects' }) },
   // Changes are saved automatically; Ctrl+S also keeps a checkpoint (the last two are kept for recovery).
-  { id: 'file.save', label: '保存', menu: 'file', keys: ['Ctrl+S'], enabled: state => !state.session ? '请先打开地图'
-    : state.project.phase === 'open' ? true : state.project.phase === 'memory' ? '地图只在本页内存中，请用「导出副本」' : '浏览器工程尚未就绪', run: () => { void saveAll(); } },
+  { id: 'file.save', label: '保存', menu: 'file', keys: ['Ctrl+S'], enabled: needProject, run: () => { void saveAll(); } },
   { id: 'file.saveAs', label: '文件另存为…', menu: 'file', keys: ['Ctrl+Shift+S'], enabled: needMap, run: () => { void saveAs(); } },
+  // The open map as a new browser project, which then opens (the old tool's browser save-as).
+  { id: 'file.saveAsProject', label: '另存为浏览器工程', menu: 'file', enabled: needProject, run: () => { void saveAsBrowserProject(); } },
   { id: 'file.link', label: '关联原文件…', menu: 'file', enabled: state => !files.capabilities().open ? '这个浏览器不能直接读写本地文件'
     : state.project.phase === 'open' && state.session ? true : '请先打开浏览器工程', run: () => { void linkFile(); } },
   { id: 'file.addBackground', label: '添加底图…', menu: 'file', enabled: state => editBlock(state.session) ?? (state.drawing.lockedTypes.includes('backgroundLayers') ? '底图图层已锁定，可在「图层」页解锁' : true), run: () => bridge.pickBackground() },

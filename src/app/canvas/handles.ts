@@ -1,14 +1,15 @@
 import type { SceneSnapshot } from '../../adapters/contracts';
-import { canEditBoundary, type MapCommand } from '../../domain/commands';
+import { applyMapCommand, canEditBoundary, commandSupport, type MapCommand } from '../../domain/commands';
+import { nodeOwners } from '../../domain/ownerEditing';
 import type { Polygon, Vec3, YardMap } from '../../domain/model';
 import { sameValue } from '../../domain/value';
 import { worldToScreen, type Camera, type Vec2 } from '../../geometry/coordinates';
 import { bendPathSpan } from '../../geometry/curveEditing';
 import { insertPolygonVertex, movePolygonVertex, rectangleFrame, removePolygonVertex, resizeRectangleCorner, type RectangleCorner } from '../../geometry/rectangles';
-import { movePathAnchor, pathLength, pathToRoadGeometry, pointAt, poseAtDistance, type ResolvedPath } from '../../geometry/roadPath';
+import { movePathAnchor, pathLength, pathToRoadGeometry, pointAt, poseAtDistance, projectToPath, splitPath, type ResolvedPath } from '../../geometry/roadPath';
 import type { AppState } from '../state/store';
 import { snapToGrid } from './drafting';
-import { uid } from './movePreview';
+import { translateCommand, uid } from './movePreview';
 import { entranceAdjustments } from './outlineEntrances';
 
 /** Keep the width control clear of a centreline bend control without altering the metric road band (ported from ../map). */
@@ -189,6 +190,77 @@ export function insertVertex(target: Extract<Target, { kind: 'facilities' | 'zon
 /** Alt+click on a vertex removes it; double-click on a bend handle straightens that span. */
 export function removeVertex(target: Extract<Target, { kind: 'facilities' | 'zones' }>, handle: Extract<Handle, { kind: 'vertex' }>): Polygon {
   return removePolygonVertex(target.boundary, handle.ring, handle.index);
+}
+/** A double click on the selected road's line inserts a bend there: the span splits at the nearest point of the centreline,
+ *  a curve into two curves along the same shape, so the road keeps its shape. Null when the point is farther than `reachM`
+ *  from the line, or at a bend or end already there. */
+export function insertAnchor(target: Extract<Target, { kind: 'roads' }>, at: Vec3, reachM: number): ResolvedPath | null {
+  const projection = projectToPath(target.path, at);
+  if (!(projection.offsetM <= reachM) || projection.t <= 1e-6 || projection.t >= 1 - 1e-6) return null;
+  const [before, after] = splitPath(target.path, projection.spanIndex, projection.t);
+  const path: ResolvedPath = { anchors: [...before.anchors, ...after.anchors.slice(1)], spans: [...before.spans, ...after.spans] };
+  // A road on one level keeps it exactly: the split's arithmetic may leave the new points a rounding off it, which the kernel
+  // refuses as a change of height.
+  const z = target.path.anchors[0]![2], points = (p: ResolvedPath) => [...p.anchors, ...p.spans.flatMap(span => span.kind === 'cubic' ? [span.control1, span.control2] : [])];
+  if (points(target.path).every(point => point[2] === z)) for (const point of points(path)) point[2] = z;
+  return path;
+}
+/** Why the bend would stop a building or zone moving that could before, or null. An entrance's connector (the one road out of
+ *  a building's own entrance node) must stay straight to stretch when its building moves; a bend in it pins the building. */
+export function bendStopsMoving(map: YardMap, roadId: string, path: ResolvedPath, target: Extract<Target, { kind: 'roads' }>): string | null {
+  const change = editCommand(map, target, { path, label: '' }); if (!change) return null;
+  const road = map.roads[roadId]; if (!road) return null;
+  const owners = new Set([road.fromNodeId, road.toNodeId].flatMap(node => [...nodeOwners(map, node).owners]));
+  let after: YardMap | undefined;
+  for (const owner of owners) {
+    const kind = map.facilities[owner] ? 'facilities' as const : map.zones[owner] ? 'zones' as const : null; if (!kind) continue;
+    const move = translateCommand({ nodes: [], roads: [], [kind]: [owner] }, [0.001, 0, 0]);
+    if (!commandSupport(map, move).allowed) continue;
+    if (!after) { const result = applyMapCommand(map, change.command); if (!result.ok) return null; after = result.map; }
+    if (commandSupport(after, move).allowed) continue;
+    const name = map[kind][owner]!.name;
+    return `这条路是「${name}」入口的接入段。接入段要保持直线，「${name}」整体移动时它才能随着伸缩；插入折点后「${name}」将不能移动，所以没有插入。`;
+  }
+  return null;
+}
+/** Alt+click on a bend removes it: its two spans join into one, straight when both were. Otherwise one curve keeps the outer
+ *  end tangents (a straight side counts as the curve with controls at its thirds). A curve split at parameter t has its two
+ *  inner controls in line with the split point at distances t : 1 − t, so t is read from them; when splitting the joined
+ *  curve there gives the two spans back, the bend came from one split and that curve is the original, at any t. Two curves
+ *  not from one split join approximately (t bounded, see below); a side of zero length leaves the other span as it is. */
+export function removeAnchor(target: Extract<Target, { kind: 'roads' }>, handle: Extract<Handle, { kind: 'anchor' }>): ResolvedPath {
+  const path = structuredClone(target.path), index = handle.index, before = path.spans[index - 1]!, after = path.spans[index]!;
+  const a = path.anchors[index - 1]!, m = path.anchors[index]!, b = path.anchors[index + 1]!;
+  let joined: ResolvedPath['spans'][number] = { kind: 'line' };
+  if (before.kind === 'cubic' || after.kind === 'cubic') {
+    const along = (from: Vec3, to: Vec3, f: number): Vec3 => [from[0] + (to[0] - from[0]) * f, from[1] + (to[1] - from[1]) * f, from[2] + (to[2] - from[2]) * f];
+    const first = before.kind === 'cubic' ? before.control1 : along(a, m, 1 / 3), last = after.kind === 'cubic' ? after.control2 : along(b, m, 1 / 3);
+    const innerLeft = before.kind === 'cubic' ? before.control2 : along(m, a, 1 / 3), innerRight = after.kind === 'cubic' ? after.control1 : along(m, b, 1 / 3);
+    const dl = Math.hypot(m[0] - innerLeft[0], m[1] - innerLeft[1]), dr = Math.hypot(innerRight[0] - m[0], innerRight[1] - m[1]);
+    const left = pathLength({ anchors: [a, m], spans: [before] }).lengthM, right = pathLength({ anchors: [m, b], spans: [after] }).lengthM;
+    const curve = (t: number): ResolvedPath['spans'][number] => ({ kind: 'cubic', control1: along(a, first, 1 / t), control2: along(b, last, 1 / (1 - t)) });
+    const byControls = dl / (dl + dr);
+    // A bend made by splitting one curve: splitting the joined curve at the parameter the inner controls give returns the two
+    // spans, whatever the parameter; then that curve is the original.
+    const exact = byControls > 0 && byControls < 1 && (() => {
+      const [l, r] = splitPath({ anchors: [a, b], spans: [curve(byControls)] }, 0, byControls);
+      const points = (span: ResolvedPath['spans'][number], from: Vec3, to: Vec3) => span.kind === 'cubic' ? [span.control1, span.control2] : [along(from, to, 1 / 3), along(from, to, 2 / 3)];
+      const got = [...points(l.spans[0]!, a, m), l.anchors[1]!, ...points(r.spans[0]!, m, b)], want = [...points(before, a, m), m, ...points(after, m, b)];
+      const tolerance = 1e-6 * Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]));
+      return got.every((point, k) => Math.hypot(point[0] - want[k]![0], point[1] - want[k]![1]) <= tolerance);
+    })();
+    if (exact) joined = curve(byControls);
+    // A side of zero length adds nothing: the other span, as it is.
+    else if (!(left > 0)) joined = after;
+    else if (!(right > 0)) joined = before;
+    // ponytail: two curves not from one split join approximately: t from the inner controls when they give a sensible one (on the
+    // Hanwha map's bends beside curves this strays less than the lengths' ratio), else from the lengths, kept within 0.1–0.9 so
+    // the controls are never flung far out (t near 0 or 1 multiplies them tenfold and more).
+    else joined = curve(Math.min(0.9, Math.max(0.1, byControls >= 0.1 && byControls <= 0.9 ? byControls : left / (left + right))));
+  }
+  path.anchors.splice(index, 1);
+  path.spans.splice(index - 1, 2, joined);
+  return path;
 }
 export function straighten(target: Extract<Target, { kind: 'roads' }>, span: number): ResolvedPath {
   const path = structuredClone(target.path); path.spans[span] = { kind: 'line' }; return path;

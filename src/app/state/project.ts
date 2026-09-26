@@ -251,6 +251,21 @@ export async function backupBeforeUpgrade(): Promise<boolean> {
   try { const copy = await projects.backup(newId('project'), map, editorStateOf(state) ?? undefined); notify(`升级前的原图已另存为「${copy.name}」。`); return true; }
   catch (error) { notify(`没有升级：升级前的原图未能另存（${message(error)}）。`, 'error'); return false; }
 }
+/** 文件 › 另存为浏览器工程: the open map as a new browser project, which then opens, as the old tool's browser save-as; the
+ *  original, saved as it stood, stays in the project list. */
+export async function saveAsBrowserProject(): Promise<void> {
+  const state = store.get(), map = state.session?.map; if (!map) return;
+  // What would stop the switch is checked first, so a refusal leaves no copy behind: a file being read or written, or edits
+  // the original project could not take.
+  if (fileBusy()) { notify(FILE_BUSY, 'error'); return; }
+  if (!(await flush())) { notify('当前工程还有修改没能写入浏览器（见状态栏），没有另存；请先处理保存状态。', 'error'); return; }
+  try {
+    const copy = await projects.backup(newId('project'), map, editorStateOf(state) ?? undefined);
+    if (await openProject(copy.projectId)) notify(`已另存为「${copy.name}」并打开；原工程仍在「浏览器工程」中。`);
+    // openProject has said why; the copy is kept, and can be opened from the project list later.
+    else notify(`${store.get().message?.text ?? '没能切换过去'}（另存的「${copy.name}」已在「浏览器工程」里，可以从那里打开；现在仍在原工程。）`, 'error');
+  } catch (error) { notify(`另存为浏览器工程失败：${message(error)}`, 'error'); }
+}
 /** After another tab saved this project: keep this page's map as a separate recovery copy. */
 export async function backupCurrent(): Promise<void> {
   const state = store.get(), map = state.session?.map; if (!map) return;

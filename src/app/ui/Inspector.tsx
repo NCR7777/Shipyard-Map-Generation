@@ -212,7 +212,8 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
       physicalRow('heightLimitM', '限高', 'm', LENGTH),
       physicalRow('massLimitKg', '承载', units.mass, MASS, unit => setUnits({ mass: unit as 't' | 'kg' })),
       physicalRow('speedLimitMps', '限速', units.speed, SPEED, unit => setUnits({ speed: unit as 'km/h' | 'm/s' })),
-      <Field key="g" label="几何">{curved ? '含曲线段' : '折线'} · 内部锚点 {(road.geometry?.anchors ?? road.shapePoints ?? []).length} 个</Field>);
+      <Field key="g" label="几何">{curved ? '含曲线段' : '折线'} · 内部锚点 {(road.geometry?.anchors ?? road.shapePoints ?? []).length} 个
+        <p className="muted">双击道路线身插入折点（曲线段中点的橙色菱形双击是拉直），Alt+点击折点删除；拖动折点移动。</p></Field>);
     if (chain.length > 1) rows.push(<Field key="chain" label="连续路段"><button className="button" onClick={() => select(chain.map(road => 'roads/' + road))}>选中连续的 {chain.length} 段</button>
       <p className="muted">方向、宽度等参数相同、首尾相接且中间没有业务点的路段，可一起批量修改。</p></Field>);
   } else if (item.kind === 'facilities' || item.kind === 'zones') {

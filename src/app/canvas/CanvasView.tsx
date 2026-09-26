@@ -16,7 +16,7 @@ import { adjustFrame, adjustPartAt, dragTransform, pixelAt, type AdjustFrame, ty
 import { entranceSlide } from './entrances';
 import { polygonTouchesBox, polylineTouchesBox, type Box } from './boxSelect';
 import { click as drawClick, dragsRectangle, finish as drawFinish, preview as drawPreview, removeLast, type DrawingContext, type PointerInput } from './drawingTools';
-import { dragHandle, editCommand, handleAt, handlePoint, handlesOf, insertVertex, removeVertex, selectedTarget, straighten, type Edit, type Handle, type Target } from './handles';
+import { bendStopsMoving, dragHandle, editCommand, handleAt, handlePoint, handlesOf, insertAnchor, insertVertex, removeAnchor, removeVertex, selectedTarget, straighten, type Edit, type Handle, type Target } from './handles';
 import { planMove, type MovePlan } from './movePreview';
 import { entranceAdjustments, entranceOverlay } from './outlineEntrances';
 import { endKey, pressTarget } from './pressTarget';
@@ -119,6 +119,9 @@ export function CanvasView() {
   const lastInput = useRef<PointerInput | null>(null);
   /** The previous drawing click, to recognise the second click of a double-click. */
   const lastClick = useRef<{ at: number; screen: Vec2 } | null>(null);
+  /** The selection as each of the last two presses began: a double click edits a road only if it was already the one selected
+   *  before its first click (that click selects what it lands on). */
+  const pressSelections = useRef<[readonly string[], readonly string[]]>([[], []]);
   /** Everything a drawing tool needs, read fresh at each event. */
   function drawingContext(): DrawingContext | null {
     const state = store.get(), current = state.session?.map; if (!current) return null;
@@ -321,6 +324,7 @@ export function CanvasView() {
   }, [scene]);
 
   function onPointerDown(event: React.PointerEvent) {
+    pressSelections.current = [pressSelections.current[1], store.get().selection];
     if (!scene || gesture.current) return;
     const at = point(event);
     if (event.button === 1 || (event.button === 0 && (tool === 'pan' || space.current))) {
@@ -496,6 +500,8 @@ export function CanvasView() {
       if (gestureState.alt && handle.kind === 'vertex' && target.kind !== 'roads') {
         try { commitEdit(map, target, { boundary: removeVertex(target, handle), label: '删除顶点' }); }
         catch (error) { notify(error instanceof Error ? error.message : String(error), 'error'); }
+      } else if (gestureState.alt && handle.kind === 'anchor' && target.kind === 'roads') {
+        if (commitEdit(map, target, { path: removeAnchor(target, handle), label: '删除折点' }, '删除折点')) notify('已删除折点，两侧的段合为一段。');
       } else if (!gestureState.alt && handle.kind === 'insert' && target.kind !== 'roads') {
         const label = target.mode === 'rect' ? '插入顶点（矩形改为多边形）' : '插入顶点';
         try { if (commitEdit(map, target, { boundary: insertVertex(target, handle), label }, label)) notify(`已在边的中点插入顶点${target.mode === 'rect' ? '，矩形改为自由多边形' : ''}，可以拖动它。`); }
@@ -562,10 +568,18 @@ export function CanvasView() {
     onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
     onPointerCancel={cancelGesture} onLostPointerCapture={event => { if (gesture.current?.pointerId === event.pointerId) cancelGesture(); }}
     onDoubleClick={event => {
-      // Double-clicking a bend handle straightens that span.
-      const map = store.get().session?.map, at = point(event);
-      const handle = target?.kind === 'roads' ? handleAt(handlesOf(target, camera.current), at, camera.current) : null;
-      if (map && target?.kind === 'roads' && handle?.kind === 'bend' && target.path.spans[handle.span]?.kind === 'cubic') commitEdit(map, target, { path: straighten(target, handle.span), label: '拉直' });
+      // Double-clicking a curved span's bend handle straightens it; anywhere else on the selected road's line (a straight
+      // span's midpoint included) it inserts a bend there, the road keeping its shape.
+      const map = store.get().session?.map, at = point(event), before = pressSelections.current[0];
+      if (!map || target?.kind !== 'roads' || event.altKey || before.length !== 1 || before[0] !== 'roads/' + target.id) return;
+      const handle = handleAt(handlesOf(target, camera.current), at, camera.current);
+      if (handle?.kind === 'bend' && target.path.spans[handle.span]?.kind === 'cubic') { commitEdit(map, target, { path: straighten(target, handle.span), label: '拉直' }); return; }
+      if (handle && handle.kind !== 'bend') return;
+      const world = screenToWorld(at, camera.current), path = insertAnchor(target, [world[0], world[1], target.path.anchors[0]![2]], Math.max(12 / camera.current.scale, (target.widthM ?? 0) / 2));
+      if (!path) return;
+      const stops = bendStopsMoving(map, target.id, path, target);
+      if (stops) { notify(stops, 'error'); return; }
+      if (commitEdit(map, target, { path, label: '插入折点' }, '插入折点')) notify('已在道路上插入折点，可以拖动它；Alt+点击折点删除。');
     }}
     onPointerLeave={() => { setCursor(null); if (!gesture.current) setHover(null); if (drawingTool) { lastInput.current = null; refreshDraft(null); } }}
     onAuxClick={event => event.preventDefault()} onContextMenu={event => event.preventDefault()}>
