@@ -9,8 +9,9 @@ import type { Camera } from '../../geometry/coordinates';
 import { validateMap } from '../../validation/validate';
 import { createDisplayIndex, type DisplayIndex } from '../canvas/display';
 import type { Raster } from './backgrounds';
+import type { TopologyCommand } from '../../domain/topologyEditing';
 
-export type Tool = 'select' | 'pan' | 'node' | 'road' | 'curve' | 'building' | 'zone' | 'measure' | 'entrance' | 'service';
+export type Tool = 'select' | 'pan' | 'node' | 'road' | 'curve' | 'building' | 'zone' | 'measure' | 'entrance' | 'service' | 'split';
 export type ShapeKind = 'rect2' | 'rect3' | 'polygon';
 export type LeftTab = 'objects' | 'layers';
 export type RightTab = 'properties' | 'relations' | 'sources';
@@ -30,7 +31,9 @@ export interface AppState {
   panels: { left: boolean; right: boolean; drawer: boolean };
   leftTab: LeftTab;
   rightTab: RightTab;
-  overlay: null | 'palette' | 'help' | 'mapChoice' | 'delete' | 'rotate' | 'upgrade' | 'projects' | 'newMap' | 'reloadProject' | 'discardMemory' | 'confirmLink';
+  overlay: null | 'palette' | 'help' | 'mapChoice' | 'delete' | 'rotate' | 'upgrade' | 'projects' | 'newMap' | 'reloadProject' | 'discardMemory' | 'confirmLink' | 'topology';
+  /** The topology edit the confirmation dialog shows (a change to the map after it opens makes it stale). */
+  topology: TopologyCommand | null;
   /** The drawing tool waiting for the map to be upgraded to 0.3.0. */
   upgradeFor: Tool | null;
   /** Shape each area tool draws. */
@@ -83,7 +86,7 @@ const initial: AppState = {
   panels: { left: true, right: true, drawer: false }, leftTab: 'objects', rightTab: 'properties',
   overlay: null, upgradeFor: null, shapes: { building: 'rect2', zone: 'polygon' }, mapChoice: null, message: null, scale: 1, frameRequest: null,
   rasters: {}, backgroundView: { hidden: [], opacity: {}, comparison: false }, mapEpoch: 0, boundaryMode: 'rect', units: DEFAULT_UNITS,
-  project: { phase: 'starting', failure: null }, camera: null, switching: false, adjusting: null, objectGroups: { epoch: 0, open: [] }, entranceFor: null, serviceKind: 'loading', serviceTransfer: 'included_in_service_duration', serviceInside: 'internal', routeWidthM: 8,
+  project: { phase: 'starting', failure: null }, camera: null, switching: false, adjusting: null, objectGroups: { epoch: 0, open: [] }, entranceFor: null, topology: null, serviceKind: 'loading', serviceTransfer: 'included_in_service_duration', serviceInside: 'internal', routeWidthM: 8,
 };
 
 let state = initial;

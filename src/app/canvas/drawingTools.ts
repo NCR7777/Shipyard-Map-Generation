@@ -14,25 +14,29 @@ import { constrainAxis, formatReadout, roadCommand, segmentReadout, selfIntersec
 import { uid } from './movePreview';
 import { nextServiceName, publicRoadsAt, routed, routedCommand, routeEntrance, serviceAt, serviceCommand, serviceRefusal, serviceSpot, sharedRoute, TRANSFER_LABELS, upgradeNote, type Inside, type ServiceSpot, type Transfer } from './servicePoints';
 import type { DraftVisual } from './renderer';
+import { splitCommand, splitSpot } from './topology';
 
 export interface DrawingContext { map: YardMap; scene: SceneSnapshot; camera: Camera; drawing: DrawingConfig; tool: Tool; token: number; shapes: Record<'building' | 'zone', ShapeKind>; entranceFor: string | null; serviceKind: ServicePoint['kind']; serviceTransfer: Transfer; serviceInside: Inside; routeWidthM: number }
 export interface PointerInput { screen: Vec2; world: Vec3; alt: boolean; shift: boolean }
 
 const lastPoint = (draft: Draft | null): Vec3 | undefined => !draft ? undefined : draft.kind === 'road' ? draft.road.curveEnd?.point ?? draft.road.points.at(-1) : draft.points.at(-1);
+const firstPoint = (draft: Draft | null): Vec3 | undefined => !draft ? undefined : draft.kind === 'road' ? draft.road.points[0] : draft.points[0];
 const isRoadTool = (tool: Tool) => tool === 'road' || tool === 'curve';
 const target = (tool: Tool): 'building' | 'zone' => tool === 'building' ? 'building' : 'zone';
 
 /** Where a click lands: a connection target for roads (node, or a road interior point to split at), a node's coordinates for
- *  areas and measurements; otherwise the grid, and Shift keeps the segment horizontal or vertical. Alt turns all snapping off. */
+ *  areas and measurements; otherwise the grid, and Shift keeps the segment horizontal or vertical. Alt turns all snapping off.
+ *  A draft stays at its first point's height (snapping only to nodes and roads there); a first point snaps at any height. */
 export function resolvePoint(context: DrawingContext, input: PointerInput): { point: Vec3; snap: SnapTarget | null } {
   const { scene, camera, drawing, tool } = context, draft = draftStore.get();
   const usable = (kind: 'nodes' | 'roads') => !drawing.hiddenTypes.includes(kind) && !drawing.lockedTypes.includes(kind);
   const excludeNodeId = draft?.kind === 'road' && draft.road.points.length === 1 && draft.road.startConnection?.kind === 'node' ? draft.road.startConnection.nodeId : undefined;
   const curveThrough = draft?.kind === 'road' && tool === 'curve' && !!draft.road.curveEnd;
+  const z = firstPoint(draft)?.[2];
   const snap = input.alt || !drawing.snapNodes || curveThrough ? null
-    : snapTarget(scene, input.screen, camera, { z: 0, nodes: usable('nodes'), roads: isRoadTool(tool) && usable('roads'), excludeNodeId });
+    : snapTarget(scene, input.screen, camera, { z, nodes: usable('nodes'), roads: isRoadTool(tool) && usable('roads'), excludeNodeId });
   if (snap) return { point: [...snap.position], snap: isRoadTool(tool) ? snap : null };
-  let point = snapToGrid(input.world, input.alt ? 0 : drawing.snapGrid);
+  let point = snapToGrid(z === undefined ? input.world : [input.world[0], input.world[1], z], input.alt ? 0 : drawing.snapGrid);
   const last = lastPoint(draft);
   if (input.shift && last) point = constrainAxis(last, point);
   return { point, snap: null };
@@ -169,10 +173,35 @@ function servicePreview(context: DrawingContext, input: PointerInput | null): Dr
   return visual;
 }
 
+/** Each click on a road's interior splits it there (one undo step): a node where it was clicked joins the two roads, which
+ *  keep its properties and its turns straight on. The tool stays for the next. */
+function placeSplit(context: DrawingContext, input: PointerInput): void {
+  const { map } = context, spot = splitSpot(context.scene, input.screen, context.camera, context.drawing);
+  if (context.drawing.hiddenTypes.includes('roads')) { notify('道路图层已隐藏，可在「图层」页显示。', 'error'); return; }
+  const locked = (['roads', 'nodes'] as const).find(kind => context.drawing.lockedTypes.includes(kind));
+  if (locked) { notify(`${locked === 'roads' ? '道路' : '节点'}图层已锁定，可在「图层」页解锁。`, 'error'); return; }
+  if (!spot) { notify('请点在道路中部（出现绿色圆点时）。', 'error'); return; }
+  if (spot.connection.kind === 'node') { notify(`这里是节点「${map.nodes[spot.connection.nodeId]?.name ?? spot.connection.nodeId}」，道路在此已分段，不用拆分。`, 'error'); return; }
+  const road = map.roads[spot.connection.roadId]!, at = spot.connection.distanceM;
+  if (!apply(splitCommand(spot.connection.roadId, at), '拆分道路')) return;
+  notify(`已在「${road.name}」距起点 ${at.toFixed(1)} m 处拆成两段，新节点接着两段；两段保留原道路的方向、宽度等属性。继续点选可再拆，Esc 结束。`);
+}
+function splitPreview(context: DrawingContext, input: PointerInput | null): DraftVisual | null {
+  if (!input) return null;
+  const { map } = context, spot = splitSpot(context.scene, input.screen, context.camera, context.drawing); if (!spot) return null;
+  const locked = (['roads', 'nodes'] as const).find(kind => context.drawing.lockedTypes.includes(kind));
+  if (locked) return { vertices: [], label: { at: spot.position, lines: [`${locked === 'roads' ? '道路' : '节点'}图层已锁定`, '可在「图层」页解锁'] } };
+  if (spot.connection.kind === 'node') return { vertices: [], label: { at: spot.position, lines: ['道路端点，不用拆分', map.nodes[spot.connection.nodeId]?.name ?? ''] } };
+  const road = context.scene.roads.find(entry => entry.id === (spot.connection as { roadId: string }).roadId);
+  return { vertices: [], snap: { position: spot.position, kind: 'road' },
+    label: { at: spot.position, lines: [`在此拆分 · 距起点 ${spot.connection.distanceM.toFixed(1)} m / ${road ? road.lengthM.toFixed(1) : '?'} m`, map.roads[spot.connection.roadId]?.name ?? ''] } };
+}
+
 /** One click of the active drawing tool. */
 export function click(context: DrawingContext, input: PointerInput): void {
   if (context.tool === 'entrance') { placeEntrance(context, input); return; }
   if (context.tool === 'service') { placeService(context, input); return; }
+  if (context.tool === 'split') { placeSplit(context, input); return; }
   const { tool, token } = context, draft = draftStore.get(), { point, snap } = resolvePoint(context, input);
   if (tool === 'node') {
     apply({ type: 'addNode', id: uid('node'), node: newNode(point, `节点 ${Object.keys(context.map.nodes).length + 1}`) }, '添加节点');
@@ -253,6 +282,7 @@ let crossings: { at: number; key: string; points: Vec3[] } = { at: 0, key: '', p
 export function preview(context: DrawingContext, input: PointerInput | null): DraftVisual | null {
   if (context.tool === 'entrance') return entrancePreview(context, input);
   if (context.tool === 'service') return servicePreview(context, input);
+  if (context.tool === 'split') return splitPreview(context, input);
   const draft = draftStore.get(), { tool, drawing } = context;
   const resolved = input ? resolvePoint(context, input) : null, cursor = resolved?.point ?? null;
   const visual: DraftVisual = { vertices: [], snap: resolved?.snap ? { position: resolved.snap.position, kind: resolved.snap.connection.kind === 'node' ? 'node' : 'road' } : null };

@@ -29,11 +29,13 @@ export function editBlock(session: EditorSession | null = store.get().session): 
   return capabilities.editable ? null : '地图为只读：' + capabilities.reasons.join('；');
 }
 
-/** Why these references may not change because their layer is locked, or null. */
-export function lockedMessage(refs: readonly { kind: string }[]): string | null {
+/** Why these references may not change because their layer is locked, or null; `pending`: said before the edit is confirmed
+ *  (a dialog), not after it was refused. */
+export function lockedMessage(refs: readonly { kind: string }[], pending = false): string | null {
   const locked = new Set<SceneKind>(store.get().drawing.lockedTypes);
-  const kinds = [...new Set(refs.map(ref => ref.kind as SceneKind).filter(kind => locked.has(kind)))];
-  return kinds.length ? `操作会改动已锁定的图层（${kinds.map(kind => KIND_LABELS[kind] ?? kind).join('、')}），已取消；地图与历史保持不变。可在「图层」页解锁。` : null;
+  const kinds = [...new Set(refs.map(ref => ref.kind as SceneKind).filter(kind => locked.has(kind)))], names = kinds.map(kind => KIND_LABELS[kind] ?? kind).join('、');
+  return !kinds.length ? null : pending ? `这次编辑会改动已锁定的图层（${names}），可在「图层」页解锁后再确认。`
+    : `操作会改动已锁定的图层（${names}），已取消；地图与历史保持不变。可在「图层」页解锁。`;
 }
 
 /** Replaces the session and drops selected keys that no longer exist (after undo, delete, …). */

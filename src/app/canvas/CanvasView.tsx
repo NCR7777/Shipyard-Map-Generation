@@ -8,7 +8,7 @@ import { bridge, isEditableTarget, operation, runOperation } from '../ops/regist
 import type { Selection } from '../../domain/commands';
 import { backgroundBounds, drawableBackgrounds } from '../state/backgrounds';
 import { adjusted, adjustedLayer, measurePoint, setTransform, transformFields, type AdjustedLayer } from '../state/backgroundEdit';
-import { DRAWING_TOOLS, draftStore, dropStaleDraft, setTool } from '../state/draft';
+import { CLICK_TOOLS, draftStore, DRAWING_TOOLS, dropStaleDraft, setTool } from '../state/draft';
 import { apply as applyEdit, editBlock, lockedMessage } from '../state/edit';
 import { duplicate, selectionOf, translate } from '../state/editOps';
 import { displayIndexOf, itemOf, notify, sceneOf, select, store, useApp } from '../state/store';
@@ -21,6 +21,8 @@ import { planMove, type MovePlan } from './movePreview';
 import { entranceAdjustments, entranceOverlay } from './outlineEntrances';
 import { endKey, pressTarget } from './pressTarget';
 import { MapRenderer, type ScreenBox } from './renderer';
+import { dropCommand, dropTarget } from './topology';
+import type { SnapTarget } from './drafting';
 
 const SELECTABLE = new Set(['nodes', 'roads', 'facilities', 'zones', 'accessPoints', 'servicePoints']);
 /** Pressing one of these drags it at once; an unselected node or road is only selected first, so the network is not bent by accident. */
@@ -46,7 +48,10 @@ type Gesture =
   | { kind: 'box'; start: Vec2; end: Vec2; pointerId: number; shift: boolean }
   | { kind: 'move'; start: Vec3; pointerId: number; plan: MovePlan; selection: Selection; delta: Vec3;
       /** A lone entrance slides along its building's outline: the delta for a pointer position. */
-      slide?: ((world: Vec3) => Vec3) | undefined }
+      slide?: ((world: Vec3) => Vec3) | undefined;
+      /** A lone node moved (not copied): where it would be merged or connected if released now (Alt or Shift: nowhere), and
+       *  the move the pointer alone makes (for a release with Alt). */
+      drop?: { nodeId: string; origin: Vec3; target: (SnapTarget & { refusal: string | null }) | null; free: Vec3 } | undefined }
   | { kind: 'draw'; start: Vec2; pointerId: number; alt: boolean; shift: boolean; dragged: boolean }
   | { kind: 'handle'; start: Vec2; pointerId: number; alt: boolean; target: Target; handle: Handle; edit: Edit | null;
       /** A point marker at the press, as close as the handle: a click (no drag) selects it. */
@@ -102,6 +107,8 @@ export function CanvasView() {
   /** Over a handle a press reshapes instead of moving: the cursor says so. */
   const [overHandle, setOverHandle] = useState(false);
   const [panning, setPanning] = useState(false);
+  /** A lone node is being dragged: plain nodes show (as while drawing roads or splitting), to drop it on one. */
+  const [dropping, setDropping] = useState(false);
   const map = useApp(state => state.session?.map ?? null);
   const drawing = useApp(state => state.drawing);
   const selection = useApp(state => state.selection);
@@ -218,7 +225,7 @@ export function CanvasView() {
     const current = gesture.current; if (!current) return;
     gesture.current = null;
     renderer.current?.setBox(null);
-    if (current.kind === 'move') { cancelAnimationFrame(moveFrame.current); moveFrame.current = 0; renderer.current?.setOverlay(null); }
+    if (current.kind === 'move') { cancelAnimationFrame(moveFrame.current); moveFrame.current = 0; renderer.current?.setOverlay(null); if (current.drop) { renderer.current?.setDraft(null); setDropping(false); } }
     if (current.kind === 'handle') endHandlePreview();
     if (current.kind === 'background') { renderer.current?.setBackgroundPreview(null); showAdjust(); }
     if (current.kind === 'pan') apply(camera.current, false);
@@ -254,10 +261,13 @@ export function CanvasView() {
 
   useEffect(() => {
     if (!scene) return;
-    renderer.current?.setState({ scene, index: displayIndexOf(scene), drawing, selection: selectionSet, hover, backgrounds, comparison: backgroundView.comparison });
+    // Connecting (drawing a road, splitting one, dropping a node on another) shows the plain nodes there are to connect to.
+    const connecting = tool === 'road' || tool === 'curve' || tool === 'split' || dropping;
+    renderer.current?.setState({ scene, index: displayIndexOf(scene), drawing: connecting && !drawing.showOrdinaryNodes ? { ...drawing, showOrdinaryNodes: true } : drawing,
+      selection: selectionSet, hover, backgrounds, comparison: backgroundView.comparison });
     // A dropped image is drawn from its preview until here, where the committed transform arrives: no frame shows it back at its old place.
     if (gesture.current?.kind !== 'background') renderer.current?.setBackgroundPreview(null);
-  }, [scene, drawing, selectionSet, hover, backgrounds, backgroundView.comparison]);
+  }, [scene, drawing, selectionSet, hover, backgrounds, backgroundView.comparison, tool, dropping]);
 
   useEffect(() => {
     const current = renderer.current; if (!frameRequest || !scene || !current) return;
@@ -288,7 +298,7 @@ export function CanvasView() {
       // Drawing keys: Enter finishes, Backspace takes back a point, Escape drops the draft and then leaves the tool.
       if (DRAWING_TOOLS.includes(store.get().tool) && !isEditableTarget(event.target) && !store.get().overlay) {
         const context = drawingContext(), draft = draftStore.get();
-        const handled = event.key === 'Enter' && ['entrance', 'service'].includes(store.get().tool) ? (setTool('select'), true)
+        const handled = event.key === 'Enter' && CLICK_TOOLS.includes(store.get().tool) ? (setTool('select'), true)
           : event.key === 'Enter' && draft ? (context && drawFinish(context), true)
           // Delete also takes back a point while drawing: it must not open the delete dialog for the road just drawn.
           : (event.key === 'Backspace' || event.key === 'Delete') && draft ? (removeLast(), true)
@@ -400,6 +410,17 @@ export function CanvasView() {
       if (event.shiftKey) delta[Math.abs(delta[0]) < Math.abs(delta[1]) ? 0 : 1] = 0;
       // An entrance lands exactly on its building's outline (not rounded: that would take it off the outline).
       current.delta = current.slide ? current.slide(world) : delta;
+      // A lone node over another node or a road snaps there (a green ring says what releasing would do); held Alt moves it
+      // freely, as does Shift (its axis). A node it cannot be merged with shows why, without the ring.
+      if (current.drop) {
+        const map = store.get().session!.map, target = event.altKey || event.shiftKey ? null : dropTarget(map, scene!, current.drop.nodeId, at, camera.current, store.get().drawing);
+        current.drop.target = target; current.drop.free = current.delta;
+        if (target && !target.refusal) current.delta = [target.position[0] - current.drop.origin[0], target.position[1] - current.drop.origin[1], 0];
+        const name = target?.connection.kind === 'node' ? map.nodes[target.connection.nodeId]?.name ?? '' : target ? map.roads[target.connection.roadId]?.name ?? '' : '';
+        renderer.current?.setDraft(!target ? null : target.refusal ? { vertices: [], label: { at: target.position, lines: [target.connection.kind === 'node' ? `不能并入「${name}」` : `不能接到「${name}」`, '松开放回原处；拖动中按住 Alt 只移动'] } }
+          : { vertices: [], snap: { position: target.position, kind: target.connection.kind === 'node' ? 'node' : 'road' },
+            label: { at: target.position, lines: [target.connection.kind === 'node' ? `松开：并入节点「${name}」` : `松开：接到道路「${name}」`, '松开后确认；拖动中按住 Alt 只移动'] } });
+      }
       if (!moveFrame.current) moveFrame.current = requestAnimationFrame(() => {
         moveFrame.current = 0;
         const live = gesture.current; if (live?.kind === 'move') renderer.current?.setOverlay(live.plan.hidden, live.plan.overlay(live.delta));
@@ -434,14 +455,14 @@ export function CanvasView() {
     gesture.current = null;
     if (host.current!.hasPointerCapture(event.pointerId)) host.current!.releasePointerCapture(event.pointerId);
     if (current.kind === 'pan') { apply(camera.current, false); return; }
-    if (current.kind === 'move') { finishMove(current); return; }
+    if (current.kind === 'move') { finishMove(current, event.altKey); return; }
     if (current.kind === 'handle') { finishHandle(current, point(event)); return; }
     if (current.kind === 'background') { finishBackground(current); return; }
     if (current.kind === 'draw') {
       const context = drawingContext(); if (!context) return;
       const input = pointerInput(event), previous = lastClick.current, now = performance.now();
       // The second click of a double-click only finishes: it never places a point, a node, or a new draft.
-      if (context.tool !== 'entrance' && context.tool !== 'service' && previous && now - previous.at < DOUBLE_CLICK_MS && Math.hypot(input.screen[0] - previous.screen[0], input.screen[1] - previous.screen[1]) <= DRAG_PX * 2) {
+      if (!CLICK_TOOLS.includes(context.tool) && previous && now - previous.at < DOUBLE_CLICK_MS && Math.hypot(input.screen[0] - previous.screen[0], input.screen[1] - previous.screen[1]) <= DRAG_PX * 2) {
         lastClick.current = null; drawFinish(context); return;
       }
       lastClick.current = { at: now, screen: input.screen };
@@ -514,6 +535,9 @@ export function CanvasView() {
     else { renderer.current?.setDraft(null); }
   }
   function commitEdit(map: YardMap, target: Target, edit: Edit, label?: string): boolean {
+    // A connector must stay straight for its building to move: any new shape of it (a bend, a curve) is refused with why.
+    const stops = target.kind === 'roads' && 'path' in edit ? bendStopsMoving(map, target.id, edit.path, target, label ?? edit.label) : null;
+    if (stops) { notify(stops, 'error'); return false; }
     const change = editCommand(map, target, edit);
     return !!change && applyEdit(change.command, label ?? change.label);
   }
@@ -541,13 +565,27 @@ export function CanvasView() {
     const locked = lockedMessage(plan.affectedRefs); if (locked) { refuse(locked); return; }
     const start = screenToWorld(press.start, camera.current);
     // Dropped off its building's outline an entrance would be refused: a lone one slides along the outline instead.
-    gesture.current = { kind: 'move', start, pointerId: press.pointerId, plan, selection, delta: ZERO, slide: press.alt ? undefined : entranceSlide(map, selection, start) };
+    const lone = plan.mode === 'move' && selection.nodes.length === 1 && !selection.roads.length && !selection.facilities?.length && !selection.zones?.length && !selection.accessPoints?.length && !selection.servicePoints?.length;
+    gesture.current = { kind: 'move', start, pointerId: press.pointerId, plan, selection, delta: ZERO, slide: press.alt ? undefined : entranceSlide(map, selection, start),
+      drop: lone ? { nodeId: selection.nodes[0]!, origin: map.nodes[selection.nodes[0]!]!.position, target: null, free: ZERO } : undefined };
+    if (lone) setDropping(true);
     renderer.current?.setOverlay(plan.hidden, plan.overlay(ZERO));
   }
-  /** One transaction for the whole drag; releasing where it started changes nothing. */
-  function finishMove(move: Extract<Gesture, { kind: 'move' }>) {
+  /** One transaction for the whole drag; releasing where it started changes nothing. `alt`: Alt held at the release. */
+  function finishMove(move: Extract<Gesture, { kind: 'move' }>, alt: boolean) {
     cancelAnimationFrame(moveFrame.current); moveFrame.current = 0;
     const map = store.get().session?.map;
+    if (move.drop) { renderer.current?.setDraft(null); setDropping(false); }
+    // Alt pressed only at the release still means a plain move, where the pointer is.
+    if (move.drop && alt) { move.delta = move.drop.free; move.drop.target = null; }
+    // Released on another node or a road: nothing moves yet; the dialog confirms the merge or connection. On a node it cannot be
+    // merged with, it goes back, and the reason is given.
+    if (map && move.drop?.target) {
+      renderer.current?.setOverlay(null);
+      if (move.drop.target.refusal) notify(move.drop.target.refusal, 'error');
+      else store.set({ overlay: 'topology', topology: dropCommand(map, move.drop.nodeId, move.drop.target) });
+      return;
+    }
     if (!map || move.delta.every(value => Math.abs(value) < 1e-9)) { renderer.current?.setOverlay(null); return; }
     const done = move.plan.mode === 'copy' ? duplicate(map, move.selection, move.delta) : translate(move.selection, move.delta);
     // On success the committed scene replaces the preview; a refusal puts everything back.
@@ -577,8 +615,6 @@ export function CanvasView() {
       if (handle && handle.kind !== 'bend') return;
       const world = screenToWorld(at, camera.current), path = insertAnchor(target, [world[0], world[1], target.path.anchors[0]![2]], Math.max(12 / camera.current.scale, (target.widthM ?? 0) / 2));
       if (!path) return;
-      const stops = bendStopsMoving(map, target.id, path, target);
-      if (stops) { notify(stops, 'error'); return; }
       if (commitEdit(map, target, { path, label: '插入折点' }, '插入折点')) notify('已在道路上插入折点，可以拖动它；Alt+点击折点删除。');
     }}
     onPointerLeave={() => { setCursor(null); if (!gesture.current) setHover(null); if (drawingTool) { lastInput.current = null; refreshDraft(null); } }}

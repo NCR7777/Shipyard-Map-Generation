@@ -60,7 +60,7 @@ export function MenuBar() {
 
 const TOOL_ICONS: Record<string, IconName> = {
   'tool.select': 'select', 'tool.pan': 'pan', 'tool.node': 'node', 'tool.road': 'road', 'tool.curve': 'curve',
-  'tool.building': 'building', 'tool.zone': 'zone', 'tool.entrance': 'point', 'tool.service': 'service', 'tool.measure': 'measure',
+  'tool.building': 'building', 'tool.zone': 'zone', 'tool.entrance': 'point', 'tool.service': 'service', 'tool.split': 'split', 'tool.measure': 'measure',
 };
 export function Toolbar() {
   const tool = useApp(state => state.tool);
@@ -102,6 +102,7 @@ const TOOL_HINTS: Record<string, string> = {
   building: '两点矩形可直接拖出 · 多边形点回起点完成 · Shift 水平或竖直 · Esc 取消',
   zone: '两点矩形可直接拖出 · 多边形点回起点完成 · Shift 水平或竖直 · Esc 取消',
   measure: '点击测量 · Enter 或双击结束 · Esc 清除 · 不改动地图',
+  split: '点道路中部在那里拆成两段（新节点接着两段，属性保留）· 点在节点上不拆 · Enter 或 Esc 结束',
 };
 export function StatusBar() {
   const tool = useApp(state => state.tool), serviceInside = useApp(state => state.serviceInside);

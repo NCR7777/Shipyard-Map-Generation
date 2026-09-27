@@ -5,6 +5,8 @@ import { duplicate, duplicateRefusal, lockedSelection, selectionOf } from '../st
 import { setTool } from '../state/draft';
 import { files, linkFile, openLinked, saveAll, saveAs } from '../state/localFile';
 import { saveAsBrowserProject } from '../state/project';
+import { selectionTopology } from '../canvas/topology';
+import type { TopologyCommand } from '../../domain/topologyEditing';
 import { frame, frameBounds, notify, sceneOf, select, store, type AppState, type ShapeKind, type Tool } from '../state/store';
 
 export type MenuId = 'file' | 'edit' | 'view' | 'check' | 'help';
@@ -78,6 +80,26 @@ const needServices = (state: AppState): true | string => {
   if (hiddenTypes.includes('servicePoints')) return '作业点图层已隐藏';
   return true;
 };
+/** Splitting writes roads and a node, on layers shown and unlocked. */
+const needSplit = (state: AppState): true | string => {
+  const blocked = editBlock(state.session); if (blocked) return blocked;
+  if (!Object.keys(state.session!.map.roads).length) return '地图中还没有道路';
+  const { lockedTypes, hiddenTypes } = state.drawing;
+  if ((['roads', 'nodes'] as const).some(kind => lockedTypes.includes(kind))) return '道路或节点图层已锁定，可在「图层」页解锁';
+  return hiddenTypes.includes('roads') ? '道路图层已隐藏' : true;
+};
+/** A topology edit of the selection, confirmed in its dialog (which shows what changes, and the new turns it would allow). */
+const topologyOp = (kind: TopologyCommand['type']) => ({
+  enabled: (state: AppState): true | string => {
+    const editable = needEditable(state); if (editable !== true) return editable;
+    const command = selectionTopology(state.session!.map, state.selection, kind);
+    return typeof command === 'string' ? command : true;
+  },
+  run: () => {
+    const { session, selection } = store.get(), command = session && selectionTopology(session.map, selection, kind);
+    if (session && command && typeof command !== 'string') store.set({ overlay: 'topology', topology: command });
+  },
+});
 const togglePanel = (panel: keyof AppState['panels']) => () => store.set(({ panels }) => ({ panels: { ...panels, [panel]: !panels[panel] } }));
 
 export const OPERATIONS: readonly Operation[] = [
@@ -109,6 +131,9 @@ export const OPERATIONS: readonly Operation[] = [
   } },
   { id: 'edit.rotate', label: '旋转选中对象…', menu: 'edit', enabled: needEditable, run: () => store.set({ overlay: 'rotate' }) },
   { id: 'edit.delete', label: '删除选中对象…', menu: 'edit', keys: ['Delete', 'Backspace'], enabled: needEditable, run: () => store.set({ overlay: 'delete' }) },
+  { id: 'edit.mergeNodes', label: '合并节点…', menu: 'edit', ...topologyOp('mergeNodes') },
+  { id: 'edit.connectNode', label: '把节点接到道路…', menu: 'edit', ...topologyOp('connectNodeToRoad') },
+  { id: 'edit.suppressNode', label: '删除节点并接通两条道路…', menu: 'edit', ...topologyOp('suppressDegree2Node') },
   { id: 'edit.selectAll', label: '全选可见对象', menu: 'edit', keys: ['Ctrl+A'], enabled: needMap, run: () => {
     const { session, drawing } = store.get(); if (!session) return;
     const hidden = new Set(drawing.hiddenTypes);
@@ -125,6 +150,7 @@ export const OPERATIONS: readonly Operation[] = [
   { id: 'tool.zoneRect', label: '矩形区域', keys: ['G'], enabled: needDrawable, run: useTool('zone', 'rect2') },
   { id: 'tool.entrance', label: '入口', keys: ['E'], tool: 'entrance', enabled: needEntrances, run: useTool('entrance') },
   { id: 'tool.service', label: '作业点', keys: ['S'], tool: 'service', enabled: needServices, run: useTool('service') },
+  { id: 'tool.split', label: '拆分', keys: ['X'], tool: 'split', enabled: needSplit, run: useTool('split') },
   { id: 'tool.measure', label: '量距', keys: ['M'], tool: 'measure', run: useTool('measure') },
   { id: 'view.fit', label: '适应地图', menu: 'view', keys: ['F'], enabled: needMap, run: () => frame() },
   { id: 'view.frameSelection', label: '定位选中对象', menu: 'view', keys: ['Shift+F'], enabled: needSelection, run: () => frame(store.get().selection) },

@@ -18,22 +18,24 @@ export type { ShapeKind };
 export interface SnapTarget { connection: TraceConnection; position: Vec3 }
 
 /** The node or road centreline a road click would connect to: nodes first, then the nearest road interior point.
- *  Hidden or locked layers never connect; ends of a road are its nodes, never a mid-road split. */
+ *  Hidden or locked layers never connect; ends of a road are its nodes, never a mid-road split. `z`: only at that height
+ *  (a draft continues at its start's height); none, any height. */
 export function snapTarget(scene: SceneSnapshot, screen: Vec2, camera: Camera, options: {
-  z: number; nodes: boolean; roads: boolean; excludeNodeId?: string | undefined;
+  z?: number | undefined; nodes: boolean; roads: boolean; excludeNodeId?: string | undefined;
 }): SnapTarget | null {
   let best: SnapTarget | null = null, distance = SNAP_PX;
+  const height = (value: number) => options.z === undefined || Math.abs(value - options.z) <= 1e-6;
   if (options.nodes) for (const node of scene.nodes) {
-    if (Math.abs(node.position[2] - options.z) > 1e-6 || node.id === options.excludeNodeId) continue;
+    if (!height(node.position[2]) || node.id === options.excludeNodeId) continue;
     const p = worldToScreen(node.position, camera), delta = Math.hypot(p[0] - screen[0], p[1] - screen[1]);
     if (delta <= distance) { best = { connection: { kind: 'node', nodeId: node.id }, position: node.position }; distance = delta; }
   }
   if (best || !options.roads) return best;
-  const world = screenToWorld(screen, camera, options.z);
+  const world = screenToWorld(screen, camera, options.z ?? 0);
   for (const road of scene.roads) {
     if (!nearBounds(world, boundsOfPath(road.path), distance / camera.scale)) continue;
     const projected = projectToPath(road.path, world);
-    if (projected.ambiguous || Math.abs(projected.point[2] - options.z) > 1e-6 || projected.sM <= 1e-6 || projected.sM >= road.lengthM - 1e-6) continue;
+    if (projected.ambiguous || !height(projected.point[2]) || projected.sM <= 1e-6 || projected.sM >= road.lengthM - 1e-6) continue;
     const delta = projected.offsetM * camera.scale;
     if (delta < distance) { best = { connection: { kind: 'road', roadId: road.id, distanceM: projected.sM }, position: projected.point }; distance = delta; }
   }

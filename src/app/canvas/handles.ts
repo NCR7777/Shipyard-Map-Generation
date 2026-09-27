@@ -205,9 +205,14 @@ export function insertAnchor(target: Extract<Target, { kind: 'roads' }>, at: Vec
   if (points(target.path).every(point => point[2] === z)) for (const point of points(path)) point[2] = z;
   return path;
 }
-/** Why the bend would stop a building or zone moving that could before, or null. An entrance's connector (the one road out of
- *  a building's own entrance node) must stay straight to stretch when its building moves; a bend in it pins the building. */
-export function bendStopsMoving(map: YardMap, roadId: string, path: ResolvedPath, target: Extract<Target, { kind: 'roads' }>): string | null {
+/** Why the new shape would stop a building or zone moving that could before, or null. An entrance's connector (the one road out
+ *  of a building's own entrance node) must stay straight to stretch when its building moves; a bend or curve in it pins the
+ *  building. `what`: the edit, for the message. */
+export function bendStopsMoving(map: YardMap, roadId: string, path: ResolvedPath, target: Extract<Target, { kind: 'roads' }>, what = '插入折点'): string | null {
+  // Only a straight road made not straight can newly pin (a road already bent could not stretch before): the kernel checks,
+  // two per owner, run for that edit alone.
+  const straight = (value: ResolvedPath) => value.anchors.length === 2 && value.spans.every(span => span.kind === 'line');
+  if (!straight(target.path) || straight(path)) return null;
   const change = editCommand(map, target, { path, label: '' }); if (!change) return null;
   const road = map.roads[roadId]; if (!road) return null;
   const owners = new Set([road.fromNodeId, road.toNodeId].flatMap(node => [...nodeOwners(map, node).owners]));
@@ -219,7 +224,7 @@ export function bendStopsMoving(map: YardMap, roadId: string, path: ResolvedPath
     if (!after) { const result = applyMapCommand(map, change.command); if (!result.ok) return null; after = result.map; }
     if (commandSupport(after, move).allowed) continue;
     const name = map[kind][owner]!.name;
-    return `这条路是「${name}」入口的接入段。接入段要保持直线，「${name}」整体移动时它才能随着伸缩；插入折点后「${name}」将不能移动，所以没有插入。`;
+    return `这条路是「${name}」入口的接入段。接入段要保持直线，「${name}」整体移动时它才能随着伸缩；${what}后「${name}」将不能移动，所以没有${what}。要让它拐弯，可先用拆分工具（X）把它拆成两段：接入口的那段保持直线，再改另一段。`;
   }
   return null;
 }

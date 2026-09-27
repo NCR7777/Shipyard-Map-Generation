@@ -22,6 +22,7 @@ import { frame, itemOf, sceneOf, select, setUnits, store, useApp, type RightTab 
 import { Icon } from './icons';
 import { KIND_LABELS, SERVICE_KIND, splitKey } from './labels';
 import { relatedKeys } from './relations';
+import { suppressCommand } from '../canvas/topology';
 
 const TABS: { id: RightTab; label: string }[] = [{ id: 'properties', label: '属性' }, { id: 'relations', label: '关联' }, { id: 'sources', label: '来源' }];
 const LAYOUT_BASIS: Record<string, string> = { conceptual: '概念布局', synthetic: '合成数据', reference_based: '有底图参照，未独立核验', surveyed: '实测' };
@@ -196,7 +197,10 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
     }} />;
     rows.push(name(value => ({ type: 'updateNode', id, patch: { name: value } }), node.name),
       <Field key="kind" label="节点类型">{NODE_KIND[node.kind] ?? node.kind}</Field>,
-      <Field key="xy" label="坐标（X / Y）"><span className="prop-coords">{axis(0, 'X')}{axis(1, 'Y')}<span className="muted">Z {fixed(node.position[2], 3)} m</span></span></Field>);
+      <Field key="xy" label="坐标（X / Y）"><span className="prop-coords">{axis(0, 'X')}{axis(1, 'Y')}<span className="muted">Z {fixed(node.position[2], 3)} m</span></span></Field>,
+      <Field key="topology" label="连接">{!Object.values(map.accessPoints).some(point => point.nodeId === id) && !Object.values(map.servicePoints).some(point => point.nodeId === id)
+        && <span className="muted">拖到另一个同类节点上合并、拖到道路中部接入（松开后确认；拖动中按住 Alt 只移动）。</span>}
+        {(() => { const command = suppressCommand(map, id); return command && <button className="link" onClick={() => store.set({ overlay: 'topology', topology: command })}>删除节点并接通两条道路</button>; })()}</Field>);
   } else if (item.kind === 'roads') {
     const road = map.roads[id]!, derived = scene.roads.find(entry => entry.id === id), chain = continuousRoadIds(map, id), blocked = blockedDirections(map, id);
     const curved = road.geometry?.spans.some(span => span.kind === 'cubic');
@@ -208,6 +212,10 @@ function EditableProperties({ map, item }: { map: YardMap; item: SceneItem }) {
       physicalRow('widthM', '宽度', 'm', LENGTH),
       <Field key="dir" label="方向"><CommitSelect label="方向" value={road.direction} options={DIRECTION_OPTIONS.map(([value, text]) => blocked.includes(value as never) ? [value, text + '（转向规则不允许）', TURN_RULE_NOTE] as const : [value, text] as const)}
         onCommit={direction => run({ type: 'updateRoad', id, patch: { direction } }, '修改道路方向')} />
+        {(road.direction === 'forward' || road.direction === 'backward') && (() => {
+          const flipped = road.direction === 'forward' ? 'backward' : 'forward', refused = blocked.includes(flipped as never);
+          return <button className="link" disabled={refused} title={refused ? TURN_RULE_NOTE : '单向改为另一方向（道路几何不变）'} onClick={() => run({ type: 'updateRoad', id, patch: { direction: flipped } }, '反转道路方向')}>反转方向</button>;
+        })()}
         {blocked.length > 0 && <p className="muted">{TURN_RULE_NOTE}</p>}</Field>,
       physicalRow('heightLimitM', '限高', 'm', LENGTH),
       physicalRow('massLimitKg', '承载', units.mass, MASS, unit => setUnits({ mass: unit as 't' | 'kg' })),

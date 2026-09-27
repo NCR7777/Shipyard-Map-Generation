@@ -308,7 +308,7 @@ kbd { font: 11px/1 var(--mono); color: var(--text-3); border: 1px solid var(--bo
 .edit-dialog .warn { margin: 8px 0 0; }
 .dialog-fields { display: grid; gap: 10px; }
 .dialog-fields label { display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
-.dialog-fields input { height: 32px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+.dialog-fields input, .dialog-fields select { height: 32px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .button.danger:hover:not(:disabled) { filter: brightness(0.95); }

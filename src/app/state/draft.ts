@@ -19,7 +19,9 @@ export const draftStore = {
 };
 export const useDraft = () => useSyncExternalStore(draftStore.subscribe, draftStore.get);
 
-export const DRAWING_TOOLS: readonly Tool[] = ['node', 'road', 'curve', 'building', 'zone', 'measure', 'entrance', 'service'];
+export const DRAWING_TOOLS: readonly Tool[] = ['node', 'road', 'curve', 'building', 'zone', 'measure', 'entrance', 'service', 'split'];
+/** Tools where each click acts at once (no draft): Enter ends them, and a double click is two clicks. */
+export const CLICK_TOOLS: readonly Tool[] = ['entrance', 'service', 'split'];
 const pointsOf = (current: Draft) => current.kind === 'road' ? current.road.points.length : current.points.length;
 
 /** Switches tool. A road draft carries over between road and curve (R / C continue the same road); panning keeps any draft;

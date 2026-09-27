@@ -12,7 +12,7 @@ import { MenuBar, StatusBar, Toast, Toolbar } from './ui/Chrome';
 import { Icon } from './ui/icons';
 import { Inspector } from './ui/Inspector';
 import { IssuesDrawer } from './ui/IssuesDrawer';
-import { DeleteDialog, RotateDialog, UpgradeDialog } from './ui/EditDialogs';
+import { DeleteDialog, RotateDialog, TopologyDialog, UpgradeDialog } from './ui/EditDialogs';
 import { ToolOptions } from './ui/ToolOptions';
 import { CommandPalette, HelpPanel, MapChoice } from './ui/Overlays';
 import { ConfirmLinkDialog, ConflictBanner, DiscardMemoryDialog, FileConflictDialog, NewMapDialog, ProjectsDialog, RecoveryDialog, ReloadDialog } from './ui/ProjectDialogs';
@@ -110,6 +110,7 @@ export function App() {
     {overlay === 'help' && <HelpPanel />}
     {overlay === 'mapChoice' && <MapChoice />}
     {overlay === 'delete' && <DeleteDialog />}
+    {overlay === 'topology' && <TopologyDialog />}
     {overlay === 'rotate' && <RotateDialog />}
     {overlay === 'upgrade' && <UpgradeDialog />}
     {overlay === 'projects' && <ProjectsDialog />}

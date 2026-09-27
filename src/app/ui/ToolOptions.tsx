@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { DrawingConfig } from '../../editor/projectController';
 import { bridge } from '../ops/registry';
-import { DRAWING_TOOLS, draftStore, setTool, useDraft, type Draft } from '../state/draft';
+import { CLICK_TOOLS, DRAWING_TOOLS, draftStore, setTool, useDraft, type Draft } from '../state/draft';
 
 import { setDrawing, store, useApp, type ShapeKind, type Tool } from '../state/store';
 import { SERVICE_KIND } from './labels';
 import { INSIDE_LABELS, TRANSFER_LABELS, type Inside } from '../canvas/servicePoints';
 
 const SHAPES: [ShapeKind, string][] = [['rect2', '两点矩形'], ['rect3', '三点斜矩形'], ['polygon', '多边形']];
-const TOOL_NAMES: Partial<Record<Tool, string>> = { node: '节点', road: '道路', curve: '弯道', building: '建筑', zone: '区域', measure: '量距', entrance: '入口', service: '作业点' };
+const TOOL_NAMES: Partial<Record<Tool, string>> = { node: '节点', road: '道路', curve: '弯道', building: '建筑', zone: '区域', measure: '量距', entrance: '入口', service: '作业点', split: '拆分道路' };
 
 /** What the next click does, from the tool and how far the draft has got. */
 function nextStep(tool: Tool, shape: ShapeKind | undefined, draft: Draft | null, inside: Inside): string {
@@ -16,6 +16,7 @@ function nextStep(tool: Tool, shape: ShapeKind | undefined, draft: Draft | null,
   if (tool === 'entrance') return '点选建筑外边界添加入口（绿色圆点处），靠近角点时取角点；每点一次加一个，Esc 结束';
   // Short: the panel floats over the map (the status bar has the whole hint).
   if (tool === 'service') return inside === 'internal' ? '点入口：入口处作业 · 建筑内部：经内部通道 · 区域内部或已有节点：草稿' : '点入口：入口处作业 · 建筑、区域内部或已有节点：草稿';
+  if (tool === 'split') return '点道路中部（出现绿色圆点时）在那里拆成两段；每点一次拆一处，Esc 结束';
   if (tool === 'measure') return draft?.kind === 'measure' && !draft.finished ? '继续点击；Enter 或双击结束，Esc 清除' : '点击起点开始量距';
   if (tool === 'road' || tool === 'curve') {
     if (draft?.kind !== 'road') return tool === 'curve' ? '点击起点；随后点终点，再点曲线经过的位置' : '点击起点；在节点或道路上点击会明确接上（绿圈）';
@@ -77,7 +78,10 @@ export function ToolOptions() {
       {serviceInside === 'internal' && <label title="内部通道的宽度（真实地图多为 8 m 或 6 m）">宽<WidthInput value={routeWidthM} onChange={value => store.set({ routeWidthM: value })} label="内部通道宽度（米）" />m</label>}
       <button className="button primary" onClick={() => setTool('select')} title="Esc">完成添加作业点</button>
     </div>}
-    {tool !== 'measure' && tool !== 'entrance' && tool !== 'service' && <div className="tool-options-row">
+    {tool === 'split' && <div className="tool-options-row actions">
+      <button className="button primary" onClick={() => setTool('select')} title="Esc">完成拆分</button>
+    </div>}
+    {tool !== 'measure' && !CLICK_TOOLS.includes(tool) && <div className="tool-options-row">
       <label className="check"><input type="checkbox" checked={drawing.snapNodes} onChange={event => set({ snapNodes: event.target.checked })} />吸附节点{road ? '与道路' : ''}</label>
       <label>网格<select value={drawing.snapGrid} aria-label="网格吸附" onChange={event => set({ snapGrid: Number(event.target.value) as DrawingConfig['snapGrid'] })}>
         <option value={0}>关</option><option value={1}>1 m</option><option value={5}>5 m</option><option value={10}>10 m</option></select></label>
